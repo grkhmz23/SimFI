@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { TrendingUp, Home, BarChart3, History, Trophy, User, LogOut, Search, X, Wallet } from 'lucide-react';
+import { TrendingUp, Home, BarChart3, History, Trophy, User, LogOut, Search, X, Wallet, Flame } from 'lucide-react';
 import { formatSol } from '@/lib/lamports';
 import { useQuery } from '@tanstack/react-query';
 
@@ -33,6 +33,8 @@ export function Navigation() {
 
   const navItems = [
     { path: '/', label: 'Trade', icon: TrendingUp },
+    { path: '/trending', label: 'Trending', icon: Flame },
+    { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   ];
 
   // Search tokens via API
@@ -197,10 +199,6 @@ export function Navigation() {
                   <DropdownMenuItem onClick={() => setLocation('/history')} data-testid="menu-history">
                     <History className="mr-2 h-4 w-4" />
                     History
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setLocation('/leaderboard')} data-testid="menu-leaderboard">
-                    <Trophy className="mr-2 h-4 w-4" />
-                    Leaderboard
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout} data-testid="menu-logout">
