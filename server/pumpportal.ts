@@ -10,6 +10,8 @@ let graduatedTokens: Token[] = [];
 const MAX_TOKENS = 100;
 
 let wss: WebSocketServer | null = null;
+let pumpPortalWs: WebSocket | null = null;
+const graduationTimers = new Map<string, { timer: NodeJS.Timeout; startTime: number }>();
 
 // DexScreener API cache
 let dexScreenerCache: any[] = [];
@@ -78,7 +80,43 @@ export function initializePumpPortal(server: HTTPServer) {
 }
 
 function connectToPumpPortal() {
+  // Clean up existing connection if any
+  if (pumpPortalWs) {
+    pumpPortalWs.removeAllListeners();
+    pumpPortalWs.close();
+    pumpPortalWs = null;
+  }
+  
+  // Clear old timers but track which tokens need rescheduling
+  const tokensToReschedule: Array<{ address: string; startTime: number }> = [];
+  graduationTimers.forEach((data, address) => {
+    clearTimeout(data.timer);
+    tokensToReschedule.push({ address, startTime: data.startTime });
+  });
+  graduationTimers.clear();
+  
+  // Reschedule graduation timers for tokens still in graduatingTokens
+  tokensToReschedule.forEach(({ address, startTime }) => {
+    const token = graduatingTokens.find(t => t.tokenAddress === address);
+    if (token) {
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, 60000 - elapsed);
+      
+      const timer = setTimeout(() => {
+        graduatingTokens = graduatingTokens.filter(t => t.tokenAddress !== address);
+        graduatedTokens.unshift(token);
+        if (graduatedTokens.length > MAX_TOKENS) graduatedTokens.pop();
+        console.log(`✅ Token graduated: ${token.symbol} (${token.name})`);
+        broadcast({ type: 'graduated', payload: token });
+        graduationTimers.delete(address);
+      }, remaining);
+      
+      graduationTimers.set(address, { timer, startTime });
+    }
+  });
+  
   const ws = new WebSocket('wss://pumpportal.fun/api/data');
+  pumpPortalWs = ws;
 
   ws.on('open', () => {
     console.log('✅ Connected to PumpPortal WebSocket');
@@ -179,13 +217,22 @@ function connectToPumpPortal() {
         console.log(`🎓 Token graduating: ${symbol} (${name}) - MC: $${marketCapUSD.toFixed(2)}`);
         broadcast({ type: 'graduating', payload: token });
 
-        setTimeout(() => {
+        // Clear any existing graduation timer for this token
+        const existingData = graduationTimers.get(message.mint);
+        if (existingData) clearTimeout(existingData.timer);
+        
+        // Set new graduation timer and track start time
+        const startTime = Date.now();
+        const timer = setTimeout(() => {
           graduatingTokens = graduatingTokens.filter(t => t.tokenAddress !== message.mint);
           graduatedTokens.unshift(token);
           if (graduatedTokens.length > MAX_TOKENS) graduatedTokens.pop();
           console.log(`✅ Token graduated: ${symbol} (${name})`);
           broadcast({ type: 'graduated', payload: token });
+          graduationTimers.delete(message.mint);
         }, 60000);
+        
+        graduationTimers.set(message.mint, { timer, startTime });
       } else if (message.signature) {
         // Likely a trade event, skip silently
         return;

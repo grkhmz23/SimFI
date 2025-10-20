@@ -21,6 +21,7 @@ export interface IStorage {
   // Trade operations
   createTrade(data: Omit<InsertTrade, 'id'> & { userId: string }): Promise<Trade>;
   getUserTrades(userId: string, limit?: number, offset?: number): Promise<Trade[]>;
+  getUserTradesCount(userId: string): Promise<number>;
   
   // Leaderboard operations
   getTopUsersByTotalProfit(limit: number): Promise<any[]>;
@@ -107,6 +108,13 @@ class DbStorage implements IStorage {
       .orderBy(desc(tradeHistory.closedAt))
       .limit(limit)
       .offset(offset);
+  }
+
+  async getUserTradesCount(userId: string): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` })
+      .from(tradeHistory)
+      .where(eq(tradeHistory.userId, userId));
+    return result[0]?.count || 0;
   }
 
   async getTopUsersByTotalProfit(limit: number): Promise<any[]> {
