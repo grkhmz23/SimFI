@@ -343,6 +343,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post('/api/trades/sell-all', authenticateToken, async (req, res) => {
+    try {
+      const { tokenAddress, exitPrice } = req.body;
+      
+      if (!tokenAddress || exitPrice <= 0) {
+        return res.status(400).json({ error: 'Invalid sell data' });
+      }
+      
+      // Get all positions for this token and user
+      const allPositions = await storage.getUserPositions(req.userId!);
+      const tokenPositions = allPositions.filter(p => p.tokenAddress === tokenAddress);
+      
+      if (tokenPositions.length === 0) {
+        return res.status(404).json({ error: 'No positions found for this token' });
+      }
+      
+      let totalSolReceived = 0;
+      let totalProfit = 0;
+      let totalTokensSold = 0;
+      
+      // Sell all positions
+      for (const position of tokenPositions) {
+        const sellAmount = position.amount;
+        const solReceived = Math.floor((sellAmount / 1_000_000_000) * exitPrice);
+        const profitLoss = solReceived - position.solSpent;
+        
+        totalSolReceived += solReceived;
+        totalProfit += profitLoss;
+        totalTokensSold += sellAmount;
+        
+        // Update user balance and profit
+        await storage.updateUserBalance(req.userId!, solReceived);
+        await storage.updateUserTotalProfit(req.userId!, profitLoss);
+        
+        // Create trade history entry
+        await storage.createTrade({
+          userId: req.userId!,
+          tokenAddress: position.tokenAddress,
+          tokenName: position.tokenName,
+          tokenSymbol: position.tokenSymbol,
+          entryPrice: position.entryPrice,
+          exitPrice,
+          amount: sellAmount,
+          solSpent: position.solSpent,
+          solReceived,
+          profitLoss,
+          openedAt: position.openedAt,
+        });
+        
+        // Delete the position
+        await storage.deletePosition(position.id);
+      }
+      
+      console.log(`✅ Sold all ${tokenPositions.length} positions of ${tokenAddress}: ${totalTokensSold / 1_000_000_000} tokens for ${totalSolReceived / 1_000_000_000} SOL (P/L: ${totalProfit / 1_000_000_000} SOL)`);
+      
+      res.json({
+        message: `Successfully sold ${tokenPositions.length} position(s)`,
+        positionsClosed: tokenPositions.length,
+        totalProfit,
+        totalSolReceived,
+      });
+    } catch (error: any) {
+      console.error('Sell all error:', error);
+      res.status(500).json({ error: 'Could not execute sell all order' });
+    }
+  });
+
   app.get('/api/trades/history', authenticateToken, async (req, res) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
