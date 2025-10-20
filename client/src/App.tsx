@@ -10,6 +10,7 @@ import { Navigation } from "@/components/Navigation";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Trade from "@/pages/Trade";
+import TokenPage from "@/pages/TokenPage";
 import Dashboard from "@/pages/Dashboard";
 import Portfolio from "@/pages/Portfolio";
 import History from "@/pages/History";
@@ -36,6 +37,9 @@ function Router() {
       </Route>
       <Route path="/">
         <PageLayout component={Trade} />
+      </Route>
+      <Route path="/token/:address">
+        <PageLayout component={TokenPage} />
       </Route>
       <Route path="/dashboard">
         <PageLayout component={Dashboard} />
