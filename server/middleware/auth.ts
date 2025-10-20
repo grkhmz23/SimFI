@@ -19,7 +19,11 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    const secret = process.env.JWT_SECRET || 'your-secret-key-change-this';
+    // Use same secret resolution as routes.ts
+    const secret = process.env.JWT_SECRET || process.env.SESSION_SECRET;
+    if (!secret) {
+      throw new Error('JWT_SECRET or SESSION_SECRET environment variable must be set');
+    }
     const verified = jwt.verify(token, secret) as { id: string; username: string };
     req.userId = verified.id;
     req.username = verified.username;
