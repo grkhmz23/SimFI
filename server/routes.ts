@@ -210,7 +210,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const solSpent = Math.floor(solAmount * 1_000_000_000); // Convert SOL to Lamports
       
       // Calculate how many tokens we can buy with this SOL amount
-      const tokenAmount = Math.floor(solSpent / price); // tokens = lamports / (lamports per token)
+      // price is in Lamports per token, solSpent is in Lamports
+      const tokenCount = solSpent / price; // actual number of tokens (can be fractional)
+      const tokenAmount = Math.floor(tokenCount * 1_000_000_000); // Convert to integer storage format (9 decimals)
       
       if (tokenAmount <= 0) {
         return res.status(400).json({ error: 'SOL amount too small to buy tokens' });
