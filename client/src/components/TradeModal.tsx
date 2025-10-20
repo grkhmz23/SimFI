@@ -26,7 +26,7 @@ const buySchema = z.object({
 });
 
 export function TradeModal({ token, position, onClose }: TradeModalProps) {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, refreshUser } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const isBuying = !position;
@@ -105,10 +105,13 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
         return apiRequest('POST', '/api/trades/sell', data);
       }
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['/api/auth/profile'] });
       queryClient.invalidateQueries({ queryKey: ['/api/trades/positions'] });
       queryClient.invalidateQueries({ queryKey: ['/api/trades/history'] });
+      
+      // Refresh user balance in auth context
+      await refreshUser();
       
       toast({
         title: isBuying ? 'Position Opened!' : 'Position Closed!',
