@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Trophy, Medal, Award } from 'lucide-react';
 import type { LeaderboardEntry } from '@shared/schema';
+import { formatSol } from '@/lib/lamports';
 
 export default function Leaderboard() {
   const { data: overallData } = useQuery<{ leaders: LeaderboardEntry[] }>({
@@ -66,7 +67,7 @@ export default function Leaderboard() {
                 <p className="font-semibold text-foreground text-lg">{entry.username}</p>
                 {entry.balance !== undefined && (
                   <p className="text-sm text-muted-foreground">
-                    Balance: {entry.balance.toFixed(4)} SOL
+                    Balance: {formatSol(entry.balance)} SOL
                   </p>
                 )}
               </div>
@@ -76,7 +77,7 @@ export default function Leaderboard() {
                   className={`text-xl font-bold font-mono ${profit >= 0 ? 'text-success' : 'text-destructive'}`}
                   data-testid={`text-profit-${index}`}
                 >
-                  {profit >= 0 ? '+' : ''}{profit.toFixed(4)} SOL
+                  {profit >= 0 ? '+' : ''}{formatSol(profit)} SOL
                 </p>
                 <Badge variant={profit >= 0 ? 'default' : 'destructive'} className="mt-1">
                   {profit >= 0 ? 'Profit' : 'Loss'}

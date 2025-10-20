@@ -1,7 +1,10 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, real, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, bigint, integer, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// 1 SOL = 1,000,000,000 Lamports
+export const LAMPORTS_PER_SOL = 1_000_000_000;
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -9,8 +12,8 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
   walletAddress: text("wallet_address").notNull(),
-  balance: real("balance").notNull().default(10.0),
-  totalProfit: real("total_profit").notNull().default(0.0),
+  balance: bigint("balance", { mode: "number" }).notNull().default(10 * LAMPORTS_PER_SOL),
+  totalProfit: bigint("total_profit", { mode: "number" }).notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -20,9 +23,9 @@ export const positions = pgTable("positions", {
   tokenAddress: text("token_address").notNull(),
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
-  entryPrice: real("entry_price").notNull(),
-  amount: real("amount").notNull(),
-  solSpent: real("sol_spent").notNull(),
+  entryPrice: bigint("entry_price", { mode: "number" }).notNull(),
+  amount: bigint("amount", { mode: "number" }).notNull(),
+  solSpent: bigint("sol_spent", { mode: "number" }).notNull(),
   openedAt: timestamp("opened_at").defaultNow().notNull(),
 });
 
@@ -32,14 +35,22 @@ export const tradeHistory = pgTable("trade_history", {
   tokenAddress: text("token_address").notNull(),
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
-  entryPrice: real("entry_price").notNull(),
-  exitPrice: real("exit_price").notNull(),
-  amount: real("amount").notNull(),
-  solSpent: real("sol_spent").notNull(),
-  solReceived: real("sol_received").notNull(),
-  profitLoss: real("profit_loss").notNull(),
+  entryPrice: bigint("entry_price", { mode: "number" }).notNull(),
+  exitPrice: bigint("exit_price", { mode: "number" }).notNull(),
+  amount: bigint("amount", { mode: "number" }).notNull(),
+  solSpent: bigint("sol_spent", { mode: "number" }).notNull(),
+  solReceived: bigint("sol_received", { mode: "number" }).notNull(),
+  profitLoss: bigint("profit_loss", { mode: "number" }).notNull(),
   openedAt: timestamp("opened_at").notNull(),
   closedAt: timestamp("closed_at").defaultNow().notNull(),
+});
+
+export const leaderboardPeriods = pgTable("leaderboard_periods", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  startTime: timestamp("start_time").notNull(),
+  endTime: timestamp("end_time").notNull(),
+  winnerId: varchar("winner_id").references(() => users.id),
+  winnerProfit: bigint("winner_profit", { mode: "number" }),
 });
 
 // Insert Schemas
@@ -72,6 +83,7 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Position = typeof positions.$inferSelect;
 export type Trade = typeof tradeHistory.$inferSelect;
+export type LeaderboardPeriod = typeof leaderboardPeriods.$inferSelect;
 export type InsertPosition = z.infer<typeof insertPositionSchema>;
 export type InsertTrade = z.infer<typeof insertTradeSchema>;
 
@@ -80,7 +92,7 @@ export interface Token {
   tokenAddress: string;
   name: string;
   symbol: string;
-  price: number;
+  price: number; // Price in Lamports per token
   marketCap: number;
   creator?: string;
   timestamp?: string;
@@ -103,19 +115,31 @@ export interface BuyRequest {
   tokenAddress: string;
   tokenName: string;
   tokenSymbol: string;
-  amount: number;
-  price: number;
+  amount: number; // Amount of tokens (can be fractional)
+  price: number; // Price in Lamports per token
 }
 
 export interface SellRequest {
   positionId: string;
-  exitPrice: number;
+  amount?: number; // Optional partial sell, if not provided sells all
+  exitPrice: number; // Price in Lamports per token
 }
 
 export interface LeaderboardEntry {
   id: string;
   username: string;
-  totalProfit?: number;
-  periodProfit?: number;
-  balance?: number;
+  walletAddress?: string;
+  totalProfit?: number; // In Lamports
+  periodProfit?: number; // In Lamports
+  balance?: number; // In Lamports
+  rank?: number;
+}
+
+// Utility functions for Lamports conversion
+export function solToLamports(sol: number): number {
+  return Math.floor(sol * LAMPORTS_PER_SOL);
+}
+
+export function lamportsToSol(lamports: number): number {
+  return lamports / LAMPORTS_PER_SOL;
 }

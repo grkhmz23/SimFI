@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/table';
 import { TradeModal } from '@/components/TradeModal';
 import { useTokens } from '@/lib/websocket';
+import { formatSol, lamportsToSol } from '@/lib/lamports';
 import { TrendingUp, TrendingDown, Package } from 'lucide-react';
 import type { Position } from '@shared/schema';
 
@@ -34,7 +35,9 @@ export default function Portfolio() {
   });
 
   const calculateCurrentValue = (position: Position, currentPrice: number) => {
-    return position.amount * currentPrice;
+    // position.amount is in integer tokens (1B = 1 token), currentPrice is in Lamports per token
+    const tokenAmount = position.amount / 1_000_000_000;
+    return Math.floor(tokenAmount * currentPrice);
   };
 
   const calculateProfitLoss = (position: Position, currentPrice: number) => {
@@ -70,7 +73,7 @@ export default function Portfolio() {
             <div>
               <p className="text-sm text-muted-foreground">Total Invested</p>
               <p className="text-2xl font-bold font-mono text-foreground" data-testid="text-invested">
-                {totalInvested.toFixed(4)} SOL
+                {formatSol(totalInvested)} SOL
               </p>
             </div>
           </div>
@@ -84,7 +87,7 @@ export default function Portfolio() {
             <div>
               <p className="text-sm text-muted-foreground">Current Value</p>
               <p className="text-2xl font-bold font-mono text-foreground" data-testid="text-current-value">
-                {totalCurrentValue.toFixed(4)} SOL
+                {formatSol(totalCurrentValue)} SOL
               </p>
             </div>
           </div>
@@ -105,7 +108,7 @@ export default function Portfolio() {
                 className={`text-2xl font-bold font-mono ${totalPL >= 0 ? 'text-success' : 'text-destructive'}`}
                 data-testid="text-unrealized-pl"
               >
-                {totalPL >= 0 ? '+' : ''}{totalPL.toFixed(4)} SOL
+                {totalPL >= 0 ? '+' : ''}{formatSol(totalPL)} SOL
               </p>
             </div>
           </div>
@@ -159,24 +162,24 @@ export default function Portfolio() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right font-mono">
-                          {position.amount.toLocaleString()}
+                          {(position.amount / 1_000_000_000).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm">
-                          {position.entryPrice.toFixed(8)}
+                          {formatSol(position.entryPrice, 8)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm">
-                          {positionWithPrice.currentPrice.toFixed(8)}
+                          {formatSol(positionWithPrice.currentPrice, 8)}
                         </TableCell>
                         <TableCell className="text-right font-mono">
-                          {position.solSpent.toFixed(4)}
+                          {formatSol(position.solSpent)}
                         </TableCell>
                         <TableCell className="text-right font-mono">
-                          {currentValue.toFixed(4)}
+                          {formatSol(currentValue)}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex flex-col items-end">
                             <span className={`font-mono font-semibold ${pl >= 0 ? 'text-success' : 'text-destructive'}`}>
-                              {pl >= 0 ? '+' : ''}{pl.toFixed(4)}
+                              {pl >= 0 ? '+' : ''}{formatSol(pl)}
                             </span>
                             <Badge 
                               variant={pl >= 0 ? 'default' : 'destructive'}

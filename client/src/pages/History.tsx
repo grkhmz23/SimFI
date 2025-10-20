@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { formatSol } from '@/lib/lamports';
 import { History as HistoryIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Trade } from '@shared/schema';
 
@@ -92,19 +93,19 @@ export default function History() {
                             </div>
                           </TableCell>
                           <TableCell className="text-right font-mono">
-                            {trade.amount.toLocaleString()}
+                            {(trade.amount / 1_000_000_000).toLocaleString()}
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm">
-                            {trade.entryPrice.toFixed(8)}
+                            {formatSol(trade.entryPrice, 8)}
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm">
-                            {trade.exitPrice.toFixed(8)}
+                            {formatSol(trade.exitPrice, 8)}
                           </TableCell>
                           <TableCell className="text-right font-mono">
-                            {trade.solSpent.toFixed(4)}
+                            {formatSol(trade.solSpent)}
                           </TableCell>
                           <TableCell className="text-right font-mono">
-                            {trade.solReceived.toFixed(4)}
+                            {formatSol(trade.solReceived)}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex flex-col items-end">
@@ -112,7 +113,7 @@ export default function History() {
                                 className={`font-mono font-semibold ${trade.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}
                                 data-testid={`text-pl-${trade.id}`}
                               >
-                                {trade.profitLoss >= 0 ? '+' : ''}{trade.profitLoss.toFixed(4)}
+                                {trade.profitLoss >= 0 ? '+' : ''}{formatSol(trade.profitLoss)}
                               </span>
                               <Badge 
                                 variant={trade.profitLoss >= 0 ? 'default' : 'destructive'}

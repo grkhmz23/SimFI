@@ -1,179 +1,178 @@
-import { type User, type InsertUser, type Position, type InsertPosition, type Trade, type InsertTrade } from "@shared/schema";
-import { randomUUID } from "crypto";
+import { eq, desc, and, sql } from 'drizzle-orm';
+import { db } from './db';
+import { users, positions, tradeHistory, leaderboardPeriods, type User, type Position, type Trade, type InsertUser, type InsertPosition, type InsertTrade, LAMPORTS_PER_SOL, solToLamports } from '@shared/schema';
 
 export interface IStorage {
   // User operations
-  getUser(id: string): Promise<User | undefined>;
+  createUser(data: InsertUser & { password: string }): Promise<User>;
+  getUserById(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-  updateUser(id: string, updates: Partial<Omit<User, 'id'>>): Promise<void>;
-  updateUserBalance(id: string, balanceChange: number, profitChange: number): Promise<void>;
-  
+  updateUserProfile(id: string, data: Partial<Omit<User, 'id' | 'createdAt'>>): Promise<User | undefined>;
+  updateUserBalance(id: string, balanceChange: number): Promise<User | undefined>;
+  updateUserTotalProfit(id: string, profitChange: number): Promise<User | undefined>;
+
   // Position operations
-  getPositions(userId: string): Promise<Position[]>;
-  getPosition(id: string, userId: string): Promise<Position | undefined>;
-  createPosition(position: InsertPosition & { userId: string }): Promise<Position>;
+  createPosition(data: Omit<InsertPosition, 'id'> & { userId: string }): Promise<Position>;
+  getPositionById(id: string): Promise<Position | undefined>;
+  getUserPositions(userId: string): Promise<Position[]>;
   deletePosition(id: string): Promise<void>;
-  
-  // Trade history operations
-  getTrades(userId: string, page: number, limit: number): Promise<{ trades: Trade[]; total: number }>;
-  createTrade(trade: InsertTrade & { userId: string }): Promise<Trade>;
+
+  // Trade operations
+  createTrade(data: Omit<InsertTrade, 'id'> & { userId: string }): Promise<Trade>;
+  getUserTrades(userId: string, limit?: number, offset?: number): Promise<Trade[]>;
   
   // Leaderboard operations
-  getOverallLeaderboard(): Promise<Array<{ id: string; username: string; totalProfit: number; balance: number }>>;
-  getCurrentPeriodLeaderboard(periodStart: Date): Promise<Array<{ id: string; username: string; periodProfit: number }>>;
+  getTopUsersByTotalProfit(limit: number): Promise<any[]>;
+  getTopUsersByPeriodProfit(startTime: Date, limit: number): Promise<any[]>;
+  getCurrentLeaderboardPeriod(): Promise<typeof leaderboardPeriods.$inferSelect | undefined>;
+  createLeaderboardPeriod(startTime: Date, endTime: Date): Promise<typeof leaderboardPeriods.$inferSelect>;
+  getPastWinners(limit: number): Promise<any[]>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-  private positions: Map<string, Position>;
-  private trades: Map<string, Trade>;
-
-  constructor() {
-    this.users = new Map();
-    this.positions = new Map();
-    this.trades = new Map();
-  }
-
-  // User operations
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
-  }
-
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.email.toLowerCase() === email.toLowerCase(),
-    );
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = {
-      ...insertUser,
-      id,
-      balance: 10.0,
-      totalProfit: 0.0,
-      createdAt: new Date(),
-    };
-    this.users.set(id, user);
+class DbStorage implements IStorage {
+  async createUser(data: InsertUser & { password: string }): Promise<User> {
+    const [user] = await db.insert(users).values({
+      ...data,
+      balance: 10 * LAMPORTS_PER_SOL,
+      totalProfit: 0,
+    }).returning();
     return user;
   }
 
-  async updateUser(id: string, updates: Partial<Omit<User, 'id'>>): Promise<void> {
-    const user = this.users.get(id);
-    if (!user) throw new Error('User not found');
-    
-    const updated = { ...user, ...updates };
-    this.users.set(id, updated);
+  async getUserById(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
-  async updateUserBalance(id: string, balanceChange: number, profitChange: number): Promise<void> {
-    const user = this.users.get(id);
-    if (!user) throw new Error('User not found');
-    
-    user.balance += balanceChange;
-    user.totalProfit += profitChange;
-    this.users.set(id, user);
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
   }
 
-  // Position operations
-  async getPositions(userId: string): Promise<Position[]> {
-    return Array.from(this.positions.values())
-      .filter(pos => pos.userId === userId)
-      .sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime());
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
 
-  async getPosition(id: string, userId: string): Promise<Position | undefined> {
-    const position = this.positions.get(id);
-    if (position && position.userId === userId) {
-      return position;
-    }
-    return undefined;
+  async updateUserProfile(id: string, data: Partial<Omit<User, 'id' | 'createdAt'>>): Promise<User | undefined> {
+    const [user] = await db.update(users).set(data).where(eq(users.id, id)).returning();
+    return user;
   }
 
-  async createPosition(data: InsertPosition & { userId: string }): Promise<Position> {
-    const id = randomUUID();
-    const position: Position = {
-      ...data,
-      id,
-      openedAt: new Date(),
-    };
-    this.positions.set(id, position);
+  async updateUserBalance(id: string, balanceChange: number): Promise<User | undefined> {
+    const [user] = await db.update(users)
+      .set({ balance: sql`${users.balance} + ${balanceChange}` })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
+  }
+
+  async updateUserTotalProfit(id: string, profitChange: number): Promise<User | undefined> {
+    const [user] = await db.update(users)
+      .set({ totalProfit: sql`${users.totalProfit} + ${profitChange}` })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
+  }
+
+  async createPosition(data: Omit<InsertPosition, 'id'> & { userId: string }): Promise<Position> {
+    const [position] = await db.insert(positions).values(data).returning();
     return position;
   }
 
+  async getPositionById(id: string): Promise<Position | undefined> {
+    const [position] = await db.select().from(positions).where(eq(positions.id, id));
+    return position;
+  }
+
+  async getUserPositions(userId: string): Promise<Position[]> {
+    return db.select().from(positions).where(eq(positions.userId, userId)).orderBy(desc(positions.openedAt));
+  }
+
   async deletePosition(id: string): Promise<void> {
-    this.positions.delete(id);
+    await db.delete(positions).where(eq(positions.id, id));
   }
 
-  // Trade history operations
-  async getTrades(userId: string, page: number = 1, limit: number = 50): Promise<{ trades: Trade[]; total: number }> {
-    const userTrades = Array.from(this.trades.values())
-      .filter(trade => trade.userId === userId)
-      .sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime());
-    
-    const total = userTrades.length;
-    const offset = (page - 1) * limit;
-    const trades = userTrades.slice(offset, offset + limit);
-    
-    return { trades, total };
-  }
-
-  async createTrade(data: InsertTrade & { userId: string }): Promise<Trade> {
-    const id = randomUUID();
-    const trade: Trade = {
-      ...data,
-      id,
-      closedAt: new Date(),
-    };
-    this.trades.set(id, trade);
+  async createTrade(data: Omit<InsertTrade, 'id'> & { userId: string }): Promise<Trade> {
+    const [trade] = await db.insert(tradeHistory).values(data).returning();
     return trade;
   }
 
-  // Leaderboard operations
-  async getOverallLeaderboard(): Promise<Array<{ id: string; username: string; totalProfit: number; balance: number }>> {
-    return Array.from(this.users.values())
-      .filter(user => user.totalProfit !== 0)
-      .map(user => ({
-        id: user.id,
-        username: user.username,
-        totalProfit: user.totalProfit,
-        balance: user.balance,
-      }))
-      .sort((a, b) => b.totalProfit - a.totalProfit)
-      .slice(0, 100);
+  async getUserTrades(userId: string, limit: number = 50, offset: number = 0): Promise<Trade[]> {
+    return db.select()
+      .from(tradeHistory)
+      .where(eq(tradeHistory.userId, userId))
+      .orderBy(desc(tradeHistory.closedAt))
+      .limit(limit)
+      .offset(offset);
   }
 
-  async getCurrentPeriodLeaderboard(periodStart: Date): Promise<Array<{ id: string; username: string; periodProfit: number }>> {
-    const periodTrades = new Map<string, number>();
+  async getTopUsersByTotalProfit(limit: number): Promise<any[]> {
+    return db.select({
+      id: users.id,
+      username: users.username,
+      walletAddress: users.walletAddress,
+      totalProfit: users.totalProfit,
+      balance: users.balance,
+    })
+    .from(users)
+    .orderBy(desc(users.totalProfit))
+    .limit(limit);
+  }
+
+  async getTopUsersByPeriodProfit(startTime: Date, limit: number): Promise<any[]> {
+    const result = await db.select({
+      id: users.id,
+      username: users.username,
+      walletAddress: users.walletAddress,
+      periodProfit: sql<number>`COALESCE(SUM(${tradeHistory.profitLoss}), 0)`,
+    })
+    .from(users)
+    .leftJoin(tradeHistory, and(
+      eq(tradeHistory.userId, users.id),
+      sql`${tradeHistory.closedAt} >= ${startTime}`
+    ))
+    .groupBy(users.id)
+    .orderBy(desc(sql`COALESCE(SUM(${tradeHistory.profitLoss}), 0)`))
+    .limit(limit);
     
-    Array.from(this.trades.values())
-      .filter(trade => new Date(trade.closedAt) >= periodStart)
-      .forEach(trade => {
-        const current = periodTrades.get(trade.userId) || 0;
-        periodTrades.set(trade.userId, current + trade.profitLoss);
-      });
+    return result;
+  }
+
+  async getCurrentLeaderboardPeriod(): Promise<typeof leaderboardPeriods.$inferSelect | undefined> {
+    const [period] = await db.select()
+      .from(leaderboardPeriods)
+      .where(sql`${leaderboardPeriods.endTime} > NOW()`)
+      .orderBy(desc(leaderboardPeriods.startTime))
+      .limit(1);
+    return period;
+  }
+
+  async createLeaderboardPeriod(startTime: Date, endTime: Date): Promise<typeof leaderboardPeriods.$inferSelect> {
+    const [period] = await db.insert(leaderboardPeriods)
+      .values({ startTime, endTime })
+      .returning();
+    return period;
+  }
+
+  async getPastWinners(limit: number): Promise<any[]> {
+    const result = await db.select({
+      id: users.id,
+      username: users.username,
+      walletAddress: users.walletAddress,
+      periodProfit: leaderboardPeriods.winnerProfit,
+      periodStart: leaderboardPeriods.startTime,
+      periodEnd: leaderboardPeriods.endTime,
+    })
+    .from(leaderboardPeriods)
+    .leftJoin(users, eq(users.id, leaderboardPeriods.winnerId))
+    .where(sql`${leaderboardPeriods.winnerId} IS NOT NULL`)
+    .orderBy(desc(leaderboardPeriods.endTime))
+    .limit(limit);
     
-    return Array.from(periodTrades.entries())
-      .map(([userId, periodProfit]) => {
-        const user = this.users.get(userId);
-        return user ? {
-          id: userId,
-          username: user.username,
-          periodProfit,
-        } : null;
-      })
-      .filter((entry): entry is { id: string; username: string; periodProfit: number } => entry !== null && entry.periodProfit !== 0)
-      .sort((a, b) => b.periodProfit - a.periodProfit)
-      .slice(0, 10);
+    return result;
   }
 }
 
-export const storage = new MemStorage();
+export const storage: IStorage = new DbStorage();

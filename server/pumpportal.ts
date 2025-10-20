@@ -1,6 +1,7 @@
 import { WebSocket, WebSocketServer } from 'ws';
 import type { Server as HTTPServer } from 'http';
 import type { Token } from '@shared/schema';
+import { solToLamports } from '@shared/schema';
 
 let newTokens: Token[] = [];
 let graduatingTokens: Token[] = [];
@@ -40,13 +41,21 @@ function connectToPumpPortal() {
       let token: Token;
 
       if (message.type === 'newToken') {
+        // Convert USD market cap to approximate Lamports price per token
+        // Assume token supply of 1B tokens, calculate price in SOL, then convert to Lamports
+        const marketCapUSD = message.market_cap || message.usd_market_cap || 0;
+        const solPrice = 150; // Approximate SOL price in USD
+        const marketCapSOL = marketCapUSD / solPrice;
+        const pricePerToken = marketCapSOL / 1e9; // 1B token supply
+        const priceLamports = solToLamports(pricePerToken);
+        
         token = {
           tokenAddress: message.mint,
           name: message.name || 'Unknown',
           symbol: message.symbol || '???',
           marketCap: message.market_cap || message.usd_market_cap || 0,
           creator: message.creator || 'N/A',
-          price: (message.usd_market_cap || 0) / 1e9,
+          price: priceLamports,
           timestamp: new Date().toISOString()
         };
         newTokens.unshift(token);
@@ -54,11 +63,17 @@ function connectToPumpPortal() {
         broadcast({ type: 'new', payload: token });
 
       } else if (message.type === 'migration') {
+        const marketCapUSD = message.usd_market_cap || 0;
+        const solPrice = 150;
+        const marketCapSOL = marketCapUSD / solPrice;
+        const pricePerToken = marketCapSOL / 1e9;
+        const priceLamports = solToLamports(pricePerToken);
+        
         token = {
           tokenAddress: message.mint,
           name: message.name || 'Unknown',
           symbol: message.symbol || '???',
-          price: (message.usd_market_cap || 0) / 1e9,
+          price: priceLamports,
           marketCap: message.usd_market_cap || 0,
           creator: message.creator || 'N/A',
           timestamp: new Date().toISOString()
