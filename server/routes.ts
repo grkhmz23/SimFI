@@ -425,10 +425,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Skip if already found
             if (results.some(r => r.tokenAddress === tokenAddress)) continue;
             
-            // Convert USD price to Lamports (approximate based on SOL price ~$150)
-            const priceUsd = pair.priceUsd ? parseFloat(pair.priceUsd) : 0;
-            const priceSol = priceUsd / 150; // Approximate SOL price
-            const priceLamports = Math.floor(priceSol * 1_000_000_000);
+            // Use native price (already in SOL) instead of USD price
+            const priceNative = pair.priceNative ? parseFloat(pair.priceNative) : 0;
+            const priceLamports = priceNative > 0 ? Math.floor(priceNative * 1_000_000_000) : 0;
             
             results.push({
               tokenAddress,
@@ -485,18 +484,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get individual token by address (must come AFTER search route)
-  app.get('/api/tokens/:address', (req, res) => {
+  app.get('/api/tokens/:address', async (req, res) => {
     try {
       const { address } = req.params;
       const allTokens = getTokens();
       
-      // Search for token in all categories
+      // Search for token in all categories (local WebSocket feed)
       let token = allTokens.new.find(t => t.tokenAddress === address);
       if (!token) {
         token = allTokens.graduating.find(t => t.tokenAddress === address);
       }
       if (!token) {
         token = allTokens.graduated.find(t => t.tokenAddress === address);
+      }
+      
+      // If not found locally, try DexScreener API for historical tokens
+      if (!token) {
+        console.log(`🔍 Token ${address} not in local feed, checking DexScreener...`);
+        try {
+          const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
+          if (dexResponse.ok) {
+            const dexData = await dexResponse.json();
+            
+            // Find the Solana pair for this token
+            const solanaPair = dexData.pairs?.find((pair: any) => 
+              pair.chainId === 'solana' && pair.baseToken?.address === address
+            );
+            
+            if (solanaPair) {
+              // Use native price (already in SOL) instead of USD price
+              const priceNative = solanaPair.priceNative ? parseFloat(solanaPair.priceNative) : 0;
+              
+              // Validate price exists
+              if (priceNative === 0) {
+                console.warn(`⚠️ Token ${address} has no price data on DexScreener`);
+                return res.status(404).json({ error: 'Token price data unavailable' });
+              }
+              
+              // Convert SOL to Lamports
+              const priceLamports = Math.floor(priceNative * 1_000_000_000);
+              
+              token = {
+                tokenAddress: address,
+                name: solanaPair.baseToken?.name || 'Unknown Token',
+                symbol: solanaPair.baseToken?.symbol || '???',
+                price: priceLamports,
+                marketCap: solanaPair.marketCap || solanaPair.fdv || 0,
+                creator: undefined,
+                timestamp: new Date().toISOString(),
+              };
+              
+              console.log(`✅ Found token ${address} on DexScreener: ${token.name} (${token.symbol}) - Price: ${priceNative} SOL`);
+            }
+          }
+        } catch (dexError) {
+          console.error('DexScreener API error for token:', dexError);
+        }
       }
       
       if (!token) {
