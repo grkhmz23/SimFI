@@ -113,26 +113,23 @@ export default function Trade() {
         </div>
       )}
 
-      <div className="space-y-8">
-        {/* New Tokens Section */}
-        <div className="space-y-4">
-          <h2 className="text-2xl font-semibold flex items-center gap-2" data-testid="section-new">
-            <Sparkles className="h-6 w-6 text-primary" />
-            New
-            <span className="text-muted-foreground text-lg">({tokens.new.length})</span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 divide-x divide-border">
+        {/* New Tokens Column */}
+        <div className="space-y-4 pr-0 lg:pr-6">
+          <h2 className="text-xl font-semibold flex items-center gap-2 pb-4 border-b border-border" data-testid="section-new">
+            <Sparkles className="h-5 w-5 text-primary" />
+            New Pairs
+            <span className="text-muted-foreground text-sm ml-auto">({tokens.new.length})</span>
           </h2>
           {tokens.new.length === 0 ? (
             <div className="text-center py-12">
               <Sparkles className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Waiting for new tokens...
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Connected to pump.fun
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="space-y-3">
               {tokens.new.map((token) => (
                 <TokenCard key={token.tokenAddress} token={token} />
               ))}
@@ -140,28 +137,22 @@ export default function Trade() {
           )}
         </div>
 
-        {/* Horizontal Divider */}
-        <div className="border-t border-border"></div>
-
-        {/* About to Graduate Section */}
-        <div className="space-y-4">
-          <h2 className="text-2xl font-semibold flex items-center gap-2" data-testid="section-graduating">
-            <GraduationCap className="h-6 w-6 text-primary" />
-            About to Graduate
-            <span className="text-muted-foreground text-lg">({tokens.graduating.length})</span>
+        {/* About to Graduate Column */}
+        <div className="space-y-4 px-0 lg:px-6 mt-8 lg:mt-0">
+          <h2 className="text-xl font-semibold flex items-center gap-2 pb-4 border-b border-border" data-testid="section-graduating">
+            <GraduationCap className="h-5 w-5 text-primary" />
+            Final Stretch
+            <span className="text-muted-foreground text-sm ml-auto">({tokens.graduating.length})</span>
           </h2>
           {tokens.graduating.length === 0 ? (
             <div className="text-center py-12">
               <GraduationCap className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 No tokens yet
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                ~$69k market cap
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="space-y-3">
               {tokens.graduating.map((token) => (
                 <TokenCard key={token.tokenAddress} token={token} />
               ))}
@@ -169,28 +160,22 @@ export default function Trade() {
           )}
         </div>
 
-        {/* Horizontal Divider */}
-        <div className="border-t border-border"></div>
-
-        {/* Graduated Section */}
-        <div className="space-y-4">
-          <h2 className="text-2xl font-semibold flex items-center gap-2" data-testid="section-graduated">
-            <CheckCircle2 className="h-6 w-6 text-primary" />
-            Graduated
-            <span className="text-muted-foreground text-lg">({tokens.graduated.length})</span>
+        {/* Graduated Column */}
+        <div className="space-y-4 pl-0 lg:pl-6 mt-8 lg:mt-0">
+          <h2 className="text-xl font-semibold flex items-center gap-2 pb-4 border-b border-border" data-testid="section-graduated">
+            <CheckCircle2 className="h-5 w-5 text-primary" />
+            Migrated
+            <span className="text-muted-foreground text-sm ml-auto">({tokens.graduated.length})</span>
           </h2>
           {tokens.graduated.length === 0 ? (
             <div className="text-center py-12">
               <CheckCircle2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 No graduated tokens yet
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Bonding curve completed
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="space-y-3">
               {tokens.graduated.map((token) => (
                 <TokenCard key={token.tokenAddress} token={token} />
               ))}
