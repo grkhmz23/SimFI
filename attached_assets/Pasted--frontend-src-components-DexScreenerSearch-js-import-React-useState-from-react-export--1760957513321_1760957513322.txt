@@ -1,0 +1,108 @@
+// frontend/src/components/DexScreenerSearch.js
+import React, { useState } from "react";
+
+export default function DexScreenerSearch() {
+  const [query, setQuery] = useState("");
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    setResult(null);
+
+    try {
+      const response = await fetch("https://api.dexscreener.com/token-profiles/latest/v1", {
+        method: "GET",
+        headers: {
+          "Accept": "*/*",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch data from DexScreener");
+      }
+
+      const data = await response.json();
+
+      // Simple filtering by token name or address (case-insensitive)
+      const filtered = data.filter((token) => {
+        return (
+          token.tokenAddress?.toLowerCase().includes(query.toLowerCase()) ||
+          token.url?.toLowerCase().includes(query.toLowerCase()) ||
+          token.description?.toLowerCase().includes(query.toLowerCase())
+        );
+      });
+
+      if (filtered.length === 0) {
+        setError("No matching tokens found.");
+      } else {
+        setResult(filtered);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 bg-gray-900 text-white rounded-2xl shadow-lg">
+      <h1 className="text-2xl font-bold mb-4">🔍 Search Tokens (DexScreener API)</h1>
+      <form onSubmit={handleSearch} className="flex mb-4 gap-2">
+        <input
+          type="text"
+          placeholder="Enter token name or contract address"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="w-full px-3 py-2 text-black rounded-lg"
+        />
+        <button
+          type="submit"
+          disabled={loading}
+          className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-white font-semibold"
+        >
+          {loading ? "Searching..." : "Search"}
+        </button>
+      </form>
+
+      {error && <p className="text-red-400">{error}</p>}
+
+      {result && (
+        <div className="mt-4 space-y-4">
+          {result.map((token) => (
+            <div key={token.tokenAddress} className="bg-gray-800 p-4 rounded-xl">
+              <div className="flex items-center gap-3">
+                <img
+                  src={token.icon}
+                  alt={token.tokenAddress}
+                  className="w-10 h-10 rounded-full"
+                />
+                <div>
+                  <p className="font-bold">{token.tokenAddress}</p>
+                  <p className="text-sm text-gray-400">{token.chainId}</p>
+                </div>
+              </div>
+              <p className="mt-2 text-gray-300">{token.description}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {token.links?.map((link, i) => (
+                  <a
+                    key={i}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 underline text-sm"
+                  >
+                    {link.label || link.type}
+                  </a>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
