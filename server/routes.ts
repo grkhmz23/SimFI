@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { authenticateToken } from "./middleware/auth";
 import { initializePumpPortal, getTokens } from "./pumpportal";
+import { leaderboardService } from "./leaderboardService";
 import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest } from "@shared/schema";
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
@@ -356,9 +357,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/leaderboard/current-period', async (req, res) => {
     try {
-      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
-      const leaders = await storage.getTopUsersByPeriodProfit(sixHoursAgo, 100);
-      res.json({ leaders: leaders.map((l, i) => ({ ...l, rank: i + 1 })), periodStart: sixHoursAgo.toISOString() });
+      // Get the actual current period from storage
+      const currentPeriod = await storage.getCurrentLeaderboardPeriod();
+      
+      if (!currentPeriod) {
+        return res.json({ leaders: [], periodStart: new Date().toISOString(), periodEnd: new Date().toISOString() });
+      }
+      
+      // Use the actual period boundaries for accurate calculations
+      const leaders = await storage.getTopUsersByPeriodProfit(
+        new Date(currentPeriod.startTime), 
+        new Date(currentPeriod.endTime), 
+        100
+      );
+      
+      res.json({ 
+        leaders: leaders.map((l, i) => ({ ...l, rank: i + 1 })), 
+        periodStart: currentPeriod.startTime,
+        periodEnd: currentPeriod.endTime
+      });
     } catch (error: any) {
       console.error('Get period leaderboard error:', error);
       res.status(500).json({ error: 'Could not fetch period leaderboard' });
@@ -379,6 +396,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Initialize WebSocket for pump.fun integration
   initializePumpPortal(httpServer);
+  
+  // Initialize leaderboard service for period management
+  leaderboardService.start();
 
   return httpServer;
 }
