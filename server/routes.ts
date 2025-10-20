@@ -55,9 +55,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.cookie('token', token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
       });
+      
+      console.log('✅ User registered, cookie set for:', user.username);
       
       // Return user without password
       const { password, ...userWithoutPassword } = user;
@@ -101,9 +103,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.cookie('token', token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
       });
+      
+      console.log('✅ User logged in, cookie set for:', user.username);
       
       const { password: _, ...userWithoutPassword } = user;
       res.json({ user: userWithoutPassword });
@@ -117,8 +121,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.clearCookie('token', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict'
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax'
     });
+    console.log('✅ User logged out, cookie cleared');
     res.json({ message: 'Logged out successfully' });
   });
 
