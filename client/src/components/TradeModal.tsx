@@ -119,9 +119,13 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   
   // Fetch Jupiter quote for realistic token amount calculation
   const tokenAddress = token?.tokenAddress || '';
+  const quoteUrl = tokenAddress && solAmount > 0 
+    ? `/api/tokens/quote/buy?tokenAddress=${tokenAddress}&solAmount=${solAmount}` 
+    : null;
+  
   const { data: jupiterQuote, isLoading: quoteLoading } = useQuery<JupiterQuote>({
-    queryKey: ['/api/tokens/quote/buy', tokenAddress, solAmount],
-    enabled: isBuying && solAmount > 0 && !!tokenAddress,
+    queryKey: [quoteUrl],
+    enabled: isBuying && !!quoteUrl,
     refetchOnWindowFocus: false,
     staleTime: 10000, // 10 seconds
   });

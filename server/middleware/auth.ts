@@ -15,6 +15,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   const token = req.cookies.token || (req.headers['authorization']?.split(' ')[1]);
 
   if (!token) {
+    console.log('❌ Auth failed: No token provided. Cookies:', req.cookies, 'Headers:', req.headers['authorization']);
     return res.status(401).json({ error: 'Access denied - no token provided' });
   }
 
@@ -28,7 +29,8 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     req.userId = verified.id;
     req.username = verified.username;
     next();
-  } catch (error) {
+  } catch (error: any) {
+    console.log('❌ Auth failed: Token verification error:', error.message);
     res.status(403).json({ error: 'Invalid or expired token' });
   }
 }
