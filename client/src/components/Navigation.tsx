@@ -38,7 +38,7 @@ export function Navigation() {
 
   // Search tokens via API
   const { data: searchData } = useQuery<{ results: SearchResult[] }>({
-    queryKey: ['/api/tokens/search', searchQuery],
+    queryKey: [`/api/tokens/search?q=${encodeURIComponent(searchQuery)}`],
     enabled: searchQuery.length >= 3,
   });
 
