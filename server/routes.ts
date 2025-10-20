@@ -374,35 +374,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/tokens/:address', (req, res) => {
-    try {
-      const { address } = req.params;
-      const allTokens = getTokens();
-      
-      // Search for token in all categories
-      let token = allTokens.new.find(t => t.tokenAddress === address);
-      if (!token) {
-        token = allTokens.graduating.find(t => t.tokenAddress === address);
-      }
-      if (!token) {
-        token = allTokens.graduated.find(t => t.tokenAddress === address);
-      }
-      
-      if (!token) {
-        return res.status(404).json({ error: 'Token not found' });
-      }
-      
-      res.json({ token });
-    } catch (error: any) {
-      console.error('Get token error:', error);
-      res.status(500).json({ error: 'Could not fetch token' });
-    }
-  });
-
+  // IMPORTANT: Search route must come BEFORE :address route to avoid matching "search" as an address
   app.get('/api/tokens/search', async (req, res) => {
     try {
       const query = req.query.q as string || '';
       const searchTerm = query.toLowerCase().trim();
+      
+      console.log(`🔍 Search request: "${searchTerm}"`);
 
       if (!searchTerm || searchTerm.length < 3) {
         return res.json({ results: [] });
@@ -438,6 +416,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Filter for Solana pairs only
           const solanaPairs = dexData.pairs?.filter((pair: any) => pair.chainId === 'solana') || [];
+          console.log(`📊 DexScreener returned ${solanaPairs.length} Solana pairs for "${searchTerm}"`);
           
           for (const pair of solanaPairs.slice(0, 15)) {
             const tokenAddress = pair.baseToken?.address;
@@ -496,10 +475,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('DexScreener profiles error:', profileError);
       }
 
-      res.json({ results: results.slice(0, 20) });
+      const finalResults = results.slice(0, 20);
+      console.log(`✅ Returning ${finalResults.length} search results for "${searchTerm}"`);
+      res.json({ results: finalResults });
     } catch (error: any) {
       console.error('Search tokens error:', error);
       res.status(500).json({ error: 'Could not search tokens' });
+    }
+  });
+
+  // Get individual token by address (must come AFTER search route)
+  app.get('/api/tokens/:address', (req, res) => {
+    try {
+      const { address } = req.params;
+      const allTokens = getTokens();
+      
+      // Search for token in all categories
+      let token = allTokens.new.find(t => t.tokenAddress === address);
+      if (!token) {
+        token = allTokens.graduating.find(t => t.tokenAddress === address);
+      }
+      if (!token) {
+        token = allTokens.graduated.find(t => t.tokenAddress === address);
+      }
+      
+      if (!token) {
+        return res.status(404).json({ error: 'Token not found' });
+      }
+      
+      res.json({ token });
+    } catch (error: any) {
+      console.error('Get token error:', error);
+      res.status(500).json({ error: 'Could not fetch token' });
     }
   });
 
