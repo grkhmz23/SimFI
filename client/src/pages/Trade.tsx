@@ -113,9 +113,9 @@ export default function Trade() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 divide-x divide-border">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* New Tokens Column */}
-        <div className="space-y-4 pr-0 lg:pr-6">
+        <div className="space-y-4 lg:border-r border-border lg:pr-6">
           <h2 className="text-xl font-semibold flex items-center gap-2 pb-4 border-b border-border" data-testid="section-new">
             <Sparkles className="h-5 w-5 text-primary" />
             New Pairs
@@ -138,7 +138,7 @@ export default function Trade() {
         </div>
 
         {/* About to Graduate Column */}
-        <div className="space-y-4 px-0 lg:px-6 mt-8 lg:mt-0">
+        <div className="space-y-4 lg:border-r border-border lg:px-6">
           <h2 className="text-xl font-semibold flex items-center gap-2 pb-4 border-b border-border" data-testid="section-graduating">
             <GraduationCap className="h-5 w-5 text-primary" />
             Final Stretch
@@ -161,7 +161,7 @@ export default function Trade() {
         </div>
 
         {/* Graduated Column */}
-        <div className="space-y-4 pl-0 lg:pl-6 mt-8 lg:mt-0">
+        <div className="space-y-4 lg:pl-6">
           <h2 className="text-xl font-semibold flex items-center gap-2 pb-4 border-b border-border" data-testid="section-graduated">
             <CheckCircle2 className="h-5 w-5 text-primary" />
             Migrated
