@@ -115,7 +115,7 @@ export interface BuyRequest {
   tokenAddress: string;
   tokenName: string;
   tokenSymbol: string;
-  amount: number; // Amount of tokens (can be fractional)
+  solAmount: number; // Amount of SOL to spend (can be fractional, e.g., 0.1, 1, 5)
   price: number; // Price in Lamports per token
 }
 

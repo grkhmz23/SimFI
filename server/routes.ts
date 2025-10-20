@@ -195,9 +195,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/trades/buy', authenticateToken, async (req, res) => {
     try {
-      const { tokenAddress, tokenName, tokenSymbol, amount, price } = req.body as BuyRequest;
+      const { tokenAddress, tokenName, tokenSymbol, solAmount, price } = req.body as BuyRequest;
       
-      if (!tokenAddress || !tokenName || !tokenSymbol || amount <= 0 || price <= 0) {
+      if (!tokenAddress || !tokenName || !tokenSymbol || solAmount <= 0 || price <= 0) {
         return res.status(400).json({ error: 'Invalid trade data' });
       }
       
@@ -206,9 +206,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'User not found' });
       }
       
-      // Convert price to Lamports (price is already in Lamports from frontend)
-      const tokenAmount = Math.floor(amount * 1_000_000_000); // Convert token amount to integer
-      const solSpent = Math.floor((amount * price)); // Total cost in Lamports
+      // Calculate how much SOL to spend in Lamports
+      const solSpent = Math.floor(solAmount * 1_000_000_000); // Convert SOL to Lamports
+      
+      // Calculate how many tokens we can buy with this SOL amount
+      const tokenAmount = Math.floor(solSpent / price); // tokens = lamports / (lamports per token)
+      
+      if (tokenAmount <= 0) {
+        return res.status(400).json({ error: 'SOL amount too small to buy tokens' });
+      }
       
       if (user.balance < solSpent) {
         return res.status(400).json({ error: 'Insufficient balance' });
@@ -233,7 +239,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ 
         message: 'Position opened successfully',
         positionId: position.id,
-        newBalance: newUser!.balance
+        newBalance: newUser!.balance,
+        tokensReceived: tokenAmount
       });
     } catch (error: any) {
       console.error('Buy error:', error);

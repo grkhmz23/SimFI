@@ -22,7 +22,11 @@ interface TradeModalProps {
 }
 
 const buySchema = z.object({
-  amount: z.number().positive('Amount must be positive'),
+  solAmount: z.number().positive('Amount must be positive'),
+});
+
+const sellSchema = z.object({
+  percentage: z.number().min(1).max(100),
 });
 
 export function TradeModal({ token, position, onClose }: TradeModalProps) {
@@ -34,7 +38,6 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   const symbol = position?.tokenSymbol || token?.symbol || '';
   const name = position?.tokenName || token?.name || '';
 
-  // If user is not authenticated, show login prompt
   if (!isAuthenticated) {
     return (
       <Dialog open onOpenChange={onClose}>
@@ -87,15 +90,28 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     );
   }
 
-  const form = useForm<z.infer<typeof buySchema>>({
+  const buyForm = useForm<z.infer<typeof buySchema>>({
     resolver: zodResolver(buySchema),
     defaultValues: {
-      amount: position ? position.amount / 1_000_000_000 : 0,
+      solAmount: 0,
     },
   });
 
-  const amount = form.watch('amount') || 0;
-  const totalCost = amount * currentPrice;
+  const sellForm = useForm<z.infer<typeof sellSchema>>({
+    resolver: zodResolver(sellSchema),
+    defaultValues: {
+      percentage: 100,
+    },
+  });
+
+  const solAmount = buyForm.watch('solAmount') || 0;
+  const percentage = sellForm.watch('percentage') || 100;
+  
+  const estimatedTokens = isBuying ? Math.floor((solAmount * 1_000_000_000) / currentPrice) : 0;
+  const sellAmount = !isBuying && position ? (position.amount * percentage / 100) : 0;
+  const sellValue = !isBuying ? (sellAmount / 1_000_000_000) * currentPrice : 0;
+  const proportionalCost = !isBuying && position ? (position.solSpent * percentage / 100) : 0;
+  const profitLoss = !isBuying ? sellValue - proportionalCost : 0;
 
   const tradeMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -105,19 +121,18 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
         return apiRequest('POST', '/api/trades/sell', data);
       }
     },
-    onSuccess: async () => {
+    onSuccess: async (response: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/auth/profile'] });
       queryClient.invalidateQueries({ queryKey: ['/api/trades/positions'] });
       queryClient.invalidateQueries({ queryKey: ['/api/trades/history'] });
       
-      // Refresh user balance in auth context
       await refreshUser();
       
       toast({
         title: isBuying ? 'Position Opened!' : 'Position Closed!',
         description: isBuying 
-          ? `Bought ${amount.toLocaleString()} ${symbol}` 
-          : `Sold ${amount.toLocaleString()} ${symbol}`,
+          ? `Bought ${(response.tokensReceived / 1_000_000_000).toLocaleString()} ${symbol} for ${solAmount} SOL`
+          : `Sold ${(sellAmount / 1_000_000_000).toLocaleString()} ${symbol}`,
       });
       
       onClose();
@@ -131,35 +146,45 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     },
   });
 
-  const onSubmit = form.handleSubmit((data) => {
-    if (isBuying) {
-      if (!token) return;
-      if (totalCost > (user?.balance || 0)) {
-        toast({
-          title: 'Insufficient Balance',
-          description: `You need ${formatSol(totalCost)} SOL but only have ${formatSol(user?.balance || 0)} SOL`,
-          variant: 'destructive',
-        });
-        return;
-      }
-      
-      tradeMutation.mutate({
-        tokenAddress: token.tokenAddress,
-        tokenName: token.name,
-        tokenSymbol: token.symbol,
-        amount: data.amount,
-        price: currentPrice,
+  const onBuySubmit = buyForm.handleSubmit((data) => {
+    if (!token) return;
+    const solSpent = data.solAmount * 1_000_000_000;
+    if (solSpent > (user?.balance || 0)) {
+      toast({
+        title: 'Insufficient Balance',
+        description: `You need ${data.solAmount} SOL but only have ${formatSol(user?.balance || 0)} SOL`,
+        variant: 'destructive',
       });
-    } else {
-      if (!position) return;
-      tradeMutation.mutate({
-        positionId: position.id,
-        exitPrice: currentPrice,
-      });
+      return;
     }
+    
+    tradeMutation.mutate({
+      tokenAddress: token.tokenAddress,
+      tokenName: token.name,
+      tokenSymbol: token.symbol,
+      solAmount: data.solAmount,
+      price: currentPrice,
+    });
   });
 
-  const profitLoss = position ? totalCost - position.solSpent : 0;
+  const onSellSubmit = sellForm.handleSubmit((data) => {
+    if (!position) return;
+    const tokensToSell = (position.amount * data.percentage) / 100 / 1_000_000_000;
+    
+    tradeMutation.mutate({
+      positionId: position.id,
+      amount: tokensToSell,
+      exitPrice: currentPrice,
+    });
+  });
+
+  const setSolAmount = (amount: number) => {
+    buyForm.setValue('solAmount', amount);
+  };
+
+  const setPercentage = (pct: number) => {
+    sellForm.setValue('percentage', pct);
+  };
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -182,68 +207,170 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
             </p>
           </div>
 
-          <Form {...form}>
-            <form onSubmit={onSubmit} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="amount"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Amount ({symbol})</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="any"
-                        placeholder="0.0"
-                        className="font-mono"
-                        disabled={!isBuying || tradeMutation.isPending}
-                        data-testid="input-amount"
-                        {...field}
-                        onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
-                        value={field.value || ''}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+          {isBuying ? (
+            <Form {...buyForm}>
+              <form onSubmit={onBuySubmit} className="space-y-4">
+                <FormField
+                  control={buyForm.control}
+                  name="solAmount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Amount to Spend (SOL)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.0"
+                          className="font-mono"
+                          disabled={tradeMutation.isPending}
+                          data-testid="input-sol-amount"
+                          {...field}
+                          onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                          value={field.value || ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <div className="rounded-lg bg-muted p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{isBuying ? 'Total Cost' : 'Current Value'}:</span>
-                  <span className="font-mono font-semibold" data-testid="text-total-cost">
-                    {formatSol(totalCost)} SOL
-                  </span>
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Quick Amount</p>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[0.1, 0.5, 1, 2, 5].map((amt) => (
+                      <Button
+                        key={amt}
+                        type="button"
+                        variant={solAmount === amt ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSolAmount(amt)}
+                        disabled={tradeMutation.isPending}
+                        data-testid={`button-quick-${amt}`}
+                      >
+                        {amt}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Your Balance:</span>
-                  <span className="font-mono">{formatSol(user?.balance || 0)} SOL</span>
-                </div>
-                {!isBuying && (
-                  <div className="flex justify-between text-sm pt-2 border-t border-border">
-                    <span className="text-muted-foreground">Profit/Loss:</span>
-                    <span 
-                      className={`font-mono font-bold ${profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}
-                      data-testid="text-profit-loss"
-                    >
-                      {profitLoss >= 0 ? '+' : ''}{formatSol(profitLoss)} SOL
+
+                <div className="rounded-lg bg-muted p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Est. Tokens:</span>
+                    <span className="font-mono font-semibold" data-testid="text-estimated-tokens">
+                      {(estimatedTokens / 1_000_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })} {symbol}
                     </span>
                   </div>
-                )}
-              </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Your Balance:</span>
+                    <span className="font-mono">{formatSol(user?.balance || 0)} SOL</span>
+                  </div>
+                </div>
 
-              <Button
-                type="submit"
-                className="w-full"
-                size="lg"
-                variant={isBuying ? 'default' : 'destructive'}
-                disabled={tradeMutation.isPending || amount <= 0}
-                data-testid={isBuying ? "button-buy" : "button-sell"}
-              >
-                {tradeMutation.isPending ? 'Processing...' : (isBuying ? 'Buy Now' : 'Sell Position')}
-              </Button>
-            </form>
-          </Form>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  size="lg"
+                  variant="default"
+                  disabled={tradeMutation.isPending || solAmount <= 0}
+                  data-testid="button-buy"
+                >
+                  {tradeMutation.isPending ? 'Processing...' : 'Buy Now'}
+                </Button>
+              </form>
+            </Form>
+          ) : (
+            <Form {...sellForm}>
+              <form onSubmit={onSellSubmit} className="space-y-4">
+                <FormField
+                  control={sellForm.control}
+                  name="percentage"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Sell Percentage</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="1"
+                          min="1"
+                          max="100"
+                          placeholder="100"
+                          className="font-mono"
+                          disabled={tradeMutation.isPending}
+                          data-testid="input-percentage"
+                          {...field}
+                          onChange={e => field.onChange(parseInt(e.target.value) || 100)}
+                          value={field.value || ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Quick Percentage</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[25, 50, 75, 100].map((pct) => (
+                      <Button
+                        key={pct}
+                        type="button"
+                        variant={percentage === pct ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setPercentage(pct)}
+                        disabled={tradeMutation.isPending}
+                        data-testid={`button-quick-${pct}`}
+                      >
+                        {pct}%
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                {position && (
+                  <div className="rounded-lg bg-muted p-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Your Position:</span>
+                      <span className="font-mono">
+                        {(position.amount / 1_000_000_000).toLocaleString()} {symbol}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Selling:</span>
+                      <span className="font-mono font-semibold">
+                        {(sellAmount / 1_000_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })} {symbol}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Est. Value:</span>
+                      <span className="font-mono font-semibold" data-testid="text-sell-value">
+                        {formatSol(sellValue)} SOL
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm pt-2 border-t border-border">
+                      <span className="text-muted-foreground">Profit/Loss:</span>
+                      <span 
+                        className={`font-mono font-bold ${profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}
+                        data-testid="text-profit-loss"
+                      >
+                        {profitLoss >= 0 ? '+' : ''}{formatSol(profitLoss)} SOL
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  size="lg"
+                  variant="destructive"
+                  disabled={tradeMutation.isPending || percentage <= 0}
+                  data-testid="button-sell"
+                >
+                  {tradeMutation.isPending ? 'Processing...' : `Sell ${percentage}%`}
+                </Button>
+              </form>
+            </Form>
+          )}
         </div>
       </DialogContent>
     </Dialog>
