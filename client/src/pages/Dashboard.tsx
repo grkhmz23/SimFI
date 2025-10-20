@@ -2,7 +2,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Link } from 'wouter';
+import { useLocation } from 'wouter';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,7 @@ const updateProfileSchema = z.object({
 export default function Dashboard() {
   const { user, setAuth, isAuthenticated } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   if (!isAuthenticated) {
     return (
@@ -35,16 +36,22 @@ export default function Dashboard() {
               You need to be logged in to view your dashboard and manage your account
             </p>
             <div className="flex gap-3">
-              <Link href="/login" className="flex-1">
-                <Button variant="default" className="w-full" data-testid="button-goto-login">
-                  Login
-                </Button>
-              </Link>
-              <Link href="/register" className="flex-1">
-                <Button variant="outline" className="w-full" data-testid="button-goto-register">
-                  Register
-                </Button>
-              </Link>
+              <Button
+                variant="default"
+                className="flex-1"
+                onClick={() => setLocation('/login')}
+                data-testid="button-goto-login"
+              >
+                Login
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setLocation('/register')}
+                data-testid="button-goto-register"
+              >
+                Register
+              </Button>
             </div>
           </Card>
         </div>

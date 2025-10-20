@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Link } from 'wouter';
+import { useLocation } from 'wouter';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,7 @@ const buySchema = z.object({
 export function TradeModal({ token, position, onClose }: TradeModalProps) {
   const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const isBuying = !position;
   const currentPrice = position?.currentPrice || token?.price || 0;
   const symbol = position?.tokenSymbol || token?.symbol || '';
@@ -59,16 +60,22 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
             </div>
 
             <div className="flex gap-3">
-              <Link href="/login" className="flex-1">
-                <Button variant="default" className="w-full" data-testid="button-goto-login">
-                  Login
-                </Button>
-              </Link>
-              <Link href="/register" className="flex-1">
-                <Button variant="outline" className="w-full" data-testid="button-goto-register">
-                  Register
-                </Button>
-              </Link>
+              <Button
+                variant="default"
+                className="flex-1"
+                onClick={() => setLocation('/login')}
+                data-testid="button-goto-login"
+              >
+                Login
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setLocation('/register')}
+                data-testid="button-goto-register"
+              >
+                Register
+              </Button>
             </div>
 
             <p className="text-center text-sm text-muted-foreground">
@@ -83,7 +90,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   const form = useForm<z.infer<typeof buySchema>>({
     resolver: zodResolver(buySchema),
     defaultValues: {
-      amount: position ? position.amount : 0,
+      amount: position ? position.amount / 1_000_000_000 : 0,
     },
   });
 

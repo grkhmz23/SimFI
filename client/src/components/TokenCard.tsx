@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp } from 'lucide-react';
 import { TradeModal } from '@/components/TradeModal';
+import { formatSol } from '@/lib/lamports';
 import type { Token } from '@shared/schema';
 
 interface TokenCardProps {
@@ -42,7 +43,7 @@ export function TokenCard({ token }: TokenCardProps) {
           <div>
             <p className="text-xs text-muted-foreground mb-1">Price (SOL)</p>
             <p className="text-2xl font-bold font-mono text-primary" data-testid="text-price">
-              {token.price.toFixed(8)}
+              {formatSol(token.price, 8)}
             </p>
           </div>
 
