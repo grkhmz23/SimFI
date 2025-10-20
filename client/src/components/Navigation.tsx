@@ -18,7 +18,6 @@ export function Navigation() {
 
   const navItems = [
     { path: '/', label: 'Trade', icon: TrendingUp },
-    { path: '/history', label: 'History', icon: History },
     { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   ];
 
@@ -80,6 +79,10 @@ export function Navigation() {
                   <DropdownMenuItem onClick={() => setLocation('/portfolio')} data-testid="menu-portfolio">
                     <BarChart3 className="mr-2 h-4 w-4" />
                     Portfolio
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setLocation('/history')} data-testid="menu-history">
+                    <History className="mr-2 h-4 w-4" />
+                    History
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout} data-testid="menu-logout">
