@@ -11,6 +11,56 @@ const MAX_TOKENS = 100;
 
 let wss: WebSocketServer | null = null;
 
+// DexScreener API cache
+let dexScreenerCache: any[] = [];
+let lastDexScreenerFetch = 0;
+const DEXSCREENER_CACHE_TTL = 60000; // 1 minute
+
+// Fetch token profiles from DexScreener
+async function fetchDexScreenerProfiles(): Promise<any[]> {
+  const now = Date.now();
+  if (now - lastDexScreenerFetch < DEXSCREENER_CACHE_TTL && dexScreenerCache.length > 0) {
+    return dexScreenerCache;
+  }
+
+  try {
+    const response = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', {
+      headers: { 'Accept': '*/*' },
+      timeout: 5000,
+    });
+    
+    if (response.data && Array.isArray(response.data)) {
+      dexScreenerCache = response.data;
+      lastDexScreenerFetch = now;
+      console.log(`📊 Fetched ${dexScreenerCache.length} token profiles from DexScreener`);
+      return dexScreenerCache;
+    }
+  } catch (err: any) {
+    console.warn(`⚠️  DexScreener API error: ${err.message}`);
+  }
+  
+  return dexScreenerCache;
+}
+
+// Get token metadata from DexScreener by address
+async function getTokenMetadataFromDexScreener(tokenAddress: string): Promise<{ name: string; symbol: string } | null> {
+  const profiles = await fetchDexScreenerProfiles();
+  
+  // Find Solana token matching the address
+  const profile = profiles.find(
+    p => p.chainId === 'solana' && p.tokenAddress?.toLowerCase() === tokenAddress.toLowerCase()
+  );
+  
+  if (profile) {
+    // Extract name from description or URL
+    const name = profile.description?.split('\n')[0]?.trim() || profile.url?.split('/').pop() || 'Unknown';
+    const symbol = tokenAddress.slice(0, 4).toUpperCase();
+    return { name, symbol };
+  }
+  
+  return null;
+}
+
 export function initializePumpPortal(server: HTTPServer) {
   wss = new WebSocketServer({ server, path: '/ws' });
   
@@ -63,20 +113,16 @@ function connectToPumpPortal() {
 
       // Detect newToken events by txType === "create"
       if (message.txType === 'create' && message.mint) {
-        // Fetch token metadata from pumpapi.fun
+        // Fetch token metadata from DexScreener
         const shortMint = `${message.mint.slice(0, 4)}...${message.mint.slice(-4)}`;
         let name = shortMint;
         let symbol = shortMint;
         
-        try {
-          const metadataResponse = await axios.get(`https://pumpapi.fun/api/get_metadata/${message.mint}`);
-          if (metadataResponse.status === 200 && metadataResponse.data) {
-            name = metadataResponse.data.name || shortMint;
-            symbol = metadataResponse.data.symbol || shortMint;
-            console.log(`📋 Fetched metadata: ${symbol} (${name})`);
-          }
-        } catch (err: any) {
-          // Silently use shortMint as fallback - no need to spam logs
+        const metadata = await getTokenMetadataFromDexScreener(message.mint);
+        if (metadata) {
+          name = metadata.name;
+          symbol = metadata.symbol;
+          console.log(`📋 DexScreener: ${symbol} (${name})`);
         }
         // Market cap from PumpPortal is in SOL
         const marketCapSOL = message.marketCapSol || message.vSolInBondingCurve || 0;
@@ -100,20 +146,16 @@ function connectToPumpPortal() {
 
       // Detect migration events by txType === "migrate"
       } else if (message.txType === 'migrate' && message.mint) {
-        // Fetch token metadata
+        // Fetch token metadata from DexScreener
         const shortMint = `${message.mint.slice(0, 4)}...${message.mint.slice(-4)}`;
         let name = shortMint;
         let symbol = shortMint;
         
-        try {
-          const metadataResponse = await axios.get(`https://pumpapi.fun/api/get_metadata/${message.mint}`);
-          if (metadataResponse.status === 200 && metadataResponse.data) {
-            name = metadataResponse.data.name || shortMint;
-            symbol = metadataResponse.data.symbol || shortMint;
-            console.log(`📋 Fetched metadata: ${symbol} (${name})`);
-          }
-        } catch (err: any) {
-          // Silently use shortMint as fallback - no need to spam logs
+        const metadata = await getTokenMetadataFromDexScreener(message.mint);
+        if (metadata) {
+          name = metadata.name;
+          symbol = metadata.symbol;
+          console.log(`📋 DexScreener: ${symbol} (${name})`);
         }
         // Estimate market cap (migration happens around $69k-$90k typically)
         const marketCapUSD = 75000; // Typical graduation market cap
@@ -180,3 +222,5 @@ export function getTokens() {
     graduated: graduatedTokens,
   };
 }
+
+export { fetchDexScreenerProfiles };

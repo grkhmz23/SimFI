@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { authenticateToken } from "./middleware/auth";
-import { initializePumpPortal, getTokens } from "./pumpportal";
+import { initializePumpPortal, getTokens, fetchDexScreenerProfiles } from "./pumpportal";
 import { leaderboardService } from "./leaderboardService";
 import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest } from "@shared/schema";
 
@@ -363,6 +363,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Get token error:', error);
       res.status(500).json({ error: 'Could not fetch token' });
+    }
+  });
+
+  app.get('/api/tokens/search/:query', async (req, res) => {
+    try {
+      const { query } = req.params;
+      const searchTerm = query.toLowerCase();
+
+      // Fetch DexScreener profiles
+      const profiles = await fetchDexScreenerProfiles();
+      
+      // Filter Solana tokens by name, symbol, or address
+      const results = profiles
+        .filter(p => p.chainId === 'solana')
+        .filter(p => {
+          const address = p.tokenAddress?.toLowerCase() || '';
+          const description = p.description?.toLowerCase() || '';
+          const url = p.url?.toLowerCase() || '';
+          
+          return (
+            address.includes(searchTerm) ||
+            description.includes(searchTerm) ||
+            url.includes(searchTerm)
+          );
+        })
+        .slice(0, 20)
+        .map(p => ({
+          tokenAddress: p.tokenAddress,
+          name: p.description?.split('\n')[0]?.trim() || 'Unknown',
+          symbol: p.tokenAddress?.slice(0, 4).toUpperCase() || '???',
+          icon: p.icon,
+          description: p.description,
+          url: p.url,
+          links: p.links,
+        }));
+
+      res.json({ results });
+    } catch (error: any) {
+      console.error('Search tokens error:', error);
+      res.status(500).json({ error: 'Could not search tokens' });
     }
   });
 
