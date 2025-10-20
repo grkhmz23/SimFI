@@ -42,9 +42,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Generate token
       const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
       
+      // Set HttpOnly cookie
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      });
+      
       // Return user without password
       const { password, ...userWithoutPassword } = user;
-      res.status(201).json({ token, user: userWithoutPassword });
+      res.status(201).json({ user: userWithoutPassword });
     } catch (error: any) {
       console.error('Registration error:', error);
       res.status(400).json({ error: error.message || 'Registration failed' });
@@ -71,12 +79,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
       
+      // Set HttpOnly cookie
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      });
+      
       const { password: _, ...userWithoutPassword } = user;
-      res.json({ token, user: userWithoutPassword });
+      res.json({ user: userWithoutPassword });
     } catch (error: any) {
       console.error('Login error:', error);
       res.status(500).json({ error: 'Login failed' });
     }
+  });
+
+  app.post('/api/auth/logout', (req, res) => {
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    });
+    res.json({ message: 'Logged out successfully' });
   });
 
   app.get('/api/auth/profile', authenticateToken, async (req, res) => {

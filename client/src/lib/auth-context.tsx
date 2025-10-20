@@ -1,11 +1,11 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import type { User } from '@shared/schema';
+import { apiRequest } from './queryClient';
 
 interface AuthContextType {
   user: Omit<User, 'password'> | null;
-  token: string | null;
-  setAuth: (token: string, user: Omit<User, 'password'>) => void;
-  logout: () => void;
+  setAuth: (user: Omit<User, 'password'>) => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -13,40 +13,47 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Omit<User, 'password'> | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const storedToken = localStorage.getItem('token');
-      const storedUser = localStorage.getItem('user');
-      
-      if (storedToken && storedUser && storedUser !== 'undefined') {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
+    // Try to fetch user profile on mount (cookie-based auth)
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/auth/profile', {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error loading auth from localStorage:', error);
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-    }
+    };
+    checkAuth();
   }, []);
 
-  const setAuth = (newToken: string, newUser: Omit<User, 'password'>) => {
-    localStorage.setItem('token', newToken);
-    localStorage.setItem('user', JSON.stringify(newUser));
-    setToken(newToken);
+  const setAuth = (newUser: Omit<User, 'password'>) => {
     setUser(newUser);
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setToken(null);
+  const logout = async () => {
+    try {
+      await apiRequest('POST', '/api/auth/logout');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
     setUser(null);
   };
 
+  if (loading) {
+    return null;
+  }
+
   return (
-    <AuthContext.Provider value={{ user, token, setAuth, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{ user, setAuth, logout, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

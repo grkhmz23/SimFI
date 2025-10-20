@@ -27,10 +27,10 @@ export default function Register() {
     },
   });
 
-  const registerMutation = useMutation<AuthResponse, Error, RegisterRequest>({
+  const registerMutation = useMutation<{ user: Omit<import('@shared/schema').User, 'password'> }, Error, RegisterRequest>({
     mutationFn: (data) => apiRequest('POST', '/api/auth/register', data),
     onSuccess: (data) => {
-      setAuth(data.token, data.user);
+      setAuth(data.user);
       toast({
         title: 'Account Created!',
         description: `Welcome ${data.user.username}! You have 10 SOL to start trading.`,
@@ -155,10 +155,8 @@ export default function Register() {
 
         <div className="mt-6 text-center text-sm text-muted-foreground">
           Already have an account?{' '}
-          <Link href="/login">
-            <a className="text-primary hover:underline font-semibold" data-testid="link-login">
-              Login
-            </a>
+          <Link href="/login" className="text-primary hover:underline font-semibold" data-testid="link-login">
+            Login
           </Link>
         </div>
       </Card>
