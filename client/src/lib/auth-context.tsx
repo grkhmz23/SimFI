@@ -6,6 +6,7 @@ interface AuthContextType {
   user: Omit<User, 'password'> | null;
   setAuth: (user: Omit<User, 'password'>) => void;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -39,6 +40,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(newUser);
   };
 
+  const refreshUser = async () => {
+    try {
+      const response = await fetch('/api/auth/profile', {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+      }
+    } catch (error) {
+      console.error('Refresh user failed:', error);
+    }
+  };
+
   const logout = async () => {
     try {
       await apiRequest('POST', '/api/auth/logout');
@@ -53,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, setAuth, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, setAuth, refreshUser, logout, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );
