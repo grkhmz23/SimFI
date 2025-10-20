@@ -366,40 +366,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/tokens/search/:query', async (req, res) => {
+  app.get('/api/tokens/search', async (req, res) => {
     try {
-      const { query } = req.params;
-      const searchTerm = query.toLowerCase();
+      const query = req.query.q as string || '';
+      const searchTerm = query.toLowerCase().trim();
 
-      // Fetch DexScreener profiles
-      const profiles = await fetchDexScreenerProfiles();
+      if (!searchTerm || searchTerm.length < 3) {
+        return res.json({ results: [] });
+      }
+
+      const results: any[] = [];
+
+      // Search through local tokens from WebSocket
+      const allTokens = getTokens();
+      const localTokens = [...allTokens.new, ...allTokens.graduating, ...allTokens.graduated];
       
-      // Filter Solana tokens by name, symbol, or address
-      const results = profiles
-        .filter(p => p.chainId === 'solana')
-        .filter(p => {
+      for (const token of localTokens) {
+        const address = token.tokenAddress.toLowerCase();
+        const name = token.name?.toLowerCase() || '';
+        const symbol = token.symbol?.toLowerCase() || '';
+        
+        if (address.includes(searchTerm) || name.includes(searchTerm) || symbol.includes(searchTerm)) {
+          results.push({
+            tokenAddress: token.tokenAddress,
+            name: token.name || `${token.tokenAddress.slice(0, 4)}...${token.tokenAddress.slice(-4)}`,
+            symbol: token.symbol || token.tokenAddress.slice(0, 4).toUpperCase(),
+          });
+        }
+      }
+
+      // Also search DexScreener profiles
+      try {
+        const profiles = await fetchDexScreenerProfiles();
+        
+        for (const p of profiles) {
+          if (p.chainId !== 'solana') continue;
+          
           const address = p.tokenAddress?.toLowerCase() || '';
           const description = p.description?.toLowerCase() || '';
           const url = p.url?.toLowerCase() || '';
           
-          return (
-            address.includes(searchTerm) ||
-            description.includes(searchTerm) ||
-            url.includes(searchTerm)
-          );
-        })
-        .slice(0, 20)
-        .map(p => ({
-          tokenAddress: p.tokenAddress,
-          name: p.description?.split('\n')[0]?.trim() || 'Unknown',
-          symbol: p.tokenAddress?.slice(0, 4).toUpperCase() || '???',
-          icon: p.icon,
-          description: p.description,
-          url: p.url,
-          links: p.links,
-        }));
+          // Skip if already found in local tokens
+          if (results.some(r => r.tokenAddress === p.tokenAddress)) continue;
+          
+          if (address.includes(searchTerm) || description.includes(searchTerm) || url.includes(searchTerm)) {
+            results.push({
+              tokenAddress: p.tokenAddress,
+              name: p.description?.split('\n')[0]?.trim() || 'Unknown',
+              symbol: p.tokenAddress?.slice(0, 4).toUpperCase() || '???',
+              icon: p.icon,
+              description: p.description,
+              url: p.url,
+              links: p.links,
+            });
+          }
+        }
+      } catch (dexError) {
+        console.error('DexScreener search error:', dexError);
+        // Continue with just local results
+      }
 
-      res.json({ results });
+      res.json({ results: results.slice(0, 20) });
     } catch (error: any) {
       console.error('Search tokens error:', error);
       res.status(500).json({ error: 'Could not search tokens' });
