@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,12 +17,15 @@ import { useAuth } from '@/lib/auth-context';
 import { useTokens } from '@/lib/websocket';
 import { formatSol, lamportsToSol } from '@/lib/lamports';
 import { TrendingUp, TrendingDown, Package, LogIn } from 'lucide-react';
+import { apiRequest, queryClient } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 import type { Position } from '@shared/schema';
 
 export default function Portfolio() {
   const { isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
   const [selectedPosition, setSelectedPosition] = useState<Position & { currentPrice: number } | null>(null);
+  const { toast } = useToast();
 
   const { data: positionsData, isLoading } = useQuery<{ positions: Position[] }>({
     queryKey: ['/api/trades/positions'],
@@ -66,6 +69,41 @@ export default function Portfolio() {
   const positions = (positionsData?.positions || []);
 
   const { getPrice } = useTokens();
+
+  // Group positions by tokenAddress
+  const groupedPositions = positions.reduce((acc: Map<string, Position[]>, position: Position) => {
+    const existing = acc.get(position.tokenAddress) || [];
+    acc.set(position.tokenAddress, [...existing, position]);
+    return acc;
+  }, new Map<string, Position[]>());
+
+  // Mutation for selling all positions of a token
+  const sellAllMutation = useMutation({
+    mutationFn: async ({ tokenAddress, exitPrice }: { tokenAddress: string; exitPrice: number }) => {
+      return await apiRequest('/api/trades/sell-all', 'POST', { tokenAddress, exitPrice });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/trades/positions'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/user'] });
+      toast({
+        title: 'All Positions Sold',
+        description: data.message,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Sell Failed',
+        description: error.message || 'Failed to sell all positions',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleSellAll = (tokenAddress: string, currentPrice: number) => {
+    if (confirm('Are you sure you want to sell all positions of this token?')) {
+      sellAllMutation.mutate({ tokenAddress, exitPrice: currentPrice });
+    }
+  };
 
   // Get current price from WebSocket feed or use entry price as fallback
   const getPositionWithPrice = (position: Position) => ({
@@ -184,11 +222,15 @@ export default function Portfolio() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {positions.map((position: Position) => {
+                  {positions.map((position: Position, index: number) => {
                     const positionWithPrice = getPositionWithPrice(position);
                     const currentValue = calculateCurrentValue(position, positionWithPrice.currentPrice);
                     const pl = calculateProfitLoss(position, positionWithPrice.currentPrice);
                     const plPercent = calculateProfitLossPercent(position, positionWithPrice.currentPrice);
+
+                    // Check if this is the first position of a token with multiple positions
+                    const tokenPositions = groupedPositions.get(position.tokenAddress) || [];
+                    const isFirstOfMultiple = tokenPositions.length > 1 && tokenPositions[0].id === position.id;
 
                     return (
                       <TableRow key={position.id} data-testid={`row-position-${position.id}`}>
@@ -202,6 +244,11 @@ export default function Portfolio() {
                             <p className="text-sm text-muted-foreground truncate max-w-[200px]">
                               {position.tokenName}
                             </p>
+                            {isFirstOfMultiple && (
+                              <Badge variant="secondary" className="mt-1 text-xs">
+                                {tokenPositions.length} positions
+                              </Badge>
+                            )}
                           </button>
                         </TableCell>
                         <TableCell className="text-right font-mono">
@@ -233,14 +280,27 @@ export default function Portfolio() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => setSelectedPosition(positionWithPrice)}
-                            data-testid={`button-sell-${position.id}`}
-                          >
-                            Sell
-                          </Button>
+                          <div className="flex flex-col gap-2">
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => setSelectedPosition(positionWithPrice)}
+                              data-testid={`button-sell-${position.id}`}
+                            >
+                              Sell
+                            </Button>
+                            {isFirstOfMultiple && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleSellAll(position.tokenAddress, positionWithPrice.currentPrice)}
+                                disabled={sellAllMutation.isPending}
+                                data-testid={`button-sell-all-${position.tokenAddress}`}
+                              >
+                                {sellAllMutation.isPending ? 'Selling...' : `Sell All (${tokenPositions.length})`}
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
