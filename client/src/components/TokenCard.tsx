@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useLocation } from 'wouter';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp } from 'lucide-react';
-import { TradeModal } from '@/components/TradeModal';
 import { formatSol } from '@/lib/lamports';
 import type { Token } from '@shared/schema';
 
@@ -11,7 +10,7 @@ interface TokenCardProps {
 }
 
 export function TokenCard({ token }: TokenCardProps) {
-  const [showModal, setShowModal] = useState(false);
+  const [, setLocation] = useLocation();
 
   const formatMarketCap = (mc: number) => {
     if (mc >= 1_000_000) return `$${(mc / 1_000_000).toFixed(2)}M`;
@@ -19,11 +18,16 @@ export function TokenCard({ token }: TokenCardProps) {
     return `$${mc.toFixed(0)}`;
   };
 
+  const handleCardClick = () => {
+    // Navigate to token detail page and pass token data in state
+    setLocation(`/token/${token.tokenAddress}`, { state: { token } });
+  };
+
   return (
     <>
       <Card
         className="p-6 hover-elevate active-elevate-2 cursor-pointer transition-all"
-        onClick={() => setShowModal(true)}
+        onClick={handleCardClick}
         data-testid={`card-token-${token.tokenAddress}`}
       >
         <div className="flex items-start justify-between mb-4">
@@ -69,8 +73,6 @@ export function TokenCard({ token }: TokenCardProps) {
           </div>
         </div>
       </Card>
-
-      {showModal && <TradeModal token={token} onClose={() => setShowModal(false)} />}
     </>
   );
 }
