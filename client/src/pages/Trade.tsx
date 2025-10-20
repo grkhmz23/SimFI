@@ -1,24 +1,48 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TokenCard } from '@/components/TokenCard';
 import { useTokens } from '@/lib/websocket';
-import { Search, Sparkles, GraduationCap, CheckCircle2 } from 'lucide-react';
+import { Search, Sparkles, GraduationCap, CheckCircle2, Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+
+interface SearchResult {
+  tokenAddress: string;
+  name: string;
+  symbol: string;
+  icon?: string;
+  marketCap?: number;
+  price?: number;
+}
 
 export default function Trade() {
   const tokens = useTokens();
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
 
-  const filterTokens = (tokenList: any[]) => {
-    if (!searchQuery) return tokenList;
-    const query = searchQuery.toLowerCase();
-    return tokenList.filter(t => 
-      t.symbol.toLowerCase().includes(query) ||
-      t.name.toLowerCase().includes(query) ||
-      t.tokenAddress.toLowerCase().includes(query)
-    );
-  };
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Search API call
+  const { data: searchResults, isLoading: isSearching } = useQuery<{ results: SearchResult[] }>({
+    queryKey: ['/api/tokens/search', debouncedQuery],
+    queryFn: async () => {
+      const response = await fetch(`/api/tokens/search?q=${encodeURIComponent(debouncedQuery)}`);
+      if (!response.ok) throw new Error('Search failed');
+      return response.json();
+    },
+    enabled: debouncedQuery.length >= 3,
+    staleTime: 30000,
+  });
+
+  const hasSearchResults = searchResults && searchResults.results.length > 0;
+  const showSearchResults = debouncedQuery.length >= 3;
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
@@ -34,14 +58,62 @@ export default function Trade() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search by symbol, name, or address..."
+            placeholder="Search tokens (name, symbol, or address)..."
             className="pl-10"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             data-testid="input-search"
           />
+          {isSearching && (
+            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 animate-spin text-muted-foreground" />
+          )}
         </div>
       </div>
+
+      {showSearchResults && (
+        <div className="mb-8">
+          <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
+            <Search className="h-6 w-6" />
+            Search Results
+            {hasSearchResults && <span className="text-muted-foreground text-lg">({searchResults.results.length})</span>}
+          </h2>
+          {isSearching ? (
+            <div className="text-center py-12">
+              <Loader2 className="h-12 w-12 mx-auto text-muted-foreground animate-spin mb-4" />
+              <p className="text-muted-foreground">Searching tokens...</p>
+            </div>
+          ) : hasSearchResults ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
+              {searchResults.results.map((result) => (
+                <TokenCard
+                  key={result.tokenAddress}
+                  token={{
+                    tokenAddress: result.tokenAddress,
+                    name: result.name,
+                    symbol: result.symbol,
+                    marketCap: result.marketCap || 0,
+                    price: result.price || 0,
+                    creator: 'N/A',
+                    timestamp: new Date().toISOString(),
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-card rounded-lg border">
+              <Search className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">
+                {debouncedQuery.length < 3 
+                  ? 'Type at least 3 characters to search' 
+                  : `No tokens found for "${debouncedQuery}"`}
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Try searching by token name, symbol, or contract address
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       <Tabs defaultValue="new" className="w-full">
         <TabsList className="grid w-full grid-cols-3 mb-8">
@@ -60,21 +132,19 @@ export default function Trade() {
         </TabsList>
 
         <TabsContent value="new" className="space-y-4">
-          {filterTokens(tokens.new).length === 0 ? (
+          {tokens.new.length === 0 ? (
             <div className="text-center py-20">
               <Sparkles className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
               <p className="text-xl text-muted-foreground">
-                {searchQuery ? 'No matching tokens found' : 'Waiting for new tokens...'}
+                Waiting for new tokens...
               </p>
-              {!searchQuery && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  Connected to pump.fun WebSocket
-                </p>
-              )}
+              <p className="text-sm text-muted-foreground mt-2">
+                Connected to pump.fun WebSocket
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filterTokens(tokens.new).map((token) => (
+              {tokens.new.map((token) => (
                 <TokenCard key={token.tokenAddress} token={token} />
               ))}
             </div>
@@ -82,16 +152,19 @@ export default function Trade() {
         </TabsContent>
 
         <TabsContent value="graduating" className="space-y-4">
-          {filterTokens(tokens.graduating).length === 0 ? (
+          {tokens.graduating.length === 0 ? (
             <div className="text-center py-20">
               <GraduationCap className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
               <p className="text-xl text-muted-foreground">
-                {searchQuery ? 'No matching tokens found' : 'No tokens about to graduate yet'}
+                No tokens about to graduate yet
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Tokens appear here when they reach ~$69k market cap
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filterTokens(tokens.graduating).map((token) => (
+              {tokens.graduating.map((token) => (
                 <TokenCard key={token.tokenAddress} token={token} />
               ))}
             </div>
@@ -99,16 +172,19 @@ export default function Trade() {
         </TabsContent>
 
         <TabsContent value="graduated" className="space-y-4">
-          {filterTokens(tokens.graduated).length === 0 ? (
+          {tokens.graduated.length === 0 ? (
             <div className="text-center py-20">
               <CheckCircle2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
               <p className="text-xl text-muted-foreground">
-                {searchQuery ? 'No matching tokens found' : 'No graduated tokens yet'}
+                No graduated tokens yet
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Graduated tokens have completed their bonding curve
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filterTokens(tokens.graduated).map((token) => (
+              {tokens.graduated.map((token) => (
                 <TokenCard key={token.tokenAddress} token={token} />
               ))}
             </div>
