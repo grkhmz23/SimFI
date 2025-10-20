@@ -51,11 +51,11 @@ export default function Trade() {
           </TabsTrigger>
           <TabsTrigger value="graduating" className="gap-2" data-testid="tab-graduating">
             <GraduationCap className="h-4 w-4" />
-            Migrating ({tokens.graduating.length})
+            About to Graduate ({tokens.graduating.length})
           </TabsTrigger>
           <TabsTrigger value="graduated" className="gap-2" data-testid="tab-graduated">
             <CheckCircle2 className="h-4 w-4" />
-            Live on Raydium ({tokens.graduated.length})
+            Graduated ({tokens.graduated.length})
           </TabsTrigger>
         </TabsList>
 
@@ -86,7 +86,7 @@ export default function Trade() {
             <div className="text-center py-20">
               <GraduationCap className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
               <p className="text-xl text-muted-foreground">
-                {searchQuery ? 'No matching tokens found' : 'No tokens migrating to Raydium'}
+                {searchQuery ? 'No matching tokens found' : 'No tokens about to graduate yet'}
               </p>
             </div>
           ) : (

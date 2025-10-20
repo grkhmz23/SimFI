@@ -1,0 +1,131 @@
+ looks good but have some issues,
+
+we have 3 section in landing page; New pairs,about to graduate and graduated.
+
+all of their names written false. Graduated written as migrating, we need to find change about to graduated, and also graduated section called live on raydium, this is false,, pump tokens do not migrate to raydium, but Pumpswap. Pumpfun has its own AMM called Pumpswap. So it should called graduated.
+
+
+
+I dont also an other issue is i dont see any token can you ceck websocket again please.
+
+again. For pumpfun: import WebSocket from 'ws';
+
+
+
+const ws = new WebSocket('wss://pumpportal.fun/api/data');
+
+
+
+ws.on('open', function open() {
+
+
+
+  // Subscribing to token creation events
+
+  let payload = {
+
+      method: "subscribeNewToken", 
+
+    }
+
+  ws.send(JSON.stringify(payload));
+
+
+
+  // Subscribing to migration events
+
+  let payload = {
+
+      method: "subscribeMigration", 
+
+    }
+
+  ws.send(JSON.stringify(payload));
+
+
+
+  // Subscribing to trades made by accounts
+
+  payload = {
+
+      method: "subscribeAccountTrade",
+
+      keys: ["AArPXm8JatJiuyEffuC1un2Sc835SULa4uQqDcaGpAjV"] // array of accounts to watch
+
+    }
+
+  ws.send(JSON.stringify(payload));
+
+
+
+  // Subscribing to trades on tokens
+
+  payload = {
+
+      method: "subscribeTokenTrade",
+
+      keys: ["91WNez8D22NwBssQbkzjy4s2ipFrzpmn5hfvWVe2aY5p"] // array of token CAs to watch
+
+    }
+
+  ws.send(JSON.stringify(payload));
+
+});
+
+
+
+ws.on('message', function message(data) {
+
+  console.log(JSON.parse(data));
+
+});
+
+
+
+For pumpswap: import WebSocket from 'ws';
+
+
+
+const ws = new WebSocket('wss://pumpportal.fun/api/data?api-key=your-api-key-here');
+
+
+
+ws.on('open', function open() {
+
+
+
+  // Subscribing to trades made by accounts
+
+  payload = {
+
+      method: "subscribeAccountTrade",
+
+      keys: ["AArPXm8JatJiuyEffuC1un2Sc835SULa4uQqDcaGpAjV"] // array of accounts to watch
+
+    }
+
+  ws.send(JSON.stringify(payload));
+
+
+
+  // Subscribing to trades on tokens
+
+  payload = {
+
+      method: "subscribeTokenTrade",
+
+      keys: ["GkyPYa7NnCFbduLknCfBfP7p8564X1VZhwZYJ6CZpump"] // array of token CAs to watch
+
+    }
+
+  ws.send(JSON.stringify(payload));
+
+});
+
+
+
+ws.on('message', function message(data) {
+
+  console.log(JSON.parse(data));
+
+});
