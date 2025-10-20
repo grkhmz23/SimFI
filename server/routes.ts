@@ -424,11 +424,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
             tokenAddress: token.tokenAddress,
             name: token.name || `${token.tokenAddress.slice(0, 4)}...${token.tokenAddress.slice(-4)}`,
             symbol: token.symbol || token.tokenAddress.slice(0, 4).toUpperCase(),
+            marketCap: token.marketCap,
+            price: token.price,
           });
         }
       }
 
-      // Also search DexScreener profiles
+      // Search DexScreener API for broader results (including historical tokens)
+      try {
+        const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/search/?q=${encodeURIComponent(searchTerm)}`);
+        if (dexResponse.ok) {
+          const dexData = await dexResponse.json();
+          
+          // Filter for Solana pairs only
+          const solanaPairs = dexData.pairs?.filter((pair: any) => pair.chainId === 'solana') || [];
+          
+          for (const pair of solanaPairs.slice(0, 15)) {
+            const tokenAddress = pair.baseToken?.address;
+            if (!tokenAddress) continue;
+            
+            // Skip if already found
+            if (results.some(r => r.tokenAddress === tokenAddress)) continue;
+            
+            // Convert USD price to Lamports (approximate based on SOL price ~$150)
+            const priceUsd = pair.priceUsd ? parseFloat(pair.priceUsd) : 0;
+            const priceSol = priceUsd / 150; // Approximate SOL price
+            const priceLamports = Math.floor(priceSol * 1_000_000_000);
+            
+            results.push({
+              tokenAddress,
+              name: pair.baseToken?.name || 'Unknown',
+              symbol: pair.baseToken?.symbol || '???',
+              marketCap: pair.marketCap || pair.fdv || 0,
+              price: priceLamports,
+              icon: pair.info?.imageUrl,
+              dexId: pair.dexId,
+              volume24h: pair.volume?.h24 || 0,
+              priceChange24h: pair.priceChange?.h24 || 0,
+            });
+          }
+        }
+      } catch (dexError) {
+        console.error('DexScreener API search error:', dexError);
+        // Continue with local results
+      }
+
+      // Also search DexScreener profiles (for additional metadata)
       try {
         const profiles = await fetchDexScreenerProfiles();
         
@@ -439,7 +480,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const description = p.description?.toLowerCase() || '';
           const url = p.url?.toLowerCase() || '';
           
-          // Skip if already found in local tokens
+          // Skip if already found
           if (results.some(r => r.tokenAddress === p.tokenAddress)) continue;
           
           if (address.includes(searchTerm) || description.includes(searchTerm) || url.includes(searchTerm)) {
@@ -448,15 +489,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               name: p.description?.split('\n')[0]?.trim() || 'Unknown',
               symbol: p.tokenAddress?.slice(0, 4).toUpperCase() || '???',
               icon: p.icon,
-              description: p.description,
-              url: p.url,
-              links: p.links,
             });
           }
         }
-      } catch (dexError) {
-        console.error('DexScreener search error:', dexError);
-        // Continue with just local results
+      } catch (profileError) {
+        console.error('DexScreener profiles error:', profileError);
       }
 
       res.json({ results: results.slice(0, 20) });
