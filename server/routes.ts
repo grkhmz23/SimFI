@@ -642,6 +642,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get trending tokens from DexScreener
+  app.get('/api/tokens/trending', async (req, res) => {
+    try {
+      // Fetch trending Solana tokens from DexScreener
+      const dexResponse = await fetch('https://api.dexscreener.com/latest/dex/tokens/trending/solana');
+      
+      if (!dexResponse.ok) {
+        console.error(`❌ DexScreener trending API error: ${dexResponse.status}`);
+        return res.status(500).json({ error: 'Failed to fetch trending tokens', tokens: [] });
+      }
+      
+      const dexData = await dexResponse.json();
+      const pairs = dexData || [];
+      
+      // Map to our token format
+      const trendingTokens = pairs
+        .filter((pair: any) => pair.baseToken && pair.priceNative && pair.volume?.h24 > 0)
+        .slice(0, 50) // Top 50
+        .map((pair: any) => {
+          const priceNative = parseFloat(pair.priceNative || '0');
+          const priceLamports = Math.floor(priceNative * 1_000_000_000);
+          
+          return {
+            tokenAddress: pair.baseToken.address,
+            name: pair.baseToken.name || 'Unknown',
+            symbol: pair.baseToken.symbol || '???',
+            price: priceLamports,
+            marketCap: pair.marketCap || pair.fdv || 0,
+            volume24h: pair.volume?.h24 || 0,
+            priceChange24h: pair.priceChange?.h24 || 0,
+            creator: undefined,
+            timestamp: new Date().toISOString(),
+          };
+        });
+      
+      console.log(`📈 Fetched ${trendingTokens.length} trending tokens from DexScreener`);
+      res.json({ tokens: trendingTokens });
+    } catch (error: any) {
+      console.error('Get trending tokens error:', error);
+      res.status(500).json({ error: 'Could not fetch trending tokens', tokens: [] });
+    }
+  });
+
   // ============================================================================
   // Leaderboard Routes
   // ============================================================================

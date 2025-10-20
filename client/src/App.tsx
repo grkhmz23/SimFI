@@ -15,6 +15,7 @@ import Dashboard from "@/pages/Dashboard";
 import Portfolio from "@/pages/Portfolio";
 import History from "@/pages/History";
 import Leaderboard from "@/pages/Leaderboard";
+import Trending from "@/pages/Trending";
 import NotFound from "@/pages/not-found";
 
 function PageLayout({ component: Component }: { component: React.ComponentType }) {
@@ -52,6 +53,9 @@ function Router() {
       </Route>
       <Route path="/leaderboard">
         <PageLayout component={Leaderboard} />
+      </Route>
+      <Route path="/trending">
+        <PageLayout component={Trending} />
       </Route>
       <Route component={NotFound} />
     </Switch>
