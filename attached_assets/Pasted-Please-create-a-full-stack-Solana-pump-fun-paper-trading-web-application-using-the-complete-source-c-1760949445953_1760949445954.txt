@@ -1,0 +1,37 @@
+Please create a full-stack Solana pump.fun paper trading web application using the complete source code provided below.
+
+Before you begin, please review the entire code and the "Important Architectural Notes" section, as it contains critical information about the application's design that is vital for a production environment.
+
+The application is composed of a Node.js/Express backend and a React frontend. All necessary files and setup instructions are included in the single code artifact below.
+
+Step 1: Create the Application from the Source Code
+Here is the complete, single-artifact source code for the entire project. Please use the file path comments (e.g., // FILE: backend/package.json) to create the correct folder and file structure.
+Step 2: Important Architectural Notes (Please Read)
+Before running the application, please be aware of two critical architectural issues in the provided code. While the tool is functional for paper trading, these must be addressed before it could be considered for a real-money, production environment.
+
+Critical Issue: Floating-Point Math for Currency
+
+Problem: The backend database (database.js) uses the REAL (floating-point) data type for all financial values (e.g., balance, price). Standard floating-point math is imprecise and will lead to small calculation errors that accumulate over time, corrupting user balances and trade history.
+
+Proper Solution: For a production version, all currency values must be stored and calculated as integers. For Solana, this means converting all SOL values to Lamports (1 SOL = 1,000,000,000 Lamports) before storing them in the database and performing any math.
+
+Critical Security Flaw: JWT Storage in localStorage
+
+Problem: The frontend stores the JSON Web Token (JWT) in the browser's localStorage. This is highly vulnerable to Cross-Site Scripting (XSS) attacks. If any malicious script is ever injected into the site, it can easily steal the user's token and gain full control of their account.
+
+Proper Solution: For a production version, the authentication system must be refactored to store the JWT in a secure, HttpOnly cookie. This prevents any client-side JavaScript from accessing the token, completely mitigating this attack vector.
+
+Step 3: Installation and Execution
+After creating the files, please run the following commands:
+
+Install Backend Dependencies: cd backend && npm install
+
+Install Frontend Dependencies: cd frontend && npm install
+
+Run the Application:
+
+In one terminal, run: cd backend && npm start
+
+In a second terminal, run: cd frontend && npm start
+
+Thank you.
