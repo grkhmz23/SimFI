@@ -22,6 +22,19 @@ export default function TokenPage() {
   const [showModal, setShowModal] = useState(false);
   const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
 
+  // Fetch token from API if not in navigation state (handles direct URLs and refresh)
+  const { data: tokenData, isLoading: tokenLoading } = useQuery<{ token: Token }>({
+    queryKey: ['/api/tokens', tokenAddress],
+    enabled: !token && !!tokenAddress,
+  });
+
+  // Update token state when API data is available
+  useEffect(() => {
+    if (tokenData?.token && !token) {
+      setToken(tokenData.token);
+    }
+  }, [tokenData, token]);
+
   // Fetch user's positions to check if they own this token
   const { data: positionsData } = useQuery<{ positions: Position[] }>({
     queryKey: ['/api/trades/positions'],
@@ -32,25 +45,37 @@ export default function TokenPage() {
     p => p.tokenAddress === tokenAddress
   );
 
-  // If token wasn't passed via state, we could fetch it here
-  // For now, we assume navigation always provides the token
-
   const openTradeModal = (mode: 'buy' | 'sell') => {
     setTradeMode(mode);
     setShowModal(true);
   };
+
+  if (!token && tokenLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <Card className="p-8 text-center">
+            <h1 className="text-2xl font-bold mb-4">Loading Token...</h1>
+            <p className="text-muted-foreground">
+              Fetching token data...
+            </p>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   if (!token) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
           <Card className="p-8 text-center">
-            <h1 className="text-2xl font-bold mb-4">Loading Token...</h1>
+            <h1 className="text-2xl font-bold mb-4">Token Not Found</h1>
             <p className="text-muted-foreground mb-6">
-              If this takes too long, the token might not be available.
+              This token is not available in our current feed.
             </p>
             <Link href="/">
-              <Button variant="outline">
+              <Button variant="outline" data-testid="button-back-home">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Go back to Trade page
               </Button>

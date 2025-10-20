@@ -1,16 +1,8 @@
 import { WebSocket, WebSocketServer } from 'ws';
 import type { Server as HTTPServer } from 'http';
-import https from 'https';
 import axios from 'axios';
 import type { Token } from '@shared/schema';
 import { solToLamports } from '@shared/schema';
-
-// Create an axios instance that accepts self-signed certificates
-const axiosInstance = axios.create({
-  httpsAgent: new https.Agent({
-    rejectUnauthorized: false
-  })
-});
 
 let newTokens: Token[] = [];
 let graduatingTokens: Token[] = [];
@@ -76,7 +68,7 @@ function connectToPumpPortal() {
         let symbol = '???';
         
         try {
-          const metadataResponse = await axiosInstance.get(`https://pumpapi.fun/api/get_metadata/${message.mint}`);
+          const metadataResponse = await axios.get(`https://pumpapi.fun/api/get_metadata/${message.mint}`);
           if (metadataResponse.status === 200 && metadataResponse.data) {
             name = metadataResponse.data.name || 'Unknown';
             symbol = metadataResponse.data.symbol || '???';
@@ -114,7 +106,7 @@ function connectToPumpPortal() {
         let symbol = '???';
         
         try {
-          const metadataResponse = await axiosInstance.get(`https://pumpapi.fun/api/get_metadata/${message.mint}`);
+          const metadataResponse = await axios.get(`https://pumpapi.fun/api/get_metadata/${message.mint}`);
           if (metadataResponse.status === 200 && metadataResponse.data) {
             name = metadataResponse.data.name || 'Unknown';
             symbol = metadataResponse.data.symbol || '???';
