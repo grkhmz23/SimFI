@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TokenCard } from '@/components/TokenCard';
 import { useTokens } from '@/lib/websocket';
 import { Search, Sparkles, GraduationCap, CheckCircle2, Loader2 } from 'lucide-react';
@@ -115,82 +113,85 @@ export default function Trade() {
         </div>
       )}
 
-      <Tabs defaultValue="new" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-8">
-          <TabsTrigger value="new" className="gap-2" data-testid="tab-new">
-            <Sparkles className="h-4 w-4" />
-            New ({tokens.new.length})
-          </TabsTrigger>
-          <TabsTrigger value="graduating" className="gap-2" data-testid="tab-graduating">
-            <GraduationCap className="h-4 w-4" />
-            About to Graduate ({tokens.graduating.length})
-          </TabsTrigger>
-          <TabsTrigger value="graduated" className="gap-2" data-testid="tab-graduated">
-            <CheckCircle2 className="h-4 w-4" />
-            Graduated ({tokens.graduated.length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="new" className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* New Tokens Section */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-semibold flex items-center gap-2 sticky top-16 bg-background py-2 z-10 border-b border-border pb-4" data-testid="section-new">
+            <Sparkles className="h-6 w-6 text-primary" />
+            New
+            <span className="text-muted-foreground text-lg">({tokens.new.length})</span>
+          </h2>
           {tokens.new.length === 0 ? (
-            <div className="text-center py-20">
-              <Sparkles className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <p className="text-xl text-muted-foreground">
+            <div className="text-center py-12">
+              <Sparkles className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">
                 Waiting for new tokens...
               </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Connected to pump.fun WebSocket
+              <p className="text-xs text-muted-foreground mt-2">
+                Connected to pump.fun
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="space-y-4">
               {tokens.new.map((token) => (
                 <TokenCard key={token.tokenAddress} token={token} />
               ))}
             </div>
           )}
-        </TabsContent>
+        </div>
 
-        <TabsContent value="graduating" className="space-y-4">
+        {/* About to Graduate Section */}
+        <div className="space-y-4 lg:border-l lg:border-r border-border lg:px-6">
+          <h2 className="text-2xl font-semibold flex items-center gap-2 sticky top-16 bg-background py-2 z-10 border-b border-border pb-4" data-testid="section-graduating">
+            <GraduationCap className="h-6 w-6 text-primary" />
+            About to Graduate
+            <span className="text-muted-foreground text-lg">({tokens.graduating.length})</span>
+          </h2>
           {tokens.graduating.length === 0 ? (
-            <div className="text-center py-20">
-              <GraduationCap className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <p className="text-xl text-muted-foreground">
-                No tokens about to graduate yet
+            <div className="text-center py-12">
+              <GraduationCap className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">
+                No tokens yet
               </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Tokens appear here when they reach ~$69k market cap
+              <p className="text-xs text-muted-foreground mt-2">
+                ~$69k market cap
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="space-y-4">
               {tokens.graduating.map((token) => (
                 <TokenCard key={token.tokenAddress} token={token} />
               ))}
             </div>
           )}
-        </TabsContent>
+        </div>
 
-        <TabsContent value="graduated" className="space-y-4">
+        {/* Graduated Section */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-semibold flex items-center gap-2 sticky top-16 bg-background py-2 z-10 border-b border-border pb-4" data-testid="section-graduated">
+            <CheckCircle2 className="h-6 w-6 text-primary" />
+            Graduated
+            <span className="text-muted-foreground text-lg">({tokens.graduated.length})</span>
+          </h2>
           {tokens.graduated.length === 0 ? (
-            <div className="text-center py-20">
-              <CheckCircle2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <p className="text-xl text-muted-foreground">
+            <div className="text-center py-12">
+              <CheckCircle2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">
                 No graduated tokens yet
               </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Graduated tokens have completed their bonding curve
+              <p className="text-xs text-muted-foreground mt-2">
+                Bonding curve completed
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="space-y-4">
               {tokens.graduated.map((token) => (
                 <TokenCard key={token.tokenAddress} token={token} />
               ))}
             </div>
           )}
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
     </div>
   );
 }
