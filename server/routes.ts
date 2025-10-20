@@ -3,13 +3,21 @@ import { createServer, type Server } from "http";
 import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { z } from "zod";
 import { storage } from "./storage";
 import { authenticateToken } from "./middleware/auth";
 import { initializePumpPortal, getTokens, fetchDexScreenerProfiles } from "./pumpportal";
 import { leaderboardService } from "./leaderboardService";
 import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest } from "@shared/schema";
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
+// Require JWT_SECRET or SESSION_SECRET environment variable
+const JWT_SECRET: string = (() => {
+  const secret = process.env.JWT_SECRET || process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error('FATAL: JWT_SECRET or SESSION_SECRET environment variable must be set');
+  }
+  return secret;
+})();
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
@@ -62,11 +70,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/auth/login', async (req, res) => {
     try {
-      const { email, password } = req.body as LoginRequest;
+      // Validate request body with Zod
+      const loginSchema = z.object({
+        email: z.string().email('Invalid email format'),
+        password: z.string().min(1, 'Password is required'),
+      });
       
-      if (!email || !password) {
-        return res.status(400).json({ error: 'Email and password required' });
+      const validationResult = loginSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: validationResult.error.errors[0]?.message || 'Invalid login data' 
+        });
       }
+      
+      const { email, password } = validationResult.data;
       
       const user = await storage.getUserByEmail(email);
       if (!user) {
@@ -240,6 +257,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Determine sell amount (full or partial)
       const sellAmount = amount ? Math.floor(amount * 1_000_000_000) : position.amount;
       
+      // Validate sell amount is positive and not zero after rounding
+      if (sellAmount <= 0) {
+        return res.status(400).json({ error: 'Sell amount must be greater than zero' });
+      }
+      
       if (sellAmount > position.amount) {
         return res.status(400).json({ error: 'Sell amount exceeds position size' });
       }
@@ -268,15 +290,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         openedAt: position.openedAt,
       });
       
-      // If full sell, delete position. If partial, update it.
-      if (sellAmount >= position.amount) {
-        await storage.deletePosition(positionId);
-      } else {
-        // Partial sell - update position
+      // Always delete position and create a new one for remaining if partial sell
+      await storage.deletePosition(positionId);
+      
+      // If partial sell, create new position with remaining amount
+      if (sellAmount < position.amount) {
         const remainingAmount = position.amount - sellAmount;
         const remainingCost = position.solSpent - proportionalCost;
-        await storage.updateUserProfile(req.userId!, {}); // This needs a position update method
-        // For now, we'll just do full sells to keep it simple
+        
+        await storage.createPosition({
+          userId: req.userId!,
+          tokenAddress: position.tokenAddress,
+          tokenName: position.tokenName,
+          tokenSymbol: position.tokenSymbol,
+          entryPrice: position.entryPrice,
+          amount: remainingAmount,
+          solSpent: remainingCost,
+        });
       }
       
       res.json({
@@ -296,15 +326,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const limit = 50;
       const offset = (page - 1) * limit;
       
-      const trades = await storage.getUserTrades(req.userId!, limit, offset);
+      const [trades, totalCount] = await Promise.all([
+        storage.getUserTrades(req.userId!, limit, offset),
+        storage.getUserTradesCount(req.userId!)
+      ]);
       
       res.json({
         trades,
         pagination: {
           page,
           limit,
-          total: trades.length,
-          totalPages: Math.ceil(trades.length / limit),
+          total: totalCount,
+          totalPages: Math.ceil(totalCount / limit),
         },
       });
     } catch (error: any) {
