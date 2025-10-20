@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { TrendingUp, Home, BarChart3, History, Trophy, User, LogOut, Search, X } from 'lucide-react';
+import { TrendingUp, Home, BarChart3, History, Trophy, User, LogOut, Search, X, Wallet } from 'lucide-react';
 import { formatSol } from '@/lib/lamports';
 import { useQuery } from '@tanstack/react-query';
 
@@ -33,6 +33,8 @@ export function Navigation() {
 
   const navItems = [
     { path: '/', label: 'Trade', icon: TrendingUp },
+    { path: '/portfolio', label: 'Portfolio', icon: Wallet },
+    { path: '/history', label: 'History', icon: History },
     { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   ];
 
