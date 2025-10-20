@@ -64,20 +64,19 @@ function connectToPumpPortal() {
       // Detect newToken events by txType === "create"
       if (message.txType === 'create' && message.mint) {
         // Fetch token metadata from pumpapi.fun
-        let name = 'Unknown';
-        let symbol = '???';
+        const shortMint = `${message.mint.slice(0, 4)}...${message.mint.slice(-4)}`;
+        let name = shortMint;
+        let symbol = shortMint;
         
         try {
           const metadataResponse = await axios.get(`https://pumpapi.fun/api/get_metadata/${message.mint}`);
           if (metadataResponse.status === 200 && metadataResponse.data) {
-            name = metadataResponse.data.name || 'Unknown';
-            symbol = metadataResponse.data.symbol || '???';
+            name = metadataResponse.data.name || shortMint;
+            symbol = metadataResponse.data.symbol || shortMint;
             console.log(`📋 Fetched metadata: ${symbol} (${name})`);
-          } else {
-            console.warn(`⚠️  Metadata response empty for ${message.mint}`);
           }
         } catch (err: any) {
-          console.warn(`⚠️  Failed to fetch metadata for ${message.mint}: ${err.message}`);
+          // Silently use shortMint as fallback - no need to spam logs
         }
         // Market cap from PumpPortal is in SOL
         const marketCapSOL = message.marketCapSol || message.vSolInBondingCurve || 0;
@@ -102,20 +101,19 @@ function connectToPumpPortal() {
       // Detect migration events by txType === "migrate"
       } else if (message.txType === 'migrate' && message.mint) {
         // Fetch token metadata
-        let name = 'Unknown';
-        let symbol = '???';
+        const shortMint = `${message.mint.slice(0, 4)}...${message.mint.slice(-4)}`;
+        let name = shortMint;
+        let symbol = shortMint;
         
         try {
           const metadataResponse = await axios.get(`https://pumpapi.fun/api/get_metadata/${message.mint}`);
           if (metadataResponse.status === 200 && metadataResponse.data) {
-            name = metadataResponse.data.name || 'Unknown';
-            symbol = metadataResponse.data.symbol || '???';
+            name = metadataResponse.data.name || shortMint;
+            symbol = metadataResponse.data.symbol || shortMint;
             console.log(`📋 Fetched metadata: ${symbol} (${name})`);
-          } else {
-            console.warn(`⚠️  Metadata response empty for ${message.mint}`);
           }
         } catch (err: any) {
-          console.warn(`⚠️  Failed to fetch metadata for ${message.mint}: ${err.message}`);
+          // Silently use shortMint as fallback - no need to spam logs
         }
         // Estimate market cap (migration happens around $69k-$90k typically)
         const marketCapUSD = 75000; // Typical graduation market cap
