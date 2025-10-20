@@ -341,6 +341,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/tokens/:address', (req, res) => {
+    try {
+      const { address } = req.params;
+      const allTokens = getTokens();
+      
+      // Search for token in all categories
+      let token = allTokens.new.find(t => t.tokenAddress === address);
+      if (!token) {
+        token = allTokens.graduating.find(t => t.tokenAddress === address);
+      }
+      if (!token) {
+        token = allTokens.graduated.find(t => t.tokenAddress === address);
+      }
+      
+      if (!token) {
+        return res.status(404).json({ error: 'Token not found' });
+      }
+      
+      res.json({ token });
+    } catch (error: any) {
+      console.error('Get token error:', error);
+      res.status(500).json({ error: 'Could not fetch token' });
+    }
+  });
+
   // ============================================================================
   // Leaderboard Routes
   // ============================================================================
