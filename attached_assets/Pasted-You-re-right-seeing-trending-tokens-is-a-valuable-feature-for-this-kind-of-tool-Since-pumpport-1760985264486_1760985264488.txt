@@ -1,0 +1,216 @@
+You're right, seeing trending tokens is a valuable feature for this kind of tool! 👍
+
+Since pumpportal.fun focuses primarily on new tokens and migrations via its WebSocket, the best approach is to use a broader DEX data aggregator like DexScreener, which explicitly provides data based on trading volume and activity.
+
+Here's how you can add a "Trending Tokens" section:
+
+1. Backend: Add a New Route for Trending Tokens
+
+    File: backend/routes/tokens.js
+
+    Action: Add a new route /trending that fetches data from DexScreener, filters for pump.fun, and sorts by trading volume. Implement caching.
+
+JavaScript
+
+// FILE: backend/routes/tokens.js
+
+const express = require('express');
+const router = express.Router();
+const { fetchWithRetry } = require('../utils/apiHelper'); // Assuming this uses axios
+const { getTokens } = require('../services/pumpportal');
+
+// --- Caching for Trending Tokens ---
+let trendingCache = { data: [], lastUpdate: 0 };
+const TRENDING_CACHE_DURATION = 60 * 1000; // Cache for 1 minute
+
+// --- Existing Routes ---
+router.get('/pairs', (req, res) => {
+    // ... (keep existing code)
+});
+
+router.get('/search', async (req, res) => {
+    // ... (keep existing code)
+});
+
+router.post('/quote/buy', async (req, res) => {
+    // ... (keep existing code)
+});
+
+// --- NEW ROUTE for Trending Tokens ---
+router.get('/trending', async (req, res) => {
+    try {
+        // Check cache
+        if (Date.now() - trendingCache.lastUpdate < TRENDING_CACHE_DURATION) {
+            return res.json({ pairs: trendingCache.data, cached: true });
+        }
+
+        // Fetch from DexScreener - searching for pairs on Solana, DexScreener identifies pump.fun pairs
+        // We sort by volume within DexScreener's results or fetch a general Solana list and filter.
+        // Option 1: Broad search and filter (might hit rate limits faster)
+         const response = await fetchWithRetry(`https://api.dexscreener.com/latest/dex/pairs/solana/pump`); // Might need adjustment based on DexScreener's exact pump ID
+
+        // Option 2: Search with a common base like SOL and filter/sort (often more stable)
+        // const response = await fetchWithRetry(`https://api.dexscreener.com/latest/dex/search?q=SOL`);
+
+        const allPairs = response.data.pairs || [];
+
+        // Filter for pump.fun pairs and ensure necessary data exists
+        const pumpPairs = allPairs
+            .filter(p => p.dexId === 'pump' && p.baseToken && p.volume?.h24 > 0) // Filter specifically for pump.fun and positive volume
+            .map(p => ({
+                tokenAddress: p.baseToken.address,
+                name: p.baseToken.name || 'Unknown',
+                symbol: p.baseToken.symbol || '???',
+                price: parseFloat(p.priceUsd || 0) / parseFloat(p.quoteToken?.priceUsd || 1), // Calculate price in SOL if possible, fallback needed
+                marketCap: p.fdv || 0, // Fully Diluted Valuation often used as Market Cap proxy
+                volume24h: p.volume?.h24 || 0,
+                // Add creator info if available, otherwise 'N/A'
+                creator: 'N/A' // DexScreener usually doesn't provide creator info directly here
+            }))
+            .sort((a, b) => b.volume24h - a.volume24h); // Sort by 24h volume DESC
+
+        const trendingData = pumpPairs.slice(0, 50); // Take top 50
+
+        // Update cache
+        trendingCache = { data: trendingData, lastUpdate: Date.now() };
+
+        res.json({ pairs: trendingData });
+
+    } catch (error) {
+        console.error("Error fetching trending tokens:", error.message);
+        // Serve stale cache data if available
+        if (trendingCache.data.length > 0) {
+            res.json({ pairs: trendingCache.data, cached: true, error: "Failed to refresh, serving stale data." });
+        } else {
+            res.status(500).json({ error: 'Failed to fetch trending tokens', pairs: [] });
+        }
+    }
+});
+
+module.exports = router;
+
+    Note: You might need to adjust the fetchWithRetry URL based on the most effective way DexScreener allows filtering/sorting for pump.fun tokens (e.g., specific chain/dex path or query parameters). The code above uses /dex/pairs/solana/pump which might work, or searching broadly for SOL pairs and then filtering client-side for dexId === 'pump' might be necessary.
+
+2. Frontend: Update API Service
+
+    File: frontend/src/api.js
+
+    Action: Add the function to call the new backend endpoint.
+
+JavaScript
+
+// FILE: frontend/src/api.js
+
+// ... (existing imports and code)
+
+export const tokens = {
+  getPairs: (category = 'new') => api.get(`/tokens/pairs?category=${category}`),
+  search: (query) => api.get(`/tokens/search?query=${query}`),
+  getQuote: (outputTokenAddress, solAmount) => api.post('/tokens/quote/buy', { outputTokenAddress, solAmount }), // Add if you implemented quoting
+  getTrending: () => api.get('/tokens/trending'), // <-- ADD THIS LINE
+};
+
+// ... (rest of the file)
+
+3. Frontend: Display Trending Section
+
+    File: frontend/src/pages/Landing.js
+
+    Action: Add state for trending tokens, fetch them, and render a new section.
+
+JavaScript
+
+// FILE: frontend/src/pages/Landing.js
+
+import React, { useState, useEffect } from 'react'; // <-- Import useState, useEffect
+import TokenCard from '../components/TokenCard';
+import { useWebSocket } from '../App';
+import { tokens as apiTokens } from '../api'; // <-- Import the API service
+
+const Landing = () => {
+  const wsTokens = useWebSocket(); // Get real-time tokens from WebSocket
+  const [trendingTokens, setTrendingTokens] = useState([]); // <-- State for trending
+  const [loadingTrending, setLoadingTrending] = useState(true); // <-- Loading state
+
+  // --- Fetch Trending Tokens ---
+  useEffect(() => {
+    const fetchTrending = async () => {
+      setLoadingTrending(true);
+      try {
+        const res = await apiTokens.getTrending();
+        setTrendingTokens(res.data.pairs || []);
+      } catch (error) {
+        console.error("Failed to fetch trending tokens:", error);
+      } finally {
+        setLoadingTrending(false);
+      }
+    };
+
+    fetchTrending();
+    // Optional: Refresh trending tokens periodically
+    const interval = setInterval(fetchTrending, 60000); // Refresh every minute
+    return () => clearInterval(interval); // Cleanup interval on component unmount
+  }, []);
+  // --- End Fetch Trending Tokens ---
+
+  return (
+    <div style={styles.container}>
+      {/* --- NEW Trending Section --- */}
+      <section style={styles.section}>
+        <h2 style={styles.sectionTitle}>🔥 Trending Now</h2>
+        <div style={styles.grid}>
+          {loadingTrending ? (
+            <div style={styles.empty}>Loading trending...</div>
+          ) : trendingTokens.length > 0 ? (
+            trendingTokens.map((token) => <TokenCard key={token.tokenAddress} token={token} />)
+          ) : (
+            <div style={styles.empty}>No trending tokens found.</div>
+          )}
+        </div>
+      </section>
+      {/* --- End Trending Section --- */}
+
+      <hr style={styles.divider} /> {/* Optional divider */}
+
+      {/* Existing sections for New, Graduating, Graduated */}
+      <section style={styles.section}>
+        <h2 style={styles.sectionTitle}>🆕 New Pump.fun Pairs</h2>
+        <div style={styles.grid}>
+          {wsTokens.new.map((token) => <TokenCard key={token.tokenAddress} token={token} />)}
+          {wsTokens.new.length === 0 && <div style={styles.empty}>Listening for new tokens...</div>}
+        </div>
+      </section>
+
+      <section style={styles.section}>
+        <h2 style={styles.sectionTitle}>🎓 Migrating to Raydium</h2>
+        <div style={styles.grid}>
+          {wsTokens.graduating.map((token) => <TokenCard key={token.tokenAddress} token={token} />)}
+          {wsTokens.graduating.length === 0 && <div style={styles.empty}>No tokens migrating</div>}
+        </div>
+      </section>
+
+      <section style={styles.section}>
+        <h2 style={styles.sectionTitle}>✅ Live on Raydium</h2>
+        <div style={styles.grid}>
+          {wsTokens.graduated.map((token) => <TokenCard key={token.tokenAddress} token={token} />)}
+          {wsTokens.graduated.length === 0 && <div style={styles.empty}>No graduated tokens yet</div>}
+        </div>
+      </section>
+    </div>
+  );
+};
+
+// --- Update Styles ---
+const styles = {
+  container: { padding: '30px', maxWidth: '1600px', margin: '0 auto' },
+  section: { marginBottom: '50px' },
+  sectionTitle: { color: '#14f195', fontSize: '28px', fontWeight: 'bold', marginBottom: '25px' },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' },
+  empty: { gridColumn: '1 / -1', textAlign: 'center', color: '#666', padding: '60px 20px', fontSize: '18px' },
+  divider: { border: 'none', borderTop: '1px solid rgba(20, 241, 149, 0.2)', margin: '50px 0' }, // <-- Style for divider
+};
+// --- End Update Styles ---
+
+export default Landing;
+
+Now, your Landing.js page will have a dedicated section at the top showing the top 50 trending pump.fun tokens based on 24-hour volume, fetched via your backend from DexScreener, and refreshed periodically.
