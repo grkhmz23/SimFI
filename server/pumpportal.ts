@@ -31,16 +31,38 @@ function connectToPumpPortal() {
 
   ws.on('open', () => {
     console.log('✅ Connected to PumpPortal WebSocket');
-    ws.send(JSON.stringify({ method: "subscribeNewToken" }));
-    ws.send(JSON.stringify({ method: "subscribeMigration" }));
+    
+    // Send subscriptions separately as recommended by PumpPortal docs
+    const subscribeNewToken = { method: "subscribeNewToken" };
+    const subscribeMigration = { method: "subscribeMigration" };
+    
+    ws.send(JSON.stringify(subscribeNewToken));
+    console.log('📡 Sent subscription: subscribeNewToken');
+    
+    ws.send(JSON.stringify(subscribeMigration));
+    console.log('📡 Sent subscription: subscribeMigration');
   });
 
   ws.on('message', (data) => {
     try {
       const message = JSON.parse(data.toString());
+      
+      // Ignore subscription confirmation messages
+      if (message.message) {
+        console.log('✅', message.message);
+        return;
+      }
+      
+      // Ignore trade events (we only want newToken and migration events)
+      if (message.signature && message.traderPublicKey) {
+        // This is a trade event, skip it
+        return;
+      }
+      
       let token: Token;
 
-      if (message.type === 'newToken') {
+      // Detect newToken events by presence of name, symbol, and mint fields
+      if (message.name && message.symbol && message.mint) {
         // Convert USD market cap to approximate Lamports price per token
         // Assume token supply of 1B tokens, calculate price in SOL, then convert to Lamports
         const marketCapUSD = message.market_cap || message.usd_market_cap || 0;
@@ -60,9 +82,11 @@ function connectToPumpPortal() {
         };
         newTokens.unshift(token);
         if (newTokens.length > MAX_TOKENS) newTokens.pop();
+        console.log(`✨ New token: ${token.symbol} (${token.name}) - MC: $${marketCapUSD.toFixed(2)}`);
         broadcast({ type: 'new', payload: token });
 
-      } else if (message.type === 'migration') {
+      // Detect migration events (bonding curve completion)
+      } else if (message.mint && message.signature && !message.traderPublicKey && (message.raydium_pool || message.complete)) {
         const marketCapUSD = message.usd_market_cap || 0;
         const solPrice = 150;
         const marketCapSOL = marketCapUSD / solPrice;
@@ -82,14 +106,19 @@ function connectToPumpPortal() {
         newTokens = newTokens.filter(t => t.tokenAddress !== message.mint);
         graduatingTokens.unshift(token);
         if (graduatingTokens.length > MAX_TOKENS) graduatingTokens.pop();
+        console.log(`🎓 Token graduating: ${token.symbol} (${token.name}) - MC: $${marketCapUSD.toFixed(2)}`);
         broadcast({ type: 'graduating', payload: token });
 
         setTimeout(() => {
           graduatingTokens = graduatingTokens.filter(t => t.tokenAddress !== message.mint);
           graduatedTokens.unshift(token);
           if (graduatedTokens.length > MAX_TOKENS) graduatedTokens.pop();
+          console.log(`✅ Token graduated: ${token.symbol} (${token.name})`);
           broadcast({ type: 'graduated', payload: token });
         }, 60000);
+      } else {
+        // Log first 500 chars of unknown messages to help debug
+        console.log('⚠️  Unknown message structure:', JSON.stringify(message).substring(0, 500));
       }
     } catch (e) {
       console.error('❌ Error processing PumpPortal message:', e);
