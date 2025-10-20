@@ -195,7 +195,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/trades/buy', authenticateToken, async (req, res) => {
     try {
-      const { tokenAddress, tokenName, tokenSymbol, solAmount, price } = req.body as BuyRequest;
+      const { tokenAddress, tokenName, tokenSymbol, solAmount, price, tokenAmount: providedTokenAmount } = req.body;
       
       if (!tokenAddress || !tokenName || !tokenSymbol || solAmount <= 0 || price <= 0) {
         return res.status(400).json({ error: 'Invalid trade data' });
@@ -209,13 +209,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Calculate how much SOL to spend in Lamports
       const solSpent = Math.floor(solAmount * 1_000_000_000); // Convert SOL to Lamports
       
-      // Calculate how many tokens we can buy with this SOL amount
-      // price is in Lamports per token, solSpent is in Lamports
-      const tokenCount = solSpent / price; // actual number of tokens (can be fractional)
-      const tokenAmount = Math.floor(tokenCount * 1_000_000_000); // Convert to integer storage format (9 decimals)
-      
-      console.log(`🔢 Buy calculation: solAmount=${solAmount} SOL, price=${price} Lamports/token`);
-      console.log(`🔢 solSpent=${solSpent} Lamports, tokenCount=${tokenCount}, tokenAmount=${tokenAmount}`);
+      // Use provided token amount from Jupiter quote if available, otherwise calculate
+      let tokenAmount: number;
+      if (providedTokenAmount && providedTokenAmount > 0) {
+        // Use Jupiter quote amount directly (already in correct format with 9 decimals)
+        tokenAmount = providedTokenAmount;
+        console.log(`✅ Using Jupiter quote: ${solAmount} SOL → ${tokenAmount / 1_000_000_000} tokens at ${price} Lamports/token`);
+      } else {
+        // Fallback to simple calculation
+        const tokenCount = solSpent / price; // actual number of tokens (can be fractional)
+        tokenAmount = Math.floor(tokenCount * 1_000_000_000); // Convert to integer storage format (9 decimals)
+        console.log(`🔢 Simple calculation: solAmount=${solAmount} SOL, price=${price} Lamports/token`);
+        console.log(`🔢 solSpent=${solSpent} Lamports, tokenCount=${tokenCount}, tokenAmount=${tokenAmount}`);
+      }
       
       if (tokenAmount <= 0) {
         return res.status(400).json({ error: 'SOL amount too small to buy tokens' });
@@ -562,6 +568,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Get token error:', error);
       res.status(500).json({ error: 'Could not fetch token' });
+    }
+  });
+
+  // Get Jupiter quote for buying tokens with SOL
+  app.get('/api/tokens/quote/buy', async (req, res) => {
+    try {
+      const { tokenAddress, solAmount } = req.query;
+      
+      if (!tokenAddress || !solAmount) {
+        return res.status(400).json({ error: 'tokenAddress and solAmount are required' });
+      }
+
+      const solAmountNum = parseFloat(solAmount as string);
+      if (isNaN(solAmountNum) || solAmountNum <= 0) {
+        return res.status(400).json({ error: 'Invalid SOL amount' });
+      }
+
+      // Convert SOL to Lamports for Jupiter API
+      const inputAmountLamports = Math.floor(solAmountNum * 1_000_000_000);
+      
+      // SOL mint address (wrapped SOL)
+      const SOL_MINT = 'So11111111111111111111111111111111111111112';
+      
+      // Call Jupiter V6 Quote API
+      const jupiterUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${tokenAddress}&amount=${inputAmountLamports}&slippageBps=50`;
+      
+      console.log(`🔮 Fetching Jupiter quote for ${solAmountNum} SOL → ${tokenAddress}`);
+      
+      const response = await fetch(jupiterUrl);
+      
+      if (!response.ok) {
+        console.error(`❌ Jupiter API error: ${response.status} ${response.statusText}`);
+        return res.status(response.status).json({ error: 'Failed to get quote from Jupiter' });
+      }
+      
+      const quoteData = await response.json();
+      
+      if (!quoteData || !quoteData.outAmount) {
+        console.error('❌ Invalid Jupiter quote response:', quoteData);
+        return res.status(500).json({ error: 'Invalid quote data from Jupiter' });
+      }
+      
+      // Extract quote details
+      const tokenAmountOut = parseInt(quoteData.outAmount); // In token's smallest unit
+      const priceImpactPct = parseFloat(quoteData.priceImpactPct || '0');
+      
+      // Calculate effective price: SOL spent / tokens received = SOL per token
+      // Both in their raw units (Lamports / token base units)
+      const effectivePriceLamports = tokenAmountOut > 0 
+        ? Math.floor(inputAmountLamports / (tokenAmountOut / 1_000_000_000))
+        : 0;
+      
+      console.log(`✅ Jupiter quote: ${solAmountNum} SOL → ${tokenAmountOut / 1_000_000_000} tokens (impact: ${priceImpactPct}%)`);
+      
+      res.json({
+        solAmount: solAmountNum,
+        solAmountLamports: inputAmountLamports,
+        tokenAmountOut: tokenAmountOut,
+        tokenAmountDisplay: tokenAmountOut / 1_000_000_000,
+        effectivePriceLamports: effectivePriceLamports,
+        priceImpactPct: priceImpactPct,
+        slippageBps: 50,
+      });
+    } catch (error: any) {
+      console.error('Jupiter quote error:', error);
+      res.status(500).json({ error: 'Could not fetch quote' });
     }
   });
 

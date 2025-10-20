@@ -10,15 +10,25 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type { Token, Position } from '@shared/schema';
-import { TrendingUp, TrendingDown, LogIn } from 'lucide-react';
+import { TrendingUp, TrendingDown, LogIn, Loader2 } from 'lucide-react';
 import { formatSol } from '@/lib/lamports';
 
 interface TradeModalProps {
   token?: Token;
   position?: Position & { currentPrice?: number };
   onClose: () => void;
+}
+
+interface JupiterQuote {
+  solAmount: number;
+  solAmountLamports: number;
+  tokenAmountOut: number;
+  tokenAmountDisplay: number;
+  effectivePriceLamports: number;
+  priceImpactPct: number;
+  slippageBps: number;
 }
 
 const buySchema = z.object({
@@ -107,8 +117,22 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   const solAmount = buyForm.watch('solAmount') || 0;
   const percentage = sellForm.watch('percentage') || 100;
   
-  // Calculate estimated tokens: SOL amount in Lamports / price in Lamports = number of tokens
-  const estimatedTokens = isBuying ? (solAmount * 1_000_000_000) / currentPrice : 0;
+  // Fetch Jupiter quote for realistic token amount calculation
+  const tokenAddress = token?.tokenAddress || '';
+  const { data: jupiterQuote, isLoading: quoteLoading } = useQuery<JupiterQuote>({
+    queryKey: ['/api/tokens/quote/buy', tokenAddress, solAmount],
+    enabled: isBuying && solAmount > 0 && !!tokenAddress,
+    refetchOnWindowFocus: false,
+    staleTime: 10000, // 10 seconds
+  });
+
+  // Use Jupiter quote for estimated tokens if available, fallback to simple calculation
+  const estimatedTokens = isBuying 
+    ? (jupiterQuote?.tokenAmountDisplay || (solAmount * 1_000_000_000) / currentPrice)
+    : 0;
+  
+  const priceImpact = jupiterQuote?.priceImpactPct || 0;
+  
   const sellAmount = !isBuying && position ? (position.amount * percentage / 100) : 0;
   const sellValue = !isBuying ? (sellAmount / 1_000_000_000) * currentPrice : 0;
   const proportionalCost = !isBuying && position ? (position.solSpent * percentage / 100) : 0;
@@ -159,13 +183,23 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
       return;
     }
     
-    tradeMutation.mutate({
+    // Use Jupiter quote data if available for realistic trade execution
+    const tradeData = jupiterQuote ? {
+      tokenAddress: token.tokenAddress,
+      tokenName: token.name,
+      tokenSymbol: token.symbol,
+      solAmount: data.solAmount,
+      price: jupiterQuote.effectivePriceLamports,
+      tokenAmount: jupiterQuote.tokenAmountOut,
+    } : {
       tokenAddress: token.tokenAddress,
       tokenName: token.name,
       tokenSymbol: token.symbol,
       solAmount: data.solAmount,
       price: currentPrice,
-    });
+    };
+    
+    tradeMutation.mutate(tradeData);
   });
 
   const onSellSubmit = sellForm.handleSubmit((data) => {
@@ -257,10 +291,22 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
                 <div className="rounded-lg bg-muted p-4 space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Est. Tokens:</span>
-                    <span className="font-mono font-semibold" data-testid="text-estimated-tokens">
-                      {estimatedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} {symbol}
+                    <span className="font-mono font-semibold flex items-center gap-2" data-testid="text-estimated-tokens">
+                      {quoteLoading && solAmount > 0 ? (
+                        <><Loader2 className="h-3 w-3 animate-spin" /> Loading...</>
+                      ) : (
+                        `${estimatedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${symbol}`
+                      )}
                     </span>
                   </div>
+                  {jupiterQuote && priceImpact !== 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Price Impact:</span>
+                      <span className={`font-mono text-xs ${Math.abs(priceImpact) > 5 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                        {priceImpact > 0 ? '+' : ''}{priceImpact.toFixed(2)}%
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Your Balance:</span>
                     <span className="font-mono">{formatSol(user?.balance || 0)} SOL</span>
