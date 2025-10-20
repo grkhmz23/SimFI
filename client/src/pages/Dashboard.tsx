@@ -2,6 +2,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { Link } from 'wouter';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +11,7 @@ import { useAuth } from '@/lib/auth-context';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { formatSol } from '@/lib/lamports';
-import { Wallet, TrendingUp, Activity } from 'lucide-react';
+import { Wallet, TrendingUp, Activity, LogIn } from 'lucide-react';
 import type { User } from '@shared/schema';
 
 const updateProfileSchema = z.object({
@@ -20,8 +21,36 @@ const updateProfileSchema = z.object({
 });
 
 export default function Dashboard() {
-  const { user, setAuth } = useAuth();
+  const { user, setAuth, isAuthenticated } = useAuth();
   const { toast } = useToast();
+
+  if (!isAuthenticated) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-5xl">
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <Card className="p-12 text-center max-w-md">
+            <LogIn className="h-16 w-16 mx-auto text-primary mb-6" />
+            <h2 className="text-3xl font-bold mb-4">Login Required</h2>
+            <p className="text-muted-foreground mb-8">
+              You need to be logged in to view your dashboard and manage your account
+            </p>
+            <div className="flex gap-3">
+              <Link href="/login" className="flex-1">
+                <Button variant="default" className="w-full" data-testid="button-goto-login">
+                  Login
+                </Button>
+              </Link>
+              <Link href="/register" className="flex-1">
+                <Button variant="outline" className="w-full" data-testid="button-goto-register">
+                  Register
+                </Button>
+              </Link>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   const { data: profile } = useQuery<Omit<User, 'password'>>({
     queryKey: ['/api/auth/profile'],
