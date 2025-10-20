@@ -107,7 +107,8 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   const solAmount = buyForm.watch('solAmount') || 0;
   const percentage = sellForm.watch('percentage') || 100;
   
-  const estimatedTokens = isBuying ? Math.floor((solAmount * 1_000_000_000) / currentPrice) : 0;
+  // Calculate estimated tokens: SOL amount in Lamports / price in Lamports = number of tokens
+  const estimatedTokens = isBuying ? (solAmount * 1_000_000_000) / currentPrice : 0;
   const sellAmount = !isBuying && position ? (position.amount * percentage / 100) : 0;
   const sellValue = !isBuying ? (sellAmount / 1_000_000_000) * currentPrice : 0;
   const proportionalCost = !isBuying && position ? (position.solSpent * percentage / 100) : 0;
@@ -257,7 +258,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Est. Tokens:</span>
                     <span className="font-mono font-semibold" data-testid="text-estimated-tokens">
-                      {(estimatedTokens / 1_000_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })} {symbol}
+                      {estimatedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} {symbol}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
