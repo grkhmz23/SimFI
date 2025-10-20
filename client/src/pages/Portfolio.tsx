@@ -193,12 +193,16 @@ export default function Portfolio() {
                     return (
                       <TableRow key={position.id} data-testid={`row-position-${position.id}`}>
                         <TableCell>
-                          <div>
+                          <button
+                            onClick={() => setLocation(`/token/${position.tokenAddress}`)}
+                            className="text-left hover-elevate rounded-md p-2 -ml-2 active-elevate-2"
+                            data-testid={`button-view-token-${position.id}`}
+                          >
                             <p className="font-semibold text-foreground">{position.tokenSymbol}</p>
                             <p className="text-sm text-muted-foreground truncate max-w-[200px]">
                               {position.tokenName}
                             </p>
-                          </div>
+                          </button>
                         </TableCell>
                         <TableCell className="text-right font-mono">
                           {(position.amount / 1_000_000_000).toLocaleString()}
