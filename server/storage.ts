@@ -24,9 +24,10 @@ export interface IStorage {
   
   // Leaderboard operations
   getTopUsersByTotalProfit(limit: number): Promise<any[]>;
-  getTopUsersByPeriodProfit(startTime: Date, limit: number): Promise<any[]>;
+  getTopUsersByPeriodProfit(startTime: Date, endTime: Date, limit: number): Promise<any[]>;
   getCurrentLeaderboardPeriod(): Promise<typeof leaderboardPeriods.$inferSelect | undefined>;
   createLeaderboardPeriod(startTime: Date, endTime: Date): Promise<typeof leaderboardPeriods.$inferSelect>;
+  updateLeaderboardPeriodWinner(periodId: string, winnerId: string, winnerProfit: number): Promise<void>;
   getPastWinners(limit: number): Promise<any[]>;
 }
 
@@ -121,7 +122,7 @@ class DbStorage implements IStorage {
     .limit(limit);
   }
 
-  async getTopUsersByPeriodProfit(startTime: Date, limit: number): Promise<any[]> {
+  async getTopUsersByPeriodProfit(startTime: Date, endTime: Date, limit: number): Promise<any[]> {
     const result = await db.select({
       id: users.id,
       username: users.username,
@@ -131,7 +132,8 @@ class DbStorage implements IStorage {
     .from(users)
     .leftJoin(tradeHistory, and(
       eq(tradeHistory.userId, users.id),
-      sql`${tradeHistory.closedAt} >= ${startTime}`
+      sql`${tradeHistory.closedAt} >= ${startTime}`,
+      sql`${tradeHistory.closedAt} < ${endTime}`
     ))
     .groupBy(users.id)
     .orderBy(desc(sql`COALESCE(SUM(${tradeHistory.profitLoss}), 0)`))
@@ -141,9 +143,9 @@ class DbStorage implements IStorage {
   }
 
   async getCurrentLeaderboardPeriod(): Promise<typeof leaderboardPeriods.$inferSelect | undefined> {
+    // Get most recent period regardless of whether it's active or expired
     const [period] = await db.select()
       .from(leaderboardPeriods)
-      .where(sql`${leaderboardPeriods.endTime} > NOW()`)
       .orderBy(desc(leaderboardPeriods.startTime))
       .limit(1);
     return period;
@@ -154,6 +156,12 @@ class DbStorage implements IStorage {
       .values({ startTime, endTime })
       .returning();
     return period;
+  }
+
+  async updateLeaderboardPeriodWinner(periodId: string, winnerId: string, winnerProfit: number): Promise<void> {
+    await db.update(leaderboardPeriods)
+      .set({ winnerId, winnerProfit })
+      .where(eq(leaderboardPeriods.id, periodId));
   }
 
   async getPastWinners(limit: number): Promise<any[]> {
