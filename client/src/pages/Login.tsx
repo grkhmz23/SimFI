@@ -31,10 +31,10 @@ export default function Login() {
     },
   });
 
-  const loginMutation = useMutation<AuthResponse, Error, LoginRequest>({
+  const loginMutation = useMutation<{ user: Omit<import('@shared/schema').User, 'password'> }, Error, LoginRequest>({
     mutationFn: (data) => apiRequest('POST', '/api/auth/login', data),
     onSuccess: (data) => {
-      setAuth(data.token, data.user);
+      setAuth(data.user);
       toast({
         title: 'Welcome back!',
         description: `Logged in as ${data.user.username}`,
@@ -119,10 +119,8 @@ export default function Login() {
 
         <div className="mt-6 text-center text-sm text-muted-foreground">
           Don't have an account?{' '}
-          <Link href="/register">
-            <a className="text-primary hover:underline font-semibold" data-testid="link-register">
-              Register
-            </a>
+          <Link href="/register" className="text-primary hover:underline font-semibold" data-testid="link-register">
+            Register
           </Link>
         </div>
       </Card>
