@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Link } from 'wouter';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -11,7 +12,7 @@ import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@tanstack/react-query';
 import type { Token, Position } from '@shared/schema';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, LogIn } from 'lucide-react';
 import { formatSol } from '@/lib/lamports';
 
 interface TradeModalProps {
@@ -25,12 +26,59 @@ const buySchema = z.object({
 });
 
 export function TradeModal({ token, position, onClose }: TradeModalProps) {
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
   const isBuying = !position;
   const currentPrice = position?.currentPrice || token?.price || 0;
   const symbol = position?.tokenSymbol || token?.symbol || '';
   const name = position?.tokenName || token?.name || '';
+
+  // If user is not authenticated, show login prompt
+  if (!isAuthenticated) {
+    return (
+      <Dialog open onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-login-required">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-2xl">
+              <LogIn className="h-6 w-6 text-primary" />
+              Login Required
+            </DialogTitle>
+            <DialogDescription>
+              You need to be logged in to trade tokens
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            <div className="rounded-lg bg-card p-6 text-center border border-card-border">
+              <TrendingUp className="h-12 w-12 mx-auto text-primary mb-4" />
+              <p className="text-lg font-semibold mb-2">{symbol}</p>
+              <p className="text-sm text-muted-foreground mb-4">{name}</p>
+              <p className="text-2xl font-bold font-mono text-primary">
+                {formatSol(currentPrice, 8)} SOL
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <Link href="/login" className="flex-1">
+                <Button variant="default" className="w-full" data-testid="button-goto-login">
+                  Login
+                </Button>
+              </Link>
+              <Link href="/register" className="flex-1">
+                <Button variant="outline" className="w-full" data-testid="button-goto-register">
+                  Register
+                </Button>
+              </Link>
+            </div>
+
+            <p className="text-center text-sm text-muted-foreground">
+              Create an account to start paper trading with 10 SOL
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   const form = useForm<z.infer<typeof buySchema>>({
     resolver: zodResolver(buySchema),

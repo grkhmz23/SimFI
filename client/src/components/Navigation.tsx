@@ -1,21 +1,26 @@
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { TrendingUp, Home, BarChart3, History, Trophy, User, LogOut } from 'lucide-react';
+import { formatSol } from '@/lib/lamports';
 
 export function Navigation() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, logout, isAuthenticated } = useAuth();
 
   const navItems = [
     { path: '/', label: 'Trade', icon: TrendingUp },
-    { path: '/dashboard', label: 'Dashboard', icon: Home },
-    { path: '/portfolio', label: 'Portfolio', icon: BarChart3 },
     { path: '/history', label: 'History', icon: History },
     { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   ];
-
-  if (!isAuthenticated) return null;
 
   return (
     <nav className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -48,22 +53,58 @@ export function Navigation() {
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="hidden sm:flex flex-col items-end">
-              <span className="text-sm text-muted-foreground">{user?.username}</span>
-              <span className="font-mono text-sm font-semibold text-primary">
-                {user?.balance.toFixed(4)} SOL
-              </span>
-            </div>
-            
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={logout}
-              data-testid="button-logout"
-              title="Logout"
-            >
-              <LogOut className="h-5 w-5" />
-            </Button>
+            {isAuthenticated ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="gap-2" data-testid="button-user-menu">
+                    <User className="h-5 w-5" />
+                    <div className="hidden sm:flex flex-col items-start">
+                      <span className="text-sm font-medium">{user?.username}</span>
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {formatSol(user?.balance || 0)} SOL
+                      </span>
+                    </div>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col">
+                      <span>{user?.username}</span>
+                      <span className="font-mono text-xs text-muted-foreground font-normal">
+                        {formatSol(user?.balance || 0)} SOL
+                      </span>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setLocation('/dashboard')} data-testid="menu-dashboard">
+                    <Home className="mr-2 h-4 w-4" />
+                    Dashboard
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setLocation('/portfolio')} data-testid="menu-portfolio">
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    Portfolio
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout} data-testid="menu-logout">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <div className="flex gap-2">
+                <Link href="/login">
+                  <Button variant="ghost" size="sm" data-testid="button-login">
+                    Login
+                  </Button>
+                </Link>
+                <Link href="/register">
+                  <Button variant="default" size="sm" data-testid="button-register">
+                    Register
+                  </Button>
+                </Link>
+              </div>
+            )}
           </div>
         </div>
 

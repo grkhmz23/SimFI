@@ -16,13 +16,7 @@ import History from "@/pages/History";
 import Leaderboard from "@/pages/Leaderboard";
 import NotFound from "@/pages/not-found";
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  const { isAuthenticated } = useAuth();
-  
-  if (!isAuthenticated) {
-    return <Redirect to="/login" />;
-  }
-  
+function PageLayout({ component: Component }: { component: React.ComponentType }) {
   return (
     <>
       <Navigation />
@@ -31,39 +25,29 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   );
 }
 
-function PublicRoute({ component: Component }: { component: React.ComponentType }) {
-  const { isAuthenticated } = useAuth();
-  
-  if (isAuthenticated) {
-    return <Redirect to="/" />;
-  }
-  
-  return <Component />;
-}
-
 function Router() {
   return (
     <Switch>
       <Route path="/login">
-        <PublicRoute component={Login} />
+        <Login />
       </Route>
       <Route path="/register">
-        <PublicRoute component={Register} />
+        <Register />
       </Route>
       <Route path="/">
-        <ProtectedRoute component={Trade} />
+        <PageLayout component={Trade} />
       </Route>
       <Route path="/dashboard">
-        <ProtectedRoute component={Dashboard} />
+        <PageLayout component={Dashboard} />
       </Route>
       <Route path="/portfolio">
-        <ProtectedRoute component={Portfolio} />
+        <PageLayout component={Portfolio} />
       </Route>
       <Route path="/history">
-        <ProtectedRoute component={History} />
+        <PageLayout component={History} />
       </Route>
       <Route path="/leaderboard">
-        <ProtectedRoute component={Leaderboard} />
+        <PageLayout component={Leaderboard} />
       </Route>
       <Route component={NotFound} />
     </Switch>

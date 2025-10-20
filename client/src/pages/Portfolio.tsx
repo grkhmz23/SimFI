@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'wouter';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,17 +13,48 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { TradeModal } from '@/components/TradeModal';
+import { useAuth } from '@/lib/auth-context';
 import { useTokens } from '@/lib/websocket';
 import { formatSol, lamportsToSol } from '@/lib/lamports';
-import { TrendingUp, TrendingDown, Package } from 'lucide-react';
+import { TrendingUp, TrendingDown, Package, LogIn } from 'lucide-react';
 import type { Position } from '@shared/schema';
 
 export default function Portfolio() {
+  const { isAuthenticated } = useAuth();
   const [selectedPosition, setSelectedPosition] = useState<Position & { currentPrice: number } | null>(null);
 
   const { data: positionsData, isLoading } = useQuery<{ positions: Position[] }>({
     queryKey: ['/api/trades/positions'],
+    enabled: isAuthenticated,
   });
+
+  if (!isAuthenticated) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-7xl">
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <Card className="p-12 text-center max-w-md">
+            <LogIn className="h-16 w-16 mx-auto text-primary mb-6" />
+            <h2 className="text-3xl font-bold mb-4">Login Required</h2>
+            <p className="text-muted-foreground mb-8">
+              You need to be logged in to view your portfolio and track your positions
+            </p>
+            <div className="flex gap-3">
+              <Link href="/login" className="flex-1">
+                <Button variant="default" className="w-full" data-testid="button-goto-login">
+                  Login
+                </Button>
+              </Link>
+              <Link href="/register" className="flex-1">
+                <Button variant="outline" className="w-full" data-testid="button-goto-register">
+                  Register
+                </Button>
+              </Link>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   const positions = (positionsData?.positions || []);
 
