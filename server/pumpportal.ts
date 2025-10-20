@@ -1,7 +1,16 @@
 import { WebSocket, WebSocketServer } from 'ws';
 import type { Server as HTTPServer } from 'http';
+import https from 'https';
+import axios from 'axios';
 import type { Token } from '@shared/schema';
 import { solToLamports } from '@shared/schema';
+
+// Create an axios instance that accepts self-signed certificates
+const axiosInstance = axios.create({
+  httpsAgent: new https.Agent({
+    rejectUnauthorized: false
+  })
+});
 
 let newTokens: Token[] = [];
 let graduatingTokens: Token[] = [];
@@ -43,7 +52,7 @@ function connectToPumpPortal() {
     console.log('📡 Sent subscription: subscribeMigration');
   });
 
-  ws.on('message', (data) => {
+  ws.on('message', async (data) => {
     try {
       const message = JSON.parse(data.toString());
       
@@ -53,72 +62,104 @@ function connectToPumpPortal() {
         return;
       }
       
-      // Ignore trade events (we only want newToken and migration events)
-      if (message.signature && message.traderPublicKey) {
-        // This is a trade event, skip it
+      // Ignore trade events (skip if it has traderPublicKey but txType is NOT create or migrate)
+      if (message.traderPublicKey && message.txType !== 'create' && message.txType !== 'migrate') {
         return;
       }
       
       let token: Token;
 
-      // Detect newToken events by presence of name, symbol, and mint fields
-      if (message.name && message.symbol && message.mint) {
-        // Convert USD market cap to approximate Lamports price per token
-        // Assume token supply of 1B tokens, calculate price in SOL, then convert to Lamports
-        const marketCapUSD = message.market_cap || message.usd_market_cap || 0;
-        const solPrice = 150; // Approximate SOL price in USD
-        const marketCapSOL = marketCapUSD / solPrice;
+      // Detect newToken events by txType === "create"
+      if (message.txType === 'create' && message.mint) {
+        // Fetch token metadata from pumpapi.fun
+        let name = 'Unknown';
+        let symbol = '???';
+        
+        try {
+          const metadataResponse = await axiosInstance.get(`https://pumpapi.fun/api/get_metadata/${message.mint}`);
+          if (metadataResponse.status === 200 && metadataResponse.data) {
+            name = metadataResponse.data.name || 'Unknown';
+            symbol = metadataResponse.data.symbol || '???';
+            console.log(`📋 Fetched metadata: ${symbol} (${name})`);
+          } else {
+            console.warn(`⚠️  Metadata response empty for ${message.mint}`);
+          }
+        } catch (err: any) {
+          console.warn(`⚠️  Failed to fetch metadata for ${message.mint}: ${err.message}`);
+        }
+        // Market cap from PumpPortal is in SOL
+        const marketCapSOL = message.marketCapSol || message.vSolInBondingCurve || 0;
+        const marketCapUSD = marketCapSOL * 150; // Approximate conversion to USD
         const pricePerToken = marketCapSOL / 1e9; // 1B token supply
         const priceLamports = solToLamports(pricePerToken);
         
         token = {
           tokenAddress: message.mint,
-          name: message.name || 'Unknown',
-          symbol: message.symbol || '???',
-          marketCap: message.market_cap || message.usd_market_cap || 0,
-          creator: message.creator || 'N/A',
+          name,
+          symbol,
+          marketCap: marketCapUSD,
+          creator: message.traderPublicKey || 'N/A',
           price: priceLamports,
           timestamp: new Date().toISOString()
         };
         newTokens.unshift(token);
         if (newTokens.length > MAX_TOKENS) newTokens.pop();
-        console.log(`✨ New token: ${token.symbol} (${token.name}) - MC: $${marketCapUSD.toFixed(2)}`);
+        console.log(`✨ New token: ${symbol} (${name}) - MC: $${marketCapUSD.toFixed(2)}`);
         broadcast({ type: 'new', payload: token });
 
-      // Detect migration events (bonding curve completion)
-      } else if (message.mint && message.signature && !message.traderPublicKey && (message.raydium_pool || message.complete)) {
-        const marketCapUSD = message.usd_market_cap || 0;
-        const solPrice = 150;
-        const marketCapSOL = marketCapUSD / solPrice;
+      // Detect migration events by txType === "migrate"
+      } else if (message.txType === 'migrate' && message.mint) {
+        // Fetch token metadata
+        let name = 'Unknown';
+        let symbol = '???';
+        
+        try {
+          const metadataResponse = await axiosInstance.get(`https://pumpapi.fun/api/get_metadata/${message.mint}`);
+          if (metadataResponse.status === 200 && metadataResponse.data) {
+            name = metadataResponse.data.name || 'Unknown';
+            symbol = metadataResponse.data.symbol || '???';
+            console.log(`📋 Fetched metadata: ${symbol} (${name})`);
+          } else {
+            console.warn(`⚠️  Metadata response empty for ${message.mint}`);
+          }
+        } catch (err: any) {
+          console.warn(`⚠️  Failed to fetch metadata for ${message.mint}: ${err.message}`);
+        }
+        // Estimate market cap (migration happens around $69k-$90k typically)
+        const marketCapUSD = 75000; // Typical graduation market cap
+        const marketCapSOL = marketCapUSD / 150;
         const pricePerToken = marketCapSOL / 1e9;
         const priceLamports = solToLamports(pricePerToken);
         
         token = {
           tokenAddress: message.mint,
-          name: message.name || 'Unknown',
-          symbol: message.symbol || '???',
+          name,
+          symbol,
           price: priceLamports,
-          marketCap: message.usd_market_cap || 0,
-          creator: message.creator || 'N/A',
+          marketCap: marketCapUSD,
+          creator: 'N/A',
           timestamp: new Date().toISOString()
         };
         
         newTokens = newTokens.filter(t => t.tokenAddress !== message.mint);
         graduatingTokens.unshift(token);
         if (graduatingTokens.length > MAX_TOKENS) graduatingTokens.pop();
-        console.log(`🎓 Token graduating: ${token.symbol} (${token.name}) - MC: $${marketCapUSD.toFixed(2)}`);
+        console.log(`🎓 Token graduating: ${symbol} (${name}) - MC: $${marketCapUSD.toFixed(2)}`);
         broadcast({ type: 'graduating', payload: token });
 
         setTimeout(() => {
           graduatingTokens = graduatingTokens.filter(t => t.tokenAddress !== message.mint);
           graduatedTokens.unshift(token);
           if (graduatedTokens.length > MAX_TOKENS) graduatedTokens.pop();
-          console.log(`✅ Token graduated: ${token.symbol} (${token.name})`);
+          console.log(`✅ Token graduated: ${symbol} (${name})`);
           broadcast({ type: 'graduated', payload: token });
         }, 60000);
+      } else if (message.signature) {
+        // Likely a trade event, skip silently
+        return;
       } else {
-        // Log first 500 chars of unknown messages to help debug
-        console.log('⚠️  Unknown message structure:', JSON.stringify(message).substring(0, 500));
+        // Log first 200 chars of unknown messages to help debug
+        console.log('⚠️  Unknown message structure:', JSON.stringify(message).substring(0, 200));
       }
     } catch (e) {
       console.error('❌ Error processing PumpPortal message:', e);
