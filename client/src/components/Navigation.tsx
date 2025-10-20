@@ -33,9 +33,6 @@ export function Navigation() {
 
   const navItems = [
     { path: '/', label: 'Trade', icon: TrendingUp },
-    { path: '/portfolio', label: 'Portfolio', icon: Wallet },
-    { path: '/history', label: 'History', icon: History },
-    { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   ];
 
   // Search tokens via API
@@ -193,17 +190,17 @@ export function Navigation() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setLocation('/dashboard')} data-testid="menu-dashboard">
-                    <Home className="mr-2 h-4 w-4" />
-                    Dashboard
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setLocation('/portfolio')} data-testid="menu-portfolio">
-                    <BarChart3 className="mr-2 h-4 w-4" />
+                    <Wallet className="mr-2 h-4 w-4" />
                     Portfolio
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setLocation('/history')} data-testid="menu-history">
                     <History className="mr-2 h-4 w-4" />
                     History
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setLocation('/leaderboard')} data-testid="menu-leaderboard">
+                    <Trophy className="mr-2 h-4 w-4" />
+                    Leaderboard
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout} data-testid="menu-logout">
