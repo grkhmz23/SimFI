@@ -9,6 +9,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { formatSol } from '@/lib/lamports';
 import { Wallet, TrendingUp, Activity } from 'lucide-react';
 import type { User } from '@shared/schema';
 
@@ -82,7 +83,7 @@ export default function Dashboard() {
             <div>
               <p className="text-sm text-muted-foreground">Current Balance</p>
               <p className="text-2xl font-bold font-mono text-foreground" data-testid="text-balance">
-                {(currentUser?.balance || 0).toFixed(4)} SOL
+                {formatSol(currentUser?.balance || 0)} SOL
               </p>
             </div>
           </div>
@@ -99,7 +100,7 @@ export default function Dashboard() {
                 className={`text-2xl font-bold font-mono ${(currentUser?.totalProfit || 0) >= 0 ? 'text-success' : 'text-destructive'}`}
                 data-testid="text-total-profit"
               >
-                {(currentUser?.totalProfit || 0) >= 0 ? '+' : ''}{(currentUser?.totalProfit || 0).toFixed(4)} SOL
+                {(currentUser?.totalProfit || 0) >= 0 ? '+' : ''}{formatSol(currentUser?.totalProfit || 0)} SOL
               </p>
             </div>
           </div>

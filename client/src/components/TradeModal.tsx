@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@tanstack/react-query';
 import type { Token, Position } from '@shared/schema';
 import { TrendingUp, TrendingDown } from 'lucide-react';
+import { formatSol } from '@/lib/lamports';
 
 interface TradeModalProps {
   token?: Token;
@@ -78,7 +79,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
       if (totalCost > (user?.balance || 0)) {
         toast({
           title: 'Insufficient Balance',
-          description: `You need ${totalCost.toFixed(4)} SOL but only have ${user?.balance.toFixed(4)} SOL`,
+          description: `You need ${formatSol(totalCost)} SOL but only have ${formatSol(user?.balance || 0)} SOL`,
           variant: 'destructive',
         });
         return;
@@ -119,7 +120,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
           <div className="rounded-lg bg-card p-4 text-center border border-card-border">
             <p className="text-sm text-muted-foreground mb-2">Current Price (SOL)</p>
             <p className="text-3xl font-bold font-mono text-primary" data-testid="text-current-price">
-              {currentPrice.toFixed(8)}
+              {formatSol(currentPrice, 8)}
             </p>
           </div>
 
@@ -153,12 +154,12 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">{isBuying ? 'Total Cost' : 'Current Value'}:</span>
                   <span className="font-mono font-semibold" data-testid="text-total-cost">
-                    {totalCost.toFixed(4)} SOL
+                    {formatSol(totalCost)} SOL
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Your Balance:</span>
-                  <span className="font-mono">{user?.balance.toFixed(4)} SOL</span>
+                  <span className="font-mono">{formatSol(user?.balance || 0)} SOL</span>
                 </div>
                 {!isBuying && (
                   <div className="flex justify-between text-sm pt-2 border-t border-border">
@@ -167,7 +168,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
                       className={`font-mono font-bold ${profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}
                       data-testid="text-profit-loss"
                     >
-                      {profitLoss >= 0 ? '+' : ''}{profitLoss.toFixed(4)} SOL
+                      {profitLoss >= 0 ? '+' : ''}{formatSol(profitLoss)} SOL
                     </span>
                   </div>
                 )}
