@@ -15,16 +15,29 @@ import { formatSol } from '@/lib/lamports';
 import { History as HistoryIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Trade } from '@shared/schema';
 
+interface HistoryResponse {
+  trades: Trade[];
+  pagination: {
+    page: number;
+    totalPages: number;
+    total: number;
+  };
+}
+
 export default function History() {
   const [page, setPage] = useState(1);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<HistoryResponse>({
     queryKey: ['/api/trades/history', page],
-    queryFn: () => fetch(`/api/trades/history?page=${page}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-      },
-    }).then(res => res.json()),
+    queryFn: async () => {
+      const res = await fetch(`/api/trades/history?page=${page}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error(`${res.status}: ${res.statusText}`);
+      }
+      return res.json();
+    },
   });
 
   const trades = data?.trades || [];

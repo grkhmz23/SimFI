@@ -27,27 +27,24 @@ export function Navigation() {
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-8">
-            <Link href="/">
-              <a className="flex items-center gap-2 text-xl font-bold text-primary hover-elevate rounded-md px-3 py-2" data-testid="link-home">
-                <TrendingUp className="h-6 w-6" />
-                <span className="hidden sm:inline">Pump.Fun Paper</span>
-              </a>
+            <Link href="/" className="flex items-center gap-2 text-xl font-bold text-primary hover-elevate rounded-md px-3 py-2" data-testid="link-home">
+              <TrendingUp className="h-6 w-6" />
+              <span className="hidden sm:inline">Pump.Fun Paper</span>
             </Link>
             
             <div className="hidden md:flex gap-1">
               {navItems.map(item => (
-                <Link key={item.path} href={item.path}>
-                  <a data-testid={`link-${item.label.toLowerCase()}`}>
-                    <Button
-                      variant={location === item.path ? "secondary" : "ghost"}
-                      size="sm"
-                      className="gap-2"
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
-                    </Button>
-                  </a>
-                </Link>
+                <Button
+                  key={item.path}
+                  variant={location === item.path ? "secondary" : "ghost"}
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => setLocation(item.path)}
+                  data-testid={`link-${item.label.toLowerCase()}`}
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </Button>
               ))}
             </div>
           </div>
@@ -93,16 +90,22 @@ export function Navigation() {
               </DropdownMenu>
             ) : (
               <div className="flex gap-2">
-                <Link href="/login">
-                  <Button variant="ghost" size="sm" data-testid="button-login">
-                    Login
-                  </Button>
-                </Link>
-                <Link href="/register">
-                  <Button variant="default" size="sm" data-testid="button-register">
-                    Register
-                  </Button>
-                </Link>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setLocation('/login')}
+                  data-testid="button-login"
+                >
+                  Login
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => setLocation('/register')}
+                  data-testid="button-register"
+                >
+                  Register
+                </Button>
               </div>
             )}
           </div>
@@ -111,18 +114,17 @@ export function Navigation() {
         {/* Mobile navigation */}
         <div className="flex md:hidden gap-1 pb-2 overflow-x-auto">
           {navItems.map(item => (
-            <Link key={item.path} href={item.path}>
-              <a data-testid={`link-mobile-${item.label.toLowerCase()}`}>
-                <Button
-                  variant={location === item.path ? "secondary" : "ghost"}
-                  size="sm"
-                  className="gap-2 whitespace-nowrap"
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                </Button>
-              </a>
-            </Link>
+            <Button
+              key={item.path}
+              variant={location === item.path ? "secondary" : "ghost"}
+              size="sm"
+              className="gap-2 whitespace-nowrap"
+              onClick={() => setLocation(item.path)}
+              data-testid={`link-mobile-${item.label.toLowerCase()}`}
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
+            </Button>
           ))}
         </div>
       </div>
