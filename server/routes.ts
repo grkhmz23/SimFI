@@ -19,6 +19,24 @@ const JWT_SECRET: string = (() => {
   return secret;
 })();
 
+// Helper function for fetch with timeout
+async function fetchWithTimeout(url: string, timeoutMs: number = 5000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    return response;
+  } catch (error: any) {
+    clearTimeout(timeout);
+    if (error.name === 'AbortError') {
+      throw new Error(`Request timeout after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
   // Auth Routes
@@ -293,7 +311,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const sellRatio = sellAmount / position.amount;
-      const solReceived = Math.floor((sellAmount / 1_000_000_000) * exitPrice);
+      const solReceived = Math.floor((sellAmount * exitPrice) / 1_000_000_000);
       const proportionalCost = Math.floor(position.solSpent * sellRatio);
       const profitLoss = solReceived - proportionalCost;
       
@@ -369,7 +387,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Sell all positions
       for (const position of tokenPositions) {
         const sellAmount = position.amount;
-        const solReceived = Math.floor((sellAmount / 1_000_000_000) * exitPrice);
+        const solReceived = Math.floor((sellAmount * exitPrice) / 1_000_000_000);
         const profitLoss = solReceived - position.solSpent;
         
         totalSolReceived += solReceived;
@@ -671,7 +689,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`🔮 Fetching Jupiter quote for ${solAmountNum} SOL → ${tokenAddress}`);
       
-      const response = await fetch(jupiterUrl);
+      const response = await fetchWithTimeout(jupiterUrl, 5000);
       
       if (!response.ok) {
         console.error(`❌ Jupiter API error: ${response.status} ${response.statusText}`);
@@ -737,7 +755,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`🔮 Fetching Jupiter quote for ${tokenAmountNum} tokens → SOL (${tokenAddress})`);
       
-      const response = await fetch(jupiterUrl);
+      const response = await fetchWithTimeout(jupiterUrl, 5000);
       
       if (!response.ok) {
         console.error(`❌ Jupiter API error: ${response.status} ${response.statusText}`);
