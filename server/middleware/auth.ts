@@ -15,7 +15,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   const token = req.cookies.token || (req.headers['authorization']?.split(' ')[1]);
 
   if (!token) {
-    console.log('❌ Auth failed: No token provided. Cookies:', req.cookies, 'Headers:', req.headers['authorization']);
+    console.log('❌ Auth failed: No token provided');
     return res.status(401).json({ error: 'Access denied - no token provided' });
   }
 
