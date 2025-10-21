@@ -31,6 +31,16 @@ interface JupiterQuote {
   slippageBps: number;
 }
 
+interface JupiterSellQuote {
+  tokenAmount: number;
+  tokenAmountUnits: number;
+  solAmountOut: number;
+  solAmountDisplay: number;
+  effectivePriceLamports: number;
+  priceImpactPct: number;
+  slippageBps: number;
+}
+
 const buySchema = z.object({
   solAmount: z.number().positive('Amount must be positive'),
 });
@@ -117,15 +127,30 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   const solAmount = buyForm.watch('solAmount') || 0;
   const percentage = sellForm.watch('percentage') || 100;
   
-  // Fetch Jupiter quote for realistic token amount calculation
-  const tokenAddress = token?.tokenAddress || '';
-  const quoteUrl = tokenAddress && solAmount > 0 
-    ? `/api/tokens/quote/buy?tokenAddress=${tokenAddress}&solAmount=${solAmount}` 
+  // Fetch Jupiter quote for buying
+  const buyTokenAddress = token?.tokenAddress || '';
+  const buyQuoteUrl = buyTokenAddress && solAmount > 0 
+    ? `/api/tokens/quote/buy?tokenAddress=${buyTokenAddress}&solAmount=${solAmount}` 
     : null;
   
   const { data: jupiterQuote, isLoading: quoteLoading } = useQuery<JupiterQuote>({
-    queryKey: [quoteUrl],
-    enabled: isBuying && !!quoteUrl,
+    queryKey: [buyQuoteUrl],
+    enabled: isBuying && !!buyQuoteUrl,
+    refetchOnWindowFocus: false,
+    staleTime: 10000, // 10 seconds
+  });
+
+  // Fetch Jupiter quote for selling
+  const sellTokenAddress = position?.tokenAddress || '';
+  const sellAmount = !isBuying && position ? (position.amount * percentage / 100) : 0;
+  const sellTokenAmount = sellAmount / 1_000_000_000; // Convert to token amount
+  const sellQuoteUrl = sellTokenAddress && sellTokenAmount > 0
+    ? `/api/tokens/quote/sell?tokenAddress=${sellTokenAddress}&tokenAmount=${sellTokenAmount}`
+    : null;
+
+  const { data: jupiterSellQuote, isLoading: sellQuoteLoading } = useQuery<JupiterSellQuote>({
+    queryKey: [sellQuoteUrl],
+    enabled: !isBuying && !!sellQuoteUrl,
     refetchOnWindowFocus: false,
     staleTime: 10000, // 10 seconds
   });
@@ -135,10 +160,14 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     ? (jupiterQuote?.tokenAmountDisplay || (solAmount * 1_000_000_000) / currentPrice)
     : 0;
   
-  const priceImpact = jupiterQuote?.priceImpactPct || 0;
+  const priceImpact = isBuying 
+    ? (jupiterQuote?.priceImpactPct || 0)
+    : (jupiterSellQuote?.priceImpactPct || 0);
   
-  const sellAmount = !isBuying && position ? (position.amount * percentage / 100) : 0;
-  const sellValue = !isBuying ? (sellAmount / 1_000_000_000) * currentPrice : 0;
+  // Use Jupiter quote for sell value if available, fallback to simple calculation
+  const sellValue = !isBuying 
+    ? (jupiterSellQuote?.solAmountOut || ((sellAmount / 1_000_000_000) * currentPrice))
+    : 0;
   const proportionalCost = !isBuying && position ? (position.solSpent * percentage / 100) : 0;
   const profitLoss = !isBuying ? sellValue - proportionalCost : 0;
 
@@ -210,10 +239,15 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     if (!position) return;
     const tokensToSell = (position.amount * data.percentage) / 100 / 1_000_000_000;
     
+    // Use Jupiter quote exit price if available for realistic trade execution
+    const exitPrice = jupiterSellQuote 
+      ? jupiterSellQuote.effectivePriceLamports 
+      : currentPrice;
+    
     tradeMutation.mutate({
       positionId: position.id,
       amount: tokensToSell,
-      exitPrice: currentPrice,
+      exitPrice: exitPrice,
     });
   });
 
@@ -392,11 +426,23 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Est. Value:</span>
-                      <span className="font-mono font-semibold" data-testid="text-sell-value">
-                        {formatSol(sellValue)} SOL
+                      <span className="text-muted-foreground">Est. SOL Received:</span>
+                      <span className="font-mono font-semibold flex items-center gap-2" data-testid="text-sell-value">
+                        {sellQuoteLoading && sellAmount > 0 ? (
+                          <><Loader2 className="h-3 w-3 animate-spin" /> Loading...</>
+                        ) : (
+                          `${formatSol(sellValue)} SOL`
+                        )}
                       </span>
                     </div>
+                    {jupiterSellQuote && priceImpact !== 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Price Impact:</span>
+                        <span className={`font-mono text-xs ${Math.abs(priceImpact) > 5 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                          {priceImpact > 0 ? '+' : ''}{priceImpact.toFixed(2)}%
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm pt-2 border-t border-border">
                       <span className="text-muted-foreground">Profit/Loss:</span>
                       <span 
