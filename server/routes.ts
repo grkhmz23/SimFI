@@ -236,11 +236,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Insufficient balance' });
       }
       
-      // Deduct balance
+      // Deduct balance first
       await storage.updateUserBalance(req.userId!, -solSpent);
       
-      // Create position
-      const position = await storage.createPosition({
+      // Use INSERT ... ON CONFLICT to atomically create or aggregate position
+      // This prevents race conditions by using database-level conflict resolution
+      const position = await storage.createOrAggregatePosition({
         userId: req.userId!,
         tokenAddress,
         tokenName,
@@ -250,10 +251,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         solSpent,
       });
       
+      console.log(`💼 Position for ${tokenSymbol}: ${position.amount / 1_000_000_000} tokens (${position.id})`);
+      
       const newUser = await storage.getUserById(req.userId!);
       
       res.json({ 
-        message: 'Position opened successfully',
+        message: 'Position processed successfully',
         positionId: position.id,
         newBalance: newUser!.balance,
         tokensReceived: tokenAmount

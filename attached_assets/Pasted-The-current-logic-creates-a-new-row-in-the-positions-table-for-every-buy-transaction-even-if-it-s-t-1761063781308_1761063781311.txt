@@ -1,0 +1,138 @@
+The current logic creates a new row in the positions table for every buy transaction, even if it's the same token. This treats each purchase as a separate lot, requiring separate sells.
+
+To fix this so that multiple buys of the same token are combined into a single, aggregated position, you need to modify the backend /buy logic:
+
+Change the POST /api/trades/buy Endpoint:
+
+    Check for Existing Position: Before inserting a new position, query the database to see if the user (user_id) already has an open position for that specific token_address.
+
+    Update if Exists: If a position for that token exists:
+
+        Calculate the new total amount (existing amount + newly bought amount).
+
+        Calculate the new total sol_spent (existing sol_spent + SOL spent on the new purchase).
+
+        Calculate the new average entry price: new_average_price = new_total_sol_spent / new_total_amount.
+
+        Use an UPDATE SQL statement to modify the existing row in the positions table with the new amount, sol_spent, and entry_price.
+
+    Insert if Not Exists: If no position for that token exists, use the INSERT SQL statement as the code currently does.
+
+Here's the modified code for backend/routes/trades.js:
+JavaScript
+
+// FILE: backend/routes/trades.js
+
+const express = require('express');
+const router = express.Router();
+const db = require('../database');
+const authenticateToken = require('../middleware/auth');
+
+// --- (Keep existing /positions, /sell, /history routes) ---
+router.get('/positions', authenticateToken, /* ... existing code ... */);
+router.post('/sell', authenticateToken, /* ... existing code ... */);
+router.get('/history', authenticateToken, /* ... existing code ... */);
+
+
+// --- MODIFIED /buy ROUTE ---
+router.post('/buy', authenticateToken, (req, res) => {
+    // --- Use quoted data for more accuracy ---
+    const { tokenAddress, tokenName, tokenSymbol, amount, price, solSpent } = req.body; 
+    // Expect amount (tokens received from quote), 
+    // price (effective price from quote),
+    // solSpent (actual user input SOL amount)
+
+    if (!tokenAddress || !amount || !price || !solSpent) {
+        return res.status(400).json({ error: 'Missing fields from quote' });
+    }
+    if (amount <= 0 || price <= 0 || solSpent <= 0) {
+        return res.status(400).json({ error: 'Amounts/price must be positive' });
+    }
+    
+    const userId = req.user.id;
+
+    db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+
+        // 1. Check user balance
+        db.get('SELECT balance FROM users WHERE id = ?', [userId], (err, user) => {
+            if (err) { db.run('ROLLBACK'); return res.status(500).json({ error: 'DB Error: Checking balance' }); }
+            if (!user) { db.run('ROLLBACK'); return res.status(404).json({ error: 'User not found' }); }
+            if (user.balance < solSpent) { db.run('ROLLBACK'); return res.status(400).json({ error: 'Insufficient balance' }); }
+
+            // 2. Check for existing position for this token
+            db.get('SELECT * FROM positions WHERE user_id = ? AND token_address = ?', [userId, tokenAddress], (err, existingPosition) => {
+                if (err) { db.run('ROLLBACK'); return res.status(500).json({ error: 'DB Error: Checking existing position' }); }
+
+                // 3. Deduct SOL balance FIRST (important for atomicity)
+                db.run('UPDATE users SET balance = balance - ? WHERE id = ?', [solSpent, userId], (err) => {
+                    if (err) { db.run('ROLLBACK'); return res.status(500).json({ error: 'DB Error: Updating balance' }); }
+
+                    // 4. Update or Insert Position
+                    if (existingPosition) {
+                        // --- UPDATE existing position ---
+                        const newAmount = existingPosition.amount + amount;
+                        const newSolSpent = existingPosition.sol_spent + solSpent;
+                        const newAveragePrice = newSolSpent / newAmount; // Calculate new average price
+
+                        db.run(`UPDATE positions 
+                                SET amount = ?, sol_spent = ?, entry_price = ? 
+                                WHERE id = ?`, 
+                               [newAmount, newSolSpent, newAveragePrice, existingPosition.id], 
+                               function(err) {
+                                   if (err) { db.run('ROLLBACK'); return res.status(500).json({ error: 'DB Error: Updating position' }); }
+                                   
+                                   // Commit transaction
+                                   db.run('COMMIT', (err) => {
+                                       if (err) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Transaction failed on update commit' }); }
+                                       res.json({ message: 'Position updated', positionId: existingPosition.id, newBalance: user.balance - solSpent });
+                                   });
+                               }
+                        );
+
+                    } else {
+                        // --- INSERT new position ---
+                        db.run(`INSERT INTO positions (user_id, token_address, token_name, token_symbol, entry_price, amount, sol_spent) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                               [userId, tokenAddress, tokenName || 'Unknown', tokenSymbol || '???', price, amount, solSpent], 
+                               function(err) {
+                                   if (err) { db.run('ROLLBACK'); return res.status(500).json({ error: 'DB Error: Inserting position' }); }
+                                   
+                                   const newPositionId = this.lastID;
+                                   // Commit transaction
+                                   db.run('COMMIT', (err) => {
+                                       if (err) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Transaction failed on insert commit' }); }
+                                       res.json({ message: 'Position opened', positionId: newPositionId, newBalance: user.balance - solSpent });
+                                   });
+                               }
+                        );
+                    }
+                }); // End Balance Update
+            }); // End Check Existing Position
+        }); // End Check Balance
+    }); // End Serialize
+});
+
+module.exports = router; // Ensure router is exported
+
+Explanation of Changes:
+
+    Input Parameters: The route now expects amount (tokens received), price (effective average price), and solSpent (actual SOL user intended to spend) to be passed from the frontend, ideally obtained from the /quote/buy response.
+
+    Check Balance: Still checks if the user has enough solSpent.
+
+    Check Existing Position: Uses db.get to find if a row with the matching user_id and token_address already exists.
+
+    Update Balance First: The balance deduction happens before deciding whether to update or insert. This ensures the SOL is always deducted correctly within the transaction.
+
+    if (existingPosition) Block:
+
+        Calculates newAmount, newSolSpent, and newAveragePrice.
+
+        Uses UPDATE positions SET ... WHERE id = ? to modify the found row.
+
+    else Block (New Position):
+
+        Uses the original INSERT INTO positions ... logic.
+
+    Transaction Handling: All database operations (balance check, position check, balance update, position update/insert) are wrapped in a BEGIN TRANSACTION and COMMIT (or ROLLBACK on error) using db.serialize to ensure atomicity. If any step fails, the whole operation is undone.

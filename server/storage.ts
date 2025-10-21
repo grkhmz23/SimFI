@@ -14,8 +14,12 @@ export interface IStorage {
 
   // Position operations
   createPosition(data: Omit<InsertPosition, 'id'> & { userId: string }): Promise<Position>;
+  createOrAggregatePosition(data: Omit<InsertPosition, 'id'> & { userId: string }): Promise<Position>;
   getPositionById(id: string): Promise<Position | undefined>;
+  getPositionByUserAndToken(userId: string, tokenAddress: string): Promise<Position | undefined>;
   getUserPositions(userId: string): Promise<Position[]>;
+  updatePosition(id: string, data: Partial<Omit<Position, 'id' | 'userId' | 'tokenAddress' | 'tokenName' | 'tokenSymbol' | 'openedAt'>>): Promise<Position | undefined>;
+  aggregatePosition(id: string, additionalAmount: number, additionalSolSpent: number): Promise<Position | undefined>;
   deletePosition(id: string): Promise<void>;
 
   // Trade operations
@@ -83,13 +87,58 @@ class DbStorage implements IStorage {
     return position;
   }
 
+  async createOrAggregatePosition(data: Omit<InsertPosition, 'id'> & { userId: string }): Promise<Position> {
+    // Use INSERT ... ON CONFLICT to atomically create or aggregate position
+    // This prevents race conditions by using database-level conflict resolution
+    const [position] = await db.insert(positions)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [positions.userId, positions.tokenAddress],
+        set: {
+          // Increment amount and solSpent atomically
+          amount: sql`${positions.amount} + ${data.amount}`,
+          solSpent: sql`${positions.solSpent} + ${data.solSpent}`,
+          // Recalculate average entry price using the EXCLUDED (new) values
+          entryPrice: sql`((${positions.solSpent} + EXCLUDED.sol_spent) * 1000000000) / (${positions.amount} + EXCLUDED.amount)`,
+        },
+      })
+      .returning();
+    return position;
+  }
+
   async getPositionById(id: string): Promise<Position | undefined> {
     const [position] = await db.select().from(positions).where(eq(positions.id, id));
     return position;
   }
 
+  async getPositionByUserAndToken(userId: string, tokenAddress: string): Promise<Position | undefined> {
+    const [position] = await db.select()
+      .from(positions)
+      .where(and(eq(positions.userId, userId), eq(positions.tokenAddress, tokenAddress)));
+    return position;
+  }
+
   async getUserPositions(userId: string): Promise<Position[]> {
     return db.select().from(positions).where(eq(positions.userId, userId)).orderBy(desc(positions.openedAt));
+  }
+
+  async updatePosition(id: string, data: Partial<Omit<Position, 'id' | 'userId' | 'tokenAddress' | 'tokenName' | 'tokenSymbol' | 'openedAt'>>): Promise<Position | undefined> {
+    const [position] = await db.update(positions).set(data).where(eq(positions.id, id)).returning();
+    return position;
+  }
+
+  async aggregatePosition(id: string, additionalAmount: number, additionalSolSpent: number): Promise<Position | undefined> {
+    // Use SQL-level increments to avoid race conditions
+    // Calculate new average entry price atomically: (total_sol_spent * 1_000_000_000) / total_amount
+    const [position] = await db.update(positions)
+      .set({
+        amount: sql`${positions.amount} + ${additionalAmount}`,
+        solSpent: sql`${positions.solSpent} + ${additionalSolSpent}`,
+        entryPrice: sql`((${positions.solSpent} + ${additionalSolSpent}) * 1000000000) / (${positions.amount} + ${additionalAmount})`,
+      })
+      .where(eq(positions.id, id))
+      .returning();
+    return position;
   }
 
   async deletePosition(id: string): Promise<void> {
