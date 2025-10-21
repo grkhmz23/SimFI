@@ -594,7 +594,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get individual token by address (must come AFTER search route)
+  // Get trending tokens from DexScreener (must come BEFORE :address route)
+  // Note: Using top boosts as proxy for trending since DexScreener doesn't have a dedicated trending endpoint
+  app.get('/api/tokens/trending', async (req, res) => {
+    try {
+      // Fetch top boosted tokens (promoted tokens tend to be trending)
+      const dexResponse = await fetchWithTimeout('https://api.dexscreener.com/token-boosts/top/v1', 5000);
+      
+      if (!dexResponse.ok) {
+        console.error(`❌ DexScreener boosts API error: ${dexResponse.status}`);
+        return res.status(500).json({ error: 'Failed to fetch trending tokens', tokens: [] });
+      }
+      
+      const boostedTokens = await dexResponse.json();
+      
+      if (!Array.isArray(boostedTokens)) {
+        console.error('❌ Invalid response format from DexScreener boosts API');
+        return res.status(500).json({ error: 'Invalid API response', tokens: [] });
+      }
+      
+      // Filter for Solana tokens and map to our format
+      const trendingTokens = boostedTokens
+        .filter((item: any) => item.chainId === 'solana' && item.tokenAddress)
+        .slice(0, 50) // Top 50
+        .map((item: any) => {
+          // Boosted tokens have URL like dexscreener.com/solana/ADDRESS
+          const url = item.url || '';
+          const addressMatch = url.match(/solana\/([A-Za-z0-9]+)/);
+          const pairAddress = addressMatch ? addressMatch[1] : item.tokenAddress;
+          
+          return {
+            tokenAddress: item.tokenAddress,
+            name: item.description?.split('\n')[0]?.trim() || 'Unknown',
+            symbol: item.tokenAddress.slice(0, 4).toUpperCase(),
+            price: 0, // Price not available in boosts endpoint
+            marketCap: 0,
+            volume24h: 0,
+            priceChange24h: 0,
+            creator: undefined,
+            timestamp: new Date().toISOString(),
+            icon: item.icon,
+          };
+        });
+      
+      console.log(`📈 Fetched ${trendingTokens.length} boosted tokens as trending from DexScreener`);
+      res.json({ tokens: trendingTokens });
+    } catch (error: any) {
+      console.error('Get trending tokens error:', error);
+      res.status(500).json({ error: 'Could not fetch trending tokens', tokens: [] });
+    }
+  });
+
+  // Get individual token by address (must come AFTER search route and trending route)
   app.get('/api/tokens/:address', async (req, res) => {
     try {
       const { address } = req.params;
@@ -792,49 +843,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Jupiter sell quote error:', error);
       res.status(500).json({ error: 'Could not fetch quote' });
-    }
-  });
-
-  // Get trending tokens from DexScreener
-  app.get('/api/tokens/trending', async (req, res) => {
-    try {
-      // Fetch trending Solana tokens from DexScreener
-      const dexResponse = await fetch('https://api.dexscreener.com/latest/dex/tokens/trending/solana');
-      
-      if (!dexResponse.ok) {
-        console.error(`❌ DexScreener trending API error: ${dexResponse.status}`);
-        return res.status(500).json({ error: 'Failed to fetch trending tokens', tokens: [] });
-      }
-      
-      const dexData = await dexResponse.json();
-      const pairs = dexData || [];
-      
-      // Map to our token format
-      const trendingTokens = pairs
-        .filter((pair: any) => pair.baseToken && pair.priceNative && pair.volume?.h24 > 0)
-        .slice(0, 50) // Top 50
-        .map((pair: any) => {
-          const priceNative = parseFloat(pair.priceNative || '0');
-          const priceLamports = Math.floor(priceNative * 1_000_000_000);
-          
-          return {
-            tokenAddress: pair.baseToken.address,
-            name: pair.baseToken.name || 'Unknown',
-            symbol: pair.baseToken.symbol || '???',
-            price: priceLamports,
-            marketCap: pair.marketCap || pair.fdv || 0,
-            volume24h: pair.volume?.h24 || 0,
-            priceChange24h: pair.priceChange?.h24 || 0,
-            creator: undefined,
-            timestamp: new Date().toISOString(),
-          };
-        });
-      
-      console.log(`📈 Fetched ${trendingTokens.length} trending tokens from DexScreener`);
-      res.json({ tokens: trendingTokens });
-    } catch (error: any) {
-      console.error('Get trending tokens error:', error);
-      res.status(500).json({ error: 'Could not fetch trending tokens', tokens: [] });
     }
   });
 
