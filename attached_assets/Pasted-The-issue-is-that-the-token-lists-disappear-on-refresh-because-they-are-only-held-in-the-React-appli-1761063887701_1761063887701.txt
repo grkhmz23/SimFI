@@ -1,0 +1,56 @@
+The issue is that the token lists disappear on refresh because they are only held in the React application's memory (state), which resets when you reload the page. The WebSocket only provides new updates after it connects.
+
+Here's the standard fix: Load historical data first, then use WebSocket for live updates.
+
+How it's supposed to work in your current code (and how to ensure it does):
+
+    Backend Keeps the Lists: Your backend service (backend/services/pumpportal.js) is already designed to keep the newTokens, graduatingTokens, and graduatedTokens lists in its memory. It gets populated with some historical data on startup (if you added the DexScreener fetch) and then continuously updated by the pumpportal.fun WebSocket.
+
+    Backend API Serves the Lists: Your backend REST API endpoint (GET /api/tokens/pairs) is designed to return the current contents of those in-memory lists from the pumpportal.js service.
+
+    Frontend Fetches on Load: Inside frontend/src/App.js, within the WebSocketProvider, the fetchInitialData function already calls the backend /api/tokens/pairs endpoints when the component first mounts (before the WebSocket connects). This fetches the lists as they currently exist on the backend.
+
+    Frontend State is Initialized: The data fetched by fetchInitialData is used to set the initial tokens state in the WebSocketProvider.
+
+    Frontend WebSocket Connects: After the initial state is set, the WebSocket connection to your backend is established.
+
+    Backend Broadcasts Updates: When your backend receives a new token event from pumpportal.fun, it adds it to its internal list and then broadcasts just that new token update via its own WebSocket server to all connected frontends.
+
+    Frontend Updates State: The onmessage handler in your frontend's WebSocketProvider receives the update and adds the new token to the existing state (prepending it to the correct list).
+
+Why it might be failing and how to fix:
+
+    Backend Not Fetching History: Ensure your backend is actually fetching historical data on startup (e.g., from DexScreener, as discussed previously) to populate the initial lists in pumpportal.js before the WebSocket starts. If it only relies on WebSocket data, the lists will be empty on startup.
+
+        Fix: Add the DexScreener historical fetch logic to your backend's startup sequence.
+
+    Frontend fetchInitialData Timing/Error: Maybe the fetchInitialData calls in WebSocketProvider are failing silently, or there's a timing issue where the WebSocket connects and overwrites the state before the initial fetch completes.
+
+        Fix: Add better error handling (.catch) to the Promise.all in fetchInitialData to see if those API calls are failing. Ensure setTokens is called correctly with the fetched data.
+
+    Frontend WebSocket Logic Error: The onmessage handler in the frontend might be incorrectly replacing the entire list instead of just adding the new token.
+
+        Fix: Double-check the setTokens logic inside the ws.onmessage handler. It should look like this (which matches the code provided earlier):
+        JavaScript
+
+        ws.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          setTokens(prevTokens => { // <-- Use functional update
+            const newLists = { ...prevTokens }; // <-- Copy existing state
+            if (message.type === 'new') {
+              // Prepend new token, ensure no duplicates, limit size
+              newLists.new = [message.payload, ...prevTokens.new.filter(t => t.tokenAddress !== message.payload.tokenAddress)].slice(0, 100); 
+            } else if (message.type === 'graduating') {
+              // Remove from 'new', prepend to 'graduating'
+              newLists.new = prevTokens.new.filter(t => t.tokenAddress !== message.payload.mint);
+              newLists.graduating = [message.payload, ...prevTokens.graduating.filter(t => t.tokenAddress !== message.payload.mint)].slice(0, 100);
+            } else if (message.type === 'graduated') {
+               // Remove from 'graduating', prepend to 'graduated'
+              newLists.graduating = prevTokens.graduating.filter(t => t.tokenAddress !== message.payload.mint);
+              newLists.graduated = [message.payload, ...prevTokens.graduated.filter(t => t.tokenAddress !== message.payload.mint)].slice(0, 100);
+            }
+            return newLists; // <-- Return the updated state
+          });
+        };
+
+By ensuring the backend holds the lists persistently (in memory for now) and the frontend correctly fetches the full lists via REST on initial load before applying WebSocket updates, your token lists will persist across refreshes.

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, bigint, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, bigint, integer, timestamp, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -27,7 +27,10 @@ export const positions = pgTable("positions", {
   amount: bigint("amount", { mode: "number" }).notNull(),
   solSpent: bigint("sol_spent", { mode: "number" }).notNull(),
   openedAt: timestamp("opened_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  // Unique constraint on userId + tokenAddress to enable position aggregation
+  userTokenUnique: unique().on(table.userId, table.tokenAddress),
+}));
 
 export const tradeHistory = pgTable("trade_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
