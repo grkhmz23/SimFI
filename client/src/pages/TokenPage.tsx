@@ -196,7 +196,7 @@ export default function TokenPage() {
               <div>
                 <p className="text-xs text-muted-foreground uppercase mb-1">Amount Held</p>
                 <p className="text-xl font-bold font-mono">
-                  {(userPosition.amount / 1_000_000_000).toLocaleString()} {token.symbol}
+                  {(Number(userPosition.amount) / 1_000_000_000).toLocaleString()} {token.symbol}
                 </p>
               </div>
               <div>
@@ -208,7 +208,7 @@ export default function TokenPage() {
               <div>
                 <p className="text-xs text-muted-foreground uppercase mb-1">Current Value</p>
                 <p className="text-xl font-bold font-mono text-primary">
-                  {formatSol((userPosition.amount / 1_000_000_000) * token.price)} SOL
+                  {formatSol((Number(userPosition.amount) / 1_000_000_000) * token.price)} SOL
                 </p>
               </div>
             </div>

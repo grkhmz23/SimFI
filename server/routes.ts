@@ -37,6 +37,17 @@ async function fetchWithTimeout(url: string, timeoutMs: number = 5000): Promise<
   }
 }
 
+// Helper to serialize BigInt values for JSON responses
+function serializeBigInts(obj: any): any {
+  if (typeof obj === 'bigint') return obj.toString();
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(serializeBigInts);
+  return Object.fromEntries(
+    Object.entries(obj).map(([k, v]) => [k, serializeBigInts(v)])
+  );
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
   // Auth Routes
@@ -81,7 +92,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Return user without password
       const { password, ...userWithoutPassword } = user;
-      res.status(201).json({ user: userWithoutPassword });
+      res.status(201).json(serializeBigInts({ user: userWithoutPassword }));
     } catch (error: any) {
       console.error('Registration error:', error);
       res.status(400).json({ error: error.message || 'Registration failed' });
@@ -128,7 +139,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('✅ User logged in, cookie set for:', user.username);
       
       const { password: _, ...userWithoutPassword } = user;
-      res.json({ user: userWithoutPassword });
+      res.json(serializeBigInts({ user: userWithoutPassword }));
     } catch (error: any) {
       console.error('Login error:', error);
       res.status(500).json({ error: 'Login failed' });
@@ -153,7 +164,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(serializeBigInts(userWithoutPassword));
     } catch (error: any) {
       console.error('Profile error:', error);
       res.status(500).json({ error: 'Could not fetch profile' });
@@ -209,7 +220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/trades/positions', authenticateToken, async (req, res) => {
     try {
       const positions = await storage.getUserPositions(req.userId!);
-      res.json({ positions });
+      res.json(serializeBigInts({ positions }));
     } catch (error: any) {
       console.error('Get positions error:', error);
       res.status(500).json({ error: 'Could not fetch positions' });
@@ -229,24 +240,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'User not found' });
       }
       
-      // Calculate how much SOL to spend in Lamports
-      const solSpent = Math.floor(solAmount * 1_000_000_000); // Convert SOL to Lamports
+      // Calculate how much SOL to spend in Lamports (convert to BigInt)
+      const solSpent = BigInt(Math.floor(solAmount * 1_000_000_000)); // Convert SOL to Lamports
+      const priceBigInt = BigInt(Math.floor(price)); // Price in Lamports per token
       
       // Use provided token amount from Jupiter quote if available, otherwise calculate
-      let tokenAmount: number;
+      let tokenAmount: bigint;
       if (providedTokenAmount && providedTokenAmount > 0) {
         // Use Jupiter quote amount directly (already in correct format with 9 decimals)
-        tokenAmount = providedTokenAmount;
-        console.log(`✅ Using Jupiter quote: ${solAmount} SOL → ${tokenAmount / 1_000_000_000} tokens at ${price} Lamports/token`);
+        tokenAmount = BigInt(Math.floor(providedTokenAmount));
+        console.log(`✅ Using Jupiter quote: ${solAmount} SOL → ${Number(tokenAmount) / 1_000_000_000} tokens at ${price} Lamports/token`);
       } else {
-        // Fallback to simple calculation
-        const tokenCount = solSpent / price; // actual number of tokens (can be fractional)
-        tokenAmount = Math.floor(tokenCount * 1_000_000_000); // Convert to integer storage format (9 decimals)
+        // Fallback to simple calculation using BigInt arithmetic
+        // tokenAmount = (solSpent * 1e9) / price
+        tokenAmount = (solSpent * BigInt(1_000_000_000)) / priceBigInt;
         console.log(`🔢 Simple calculation: solAmount=${solAmount} SOL, price=${price} Lamports/token`);
-        console.log(`🔢 solSpent=${solSpent} Lamports, tokenCount=${tokenCount}, tokenAmount=${tokenAmount}`);
+        console.log(`🔢 solSpent=${solSpent} Lamports, tokenAmount=${tokenAmount}`);
       }
       
-      if (tokenAmount <= 0) {
+      if (tokenAmount <= 0n) {
         return res.status(400).json({ error: 'SOL amount too small to buy tokens' });
       }
       
@@ -264,20 +276,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tokenAddress,
         tokenName,
         tokenSymbol,
-        entryPrice: price,
+        entryPrice: priceBigInt,
         amount: tokenAmount,
         solSpent,
       });
       
-      console.log(`💼 Position for ${tokenSymbol}: ${position.amount / 1_000_000_000} tokens (${position.id})`);
+      console.log(`💼 Position for ${tokenSymbol}: ${Number(position.amount) / 1_000_000_000} tokens (${position.id})`);
       
       const newUser = await storage.getUserById(req.userId!);
       
       res.json({ 
         message: 'Position processed successfully',
         positionId: position.id,
-        newBalance: newUser!.balance,
-        tokensReceived: tokenAmount
+        newBalance: newUser!.balance.toString(),
+        tokensReceived: tokenAmount.toString()
       });
     } catch (error: any) {
       console.error('Buy error:', error);
@@ -298,11 +310,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Position not found' });
       }
       
-      // Determine sell amount (full or partial)
-      const sellAmount = amount ? Math.floor(amount * 1_000_000_000) : position.amount;
+      // Determine sell amount (full or partial) - convert to BigInt
+      const sellAmount = amount ? BigInt(Math.floor(amount * 1_000_000_000)) : position.amount;
+      const exitPriceBigInt = BigInt(Math.floor(exitPrice));
       
       // Validate sell amount is positive and not zero after rounding
-      if (sellAmount <= 0) {
+      if (sellAmount <= 0n) {
         return res.status(400).json({ error: 'Sell amount must be greater than zero' });
       }
       
@@ -310,9 +323,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Sell amount exceeds position size' });
       }
       
-      const sellRatio = sellAmount / position.amount;
-      const solReceived = Math.floor((sellAmount * exitPrice) / 1_000_000_000);
-      const proportionalCost = Math.floor(position.solSpent * sellRatio);
+      // Use BigInt arithmetic to prevent overflow
+      // solReceived = (sellAmount * exitPrice) / 1e9
+      const solReceived = (sellAmount * exitPriceBigInt) / BigInt(1_000_000_000);
+      
+      // proportionalCost = (solSpent * sellAmount) / totalAmount
+      const proportionalCost = (position.solSpent * sellAmount) / position.amount;
       const profitLoss = solReceived - proportionalCost;
       
       // Update user balance and profit
@@ -326,7 +342,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tokenName: position.tokenName,
         tokenSymbol: position.tokenSymbol,
         entryPrice: position.entryPrice,
-        exitPrice,
+        exitPrice: exitPriceBigInt,
         amount: sellAmount,
         solSpent: proportionalCost,
         solReceived,
@@ -355,8 +371,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({
         message: 'Position closed successfully',
-        profitLoss,
-        solReceived,
+        profitLoss: profitLoss.toString(),
+        solReceived: solReceived.toString(),
       });
     } catch (error: any) {
       console.error('Sell error:', error);
@@ -380,14 +396,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'No positions found for this token' });
       }
       
-      let totalSolReceived = 0;
-      let totalProfit = 0;
-      let totalTokensSold = 0;
+      // Convert to BigInt for all accumulations
+      let totalSolReceived = 0n;
+      let totalProfit = 0n;
+      let totalTokensSold = 0n;
+      
+      // Convert exitPrice to BigInt
+      const exitPriceBigInt = BigInt(Math.floor(exitPrice));
       
       // Sell all positions
       for (const position of tokenPositions) {
         const sellAmount = position.amount;
-        const solReceived = Math.floor((sellAmount * exitPrice) / 1_000_000_000);
+        // Use BigInt arithmetic: (sellAmount * exitPrice) / 1e9
+        const solReceived = (sellAmount * exitPriceBigInt) / BigInt(1_000_000_000);
         const profitLoss = solReceived - position.solSpent;
         
         totalSolReceived += solReceived;
@@ -405,7 +426,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           tokenName: position.tokenName,
           tokenSymbol: position.tokenSymbol,
           entryPrice: position.entryPrice,
-          exitPrice,
+          exitPrice: exitPriceBigInt,
           amount: sellAmount,
           solSpent: position.solSpent,
           solReceived,
@@ -417,13 +438,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.deletePosition(position.id);
       }
       
-      console.log(`✅ Sold all ${tokenPositions.length} positions of ${tokenAddress}: ${totalTokensSold / 1_000_000_000} tokens for ${totalSolReceived / 1_000_000_000} SOL (P/L: ${totalProfit / 1_000_000_000} SOL)`);
+      console.log(`✅ Sold all ${tokenPositions.length} positions of ${tokenAddress}: ${Number(totalTokensSold) / 1_000_000_000} tokens for ${Number(totalSolReceived) / 1_000_000_000} SOL (P/L: ${Number(totalProfit) / 1_000_000_000} SOL)`);
       
       res.json({
         message: `Successfully sold ${tokenPositions.length} position(s)`,
         positionsClosed: tokenPositions.length,
-        totalProfit,
-        totalSolReceived,
+        totalProfit: totalProfit.toString(),
+        totalSolReceived: totalSolReceived.toString(),
       });
     } catch (error: any) {
       console.error('Sell all error:', error);
@@ -442,7 +463,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storage.getUserTradesCount(req.userId!)
       ]);
       
-      res.json({
+      res.json(serializeBigInts({
         trades,
         pagination: {
           page,
@@ -450,7 +471,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           total: totalCount,
           totalPages: Math.ceil(totalCount / limit),
         },
-      });
+      }));
     } catch (error: any) {
       console.error('Get history error:', error);
       res.status(500).json({ error: 'Could not fetch trade history' });

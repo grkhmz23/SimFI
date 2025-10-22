@@ -12,8 +12,8 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
   walletAddress: text("wallet_address").notNull(),
-  balance: bigint("balance", { mode: "number" }).notNull().default(10 * LAMPORTS_PER_SOL),
-  totalProfit: bigint("total_profit", { mode: "number" }).notNull().default(0),
+  balance: bigint("balance", { mode: "bigint" }).notNull().default(BigInt(10 * LAMPORTS_PER_SOL)),
+  totalProfit: bigint("total_profit", { mode: "bigint" }).notNull().default(0n),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -23,9 +23,9 @@ export const positions = pgTable("positions", {
   tokenAddress: text("token_address").notNull(),
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
-  entryPrice: bigint("entry_price", { mode: "number" }).notNull(),
-  amount: bigint("amount", { mode: "number" }).notNull(),
-  solSpent: bigint("sol_spent", { mode: "number" }).notNull(),
+  entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(),
+  amount: bigint("amount", { mode: "bigint" }).notNull(),
+  solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(),
   openedAt: timestamp("opened_at").defaultNow().notNull(),
 }, (table) => ({
   // Unique constraint on userId + tokenAddress to enable position aggregation
@@ -38,12 +38,12 @@ export const tradeHistory = pgTable("trade_history", {
   tokenAddress: text("token_address").notNull(),
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
-  entryPrice: bigint("entry_price", { mode: "number" }).notNull(),
-  exitPrice: bigint("exit_price", { mode: "number" }).notNull(),
-  amount: bigint("amount", { mode: "number" }).notNull(),
-  solSpent: bigint("sol_spent", { mode: "number" }).notNull(),
-  solReceived: bigint("sol_received", { mode: "number" }).notNull(),
-  profitLoss: bigint("profit_loss", { mode: "number" }).notNull(),
+  entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(),
+  exitPrice: bigint("exit_price", { mode: "bigint" }).notNull(),
+  amount: bigint("amount", { mode: "bigint" }).notNull(),
+  solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(),
+  solReceived: bigint("sol_received", { mode: "bigint" }).notNull(),
+  profitLoss: bigint("profit_loss", { mode: "bigint" }).notNull(),
   openedAt: timestamp("opened_at").notNull(),
   closedAt: timestamp("closed_at").defaultNow().notNull(),
 });
@@ -53,7 +53,7 @@ export const leaderboardPeriods = pgTable("leaderboard_periods", {
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time").notNull(),
   winnerId: varchar("winner_id").references(() => users.id),
-  winnerProfit: bigint("winner_profit", { mode: "number" }),
+  winnerProfit: bigint("winner_profit", { mode: "bigint" }),
 });
 
 // Insert Schemas

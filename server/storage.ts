@@ -9,8 +9,8 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   updateUserProfile(id: string, data: Partial<Omit<User, 'id' | 'createdAt'>>): Promise<User | undefined>;
-  updateUserBalance(id: string, balanceChange: number): Promise<User | undefined>;
-  updateUserTotalProfit(id: string, profitChange: number): Promise<User | undefined>;
+  updateUserBalance(id: string, balanceChange: bigint): Promise<User | undefined>;
+  updateUserTotalProfit(id: string, profitChange: bigint): Promise<User | undefined>;
 
   // Position operations
   createPosition(data: Omit<InsertPosition, 'id'> & { userId: string }): Promise<Position>;
@@ -19,7 +19,7 @@ export interface IStorage {
   getPositionByUserAndToken(userId: string, tokenAddress: string): Promise<Position | undefined>;
   getUserPositions(userId: string): Promise<Position[]>;
   updatePosition(id: string, data: Partial<Omit<Position, 'id' | 'userId' | 'tokenAddress' | 'tokenName' | 'tokenSymbol' | 'openedAt'>>): Promise<Position | undefined>;
-  aggregatePosition(id: string, additionalAmount: number, additionalSolSpent: number): Promise<Position | undefined>;
+  aggregatePosition(id: string, additionalAmount: bigint, additionalSolSpent: bigint): Promise<Position | undefined>;
   deletePosition(id: string): Promise<void>;
 
   // Trade operations
@@ -32,7 +32,7 @@ export interface IStorage {
   getTopUsersByPeriodProfit(startTime: Date, endTime: Date, limit: number): Promise<any[]>;
   getCurrentLeaderboardPeriod(): Promise<typeof leaderboardPeriods.$inferSelect | undefined>;
   createLeaderboardPeriod(startTime: Date, endTime: Date): Promise<typeof leaderboardPeriods.$inferSelect>;
-  updateLeaderboardPeriodWinner(periodId: string, winnerId: string, winnerProfit: number): Promise<void>;
+  updateLeaderboardPeriodWinner(periodId: string, winnerId: string, winnerProfit: bigint): Promise<void>;
   getPastWinners(limit: number): Promise<any[]>;
 }
 
@@ -40,8 +40,8 @@ class DbStorage implements IStorage {
   async createUser(data: InsertUser & { password: string }): Promise<User> {
     const [user] = await db.insert(users).values({
       ...data,
-      balance: 10 * LAMPORTS_PER_SOL,
-      totalProfit: 0,
+      balance: BigInt(10 * LAMPORTS_PER_SOL),
+      totalProfit: 0n,
     }).returning();
     return user;
   }
@@ -66,7 +66,7 @@ class DbStorage implements IStorage {
     return user;
   }
 
-  async updateUserBalance(id: string, balanceChange: number): Promise<User | undefined> {
+  async updateUserBalance(id: string, balanceChange: bigint): Promise<User | undefined> {
     const [user] = await db.update(users)
       .set({ balance: sql`${users.balance} + ${balanceChange}` })
       .where(eq(users.id, id))
@@ -74,7 +74,7 @@ class DbStorage implements IStorage {
     return user;
   }
 
-  async updateUserTotalProfit(id: string, profitChange: number): Promise<User | undefined> {
+  async updateUserTotalProfit(id: string, profitChange: bigint): Promise<User | undefined> {
     const [user] = await db.update(users)
       .set({ totalProfit: sql`${users.totalProfit} + ${profitChange}` })
       .where(eq(users.id, id))
@@ -127,7 +127,7 @@ class DbStorage implements IStorage {
     return position;
   }
 
-  async aggregatePosition(id: string, additionalAmount: number, additionalSolSpent: number): Promise<Position | undefined> {
+  async aggregatePosition(id: string, additionalAmount: bigint, additionalSolSpent: bigint): Promise<Position | undefined> {
     // Use SQL-level increments to avoid race conditions
     // Calculate new average entry price atomically: (total_sol_spent * 1_000_000_000) / total_amount
     const [position] = await db.update(positions)
@@ -215,7 +215,7 @@ class DbStorage implements IStorage {
     return period;
   }
 
-  async updateLeaderboardPeriodWinner(periodId: string, winnerId: string, winnerProfit: number): Promise<void> {
+  async updateLeaderboardPeriodWinner(periodId: string, winnerId: string, winnerProfit: bigint): Promise<void> {
     await db.update(leaderboardPeriods)
       .set({ winnerId, winnerProfit })
       .where(eq(leaderboardPeriods.id, periodId));
