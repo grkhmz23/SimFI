@@ -404,7 +404,7 @@ export default function Trade() {
                 </div>
                 <h3 className="text-xl font-semibold mb-2">Create Account</h3>
                 <p className="text-muted-foreground">
-                  Sign up for free and get 1000 virtual SOL to start trading
+                  Sign up and get 10 SOL to start trading
                 </p>
               </div>
               <div className="text-center">
