@@ -10,19 +10,36 @@ SimFi is a full-stack web and Telegram bot application for paper trading Solana 
 
 ## Recent Changes (October 22, 2025)
 
+**Landing Page Redesign (October 22, 2025 - Evening)**:
+- Complete professional redesign of Trade page with marketing-style layout
+- Added hero section with gradient background and SimFi branding
+- Implemented stats cards showing platform features
+- Added trending tokens section with real-time data
+- Created "How It Works" section with step-by-step onboarding
+- Added gradient utility classes to index.css for brand consistency
+- Removed logo from hero, updated header logo to full-size transparent version
+
+**Telegram Bot Integration Fix (October 22, 2025 - Evening)**:
+- Fixed bot not running issue by integrating into server startup
+- Bot now launches automatically via child process in server/index.ts
+- Bot process runs alongside web server in development mode
+- Status: ✅ Verified running and operational
+
 **SimFi Branding Implementation**:
 - Updated application name to SimFi (Simulation Finance)
 - Added SimFi logo with cyan-to-purple gradient branding
 - Updated color scheme to match logo: Primary cyan (172 81% 55%), Secondary purple (249 79% 67%)
 - Set favicon to SimFi logo
 - Updated all page titles and meta descriptions
+- Added gradient header navigation
 
 **Telegram Bot Implementation**:
 - Built complete Telegram bot with Telegraf framework
 - Features: Login, buy/sell tokens, view positions, leaderboard
 - JWT authentication with session management
 - Comprehensive session validation across all handlers
-- Bot running on process with token: 8488146641:AAH8wx1isl2XwrxTPFrlMYN4lxqusyyDOD4
+- Bot token: 8488146641:AAH8wx1isl2XwrxTPFrlMYN4lxqusyyDOD4
+- API integration: Bot connects to local API at http://localhost:5000/api
 
 **BigInt Precision Implementation**:
 - Migrated from Number to BigInt arithmetic to prevent precision loss for positions >2^53 lamports
