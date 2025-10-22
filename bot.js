@@ -229,11 +229,21 @@ bot.action(/^sell_pct:(\d+)$/, async (ctx) => {
     return ctx.reply('❌ Session expired. Please try again.');
   }
 
-  const sellAmount = (BigInt(state.position.amount) * BigInt(percentage)) / BigInt(100);
+  // Calculate sell amount as percentage of position (position.amount is already in lamports)
+  const sellAmountLamports = (BigInt(state.position.amount) * BigInt(percentage)) / BigInt(100);
+  
+  // Fetch current token price for exit price
+  const tokenResult = await apiRequest(`/tokens/${state.tokenAddress}`, 'GET', null, session.token);
+  if (!tokenResult.success) {
+    return ctx.reply('❌ Error fetching token price: ' + tokenResult.error);
+  }
+  
+  const currentPriceLamports = BigInt(Math.floor(tokenResult.data.token.price * 1_000_000_000));
 
   const result = await apiRequest('/trades/sell', 'POST', {
-    tokenAddress: state.tokenAddress,
-    amount: sellAmount.toString()
+    positionId: state.position.id,
+    amountLamports: sellAmountLamports.toString(),  // Already in lamports from position.amount
+    exitPriceLamports: currentPriceLamports.toString()
   }, session.token);
 
   if (!result.success) {
@@ -243,9 +253,9 @@ bot.action(/^sell_pct:(\d+)$/, async (ctx) => {
   userStates.delete(ctx.from.id);
   await ctx.reply(
     `✅ Successfully sold ${percentage}% of ${state.position.tokenSymbol}!\n\n` +
-    `Amount: *${formatTokenAmount(sellAmount)} ${state.position.tokenSymbol}*\n` +
-    `Received: *${formatSol(result.data.trade.solReceived)} SOL*\n` +
-    `Profit/Loss: *${formatSol(result.data.trade.profitLoss)} SOL*`,
+    `Amount: *${formatTokenAmount(sellAmountLamports)} ${state.position.tokenSymbol}*\n` +
+    `Received: *${formatSol(result.data.trade?.solReceived || result.data.solReceived)} SOL*\n` +
+    `Profit/Loss: *${formatSol(result.data.trade?.profitLoss || result.data.profitLoss)} SOL*`,
     { parse_mode: 'Markdown' }
   );
   
@@ -469,11 +479,15 @@ bot.on('text', async (ctx) => {
       return ctx.reply('❌ Session expired. Please /start to login again.');
     }
     
-    const amountLamports = BigInt(Math.floor(amount * 1_000_000_000));
+    // Send SOL amount as-is - API will convert to lamports internally
+    const priceLamports = BigInt(Math.floor(state.token.price * 1_000_000_000));
 
     const result = await apiRequest('/trades/buy', 'POST', {
       tokenAddress: state.tokenAddress,
-      solAmount: amountLamports.toString()
+      tokenName: state.token.name,
+      tokenSymbol: state.token.symbol,
+      solAmount: amount,  // Send as SOL number, not lamports
+      price: priceLamports.toString()
     }, session.token);
 
     if (!result.success) {
@@ -511,11 +525,15 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
     return ctx.reply('❌ Session expired. Please try again.');
   }
 
-  const amountLamports = BigInt(Math.floor(amount * 1_000_000_000));
+  // Send SOL amount as-is - API will convert to lamports internally
+  const priceLamports = BigInt(Math.floor(state.token.price * 1_000_000_000));
 
   const result = await apiRequest('/trades/buy', 'POST', {
     tokenAddress: state.tokenAddress,
-    solAmount: amountLamports.toString()
+    tokenName: state.token.name,
+    tokenSymbol: state.token.symbol,
+    solAmount: amount,  // Send as SOL number, not lamports
+    price: priceLamports.toString()
   }, session.token);
 
   if (!result.success) {
