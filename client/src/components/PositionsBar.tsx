@@ -15,6 +15,7 @@ export function PositionsBar() {
     queryKey: ['/api/trades/positions'],
     enabled: isAuthenticated,
     staleTime: 5000,
+    refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
 
   const positions = positionsData?.positions || [];
@@ -57,9 +58,7 @@ export function PositionsBar() {
 
       <div className="space-y-2">
         {positions.map((position) => {
-          const entryPriceSOL = position.entryPrice / 1_000_000_000;
           const amountDisplay = position.amount.toLocaleString();
-          const totalValue = position.solSpent / 1_000_000_000;
 
           return (
             <div
