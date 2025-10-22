@@ -113,7 +113,7 @@ export default function Trade() {
             {/* Hero Content */}
             <div className="text-center mb-12">
               <div className="flex items-center justify-center gap-2 mb-6">
-                <img src={logoUrl} alt="SimFi" className="h-32 w-auto" />
+                <img src={logoUrl} alt="SimFi" className="h-32 w-auto" style={{ mixBlendMode: 'multiply' }} />
               </div>
               <h1 className="text-4xl md:text-6xl font-bold mb-4">
                 <span className="gradient-simfi-text">Your Gateway to</span>

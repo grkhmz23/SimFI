@@ -78,7 +78,7 @@ export function Navigation() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-4 flex-1">
             <Link href="/" className="flex items-center gap-2 hover-elevate rounded-md px-2 py-1 shrink-0" data-testid="link-home">
-              <img src={logoUrl} alt="SimFi Logo" className="h-10 w-auto" />
+              <img src={logoUrl} alt="SimFi Logo" className="h-10 w-auto" style={{ mixBlendMode: 'multiply' }} />
             </Link>
             
             <div className="hidden md:flex gap-1">
