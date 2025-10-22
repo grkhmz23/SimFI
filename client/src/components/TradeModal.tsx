@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { Token, Position } from '@shared/schema';
 import { TrendingUp, TrendingDown, LogIn, Loader2 } from 'lucide-react';
-import { formatSol, toBigInt, formatTokenAmount } from '@/lib/lamports';
+import { formatSol, toBigInt, formatTokenAmount, lamportsToTokens } from '@/lib/lamports';
 
 interface TradeModalProps {
   token?: Token;
@@ -140,14 +140,15 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     staleTime: 10000, // 10 seconds
   });
 
-  // Fetch Jupiter quote for selling (use BigInt arithmetic)
+  // Fetch Jupiter quote for selling (keep BigInt throughout)
   const sellTokenAddress = position?.tokenAddress || '';
-  const sellAmount = !isBuying && position 
-    ? Number((toBigInt(position.amount) * BigInt(percentage)) / BigInt(100))
-    : 0;
-  const sellTokenAmount = sellAmount / 1_000_000_000; // Convert to token amount
-  const sellQuoteUrl = sellTokenAddress && sellTokenAmount > 0
-    ? `/api/tokens/quote/sell?tokenAddress=${sellTokenAddress}&tokenAmount=${sellTokenAmount}`
+  const sellAmountBigInt = !isBuying && position 
+    ? (toBigInt(position.amount) * BigInt(percentage)) / BigInt(100)
+    : BigInt(0);
+  // Use lamportsToTokens for precision-safe conversion to decimal string (no Number conversion!)
+  const sellTokenAmountStr = sellAmountBigInt > 0n ? lamportsToTokens(sellAmountBigInt) : '0';
+  const sellQuoteUrl = sellTokenAddress && sellTokenAmountStr !== '0'
+    ? `/api/tokens/quote/sell?tokenAddress=${sellTokenAddress}&tokenAmount=${sellTokenAmountStr}`
     : null;
 
   const { data: jupiterSellQuote, isLoading: sellQuoteLoading } = useQuery<JupiterSellQuote>({
@@ -166,14 +167,23 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     ? (jupiterQuote?.priceImpactPct || 0)
     : (jupiterSellQuote?.priceImpactPct || 0);
   
-  // Use Jupiter quote for sell value if available, fallback to BigInt calculation
-  const sellValue = !isBuying 
-    ? (jupiterSellQuote?.solAmountOut || Number((BigInt(sellAmount) * BigInt(Math.floor(currentPrice))) / BigInt(1_000_000_000)))
-    : 0;
-  const proportionalCost = !isBuying && position 
-    ? Number((toBigInt(position.solSpent) * BigInt(percentage)) / BigInt(100))
-    : 0;
-  const profitLoss = !isBuying ? sellValue - proportionalCost : 0;
+  // Use BigInt for all calculations, convert to Number only for display
+  const proportionalCostBigInt = !isBuying && position 
+    ? (toBigInt(position.solSpent) * BigInt(percentage)) / BigInt(100)
+    : BigInt(0);
+  
+  // Calculate sell value with BigInt arithmetic (always use currentPrice for precision)
+  // Jupiter quotes are JS numbers which can lose precision for large values
+  const sellValueBigInt = !isBuying 
+    ? (sellAmountBigInt * BigInt(Math.floor(currentPrice))) / BigInt(1_000_000_000)
+    : BigInt(0);
+  
+  const profitLossBigInt = !isBuying ? sellValueBigInt - proportionalCostBigInt : BigInt(0);
+  
+  // Convert to Number only for display
+  const sellValue = Number(sellValueBigInt);
+  const proportionalCost = Number(proportionalCostBigInt);
+  const profitLoss = Number(profitLossBigInt);
 
   const tradeMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -194,7 +204,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
         title: isBuying ? 'Position Opened!' : 'Position Closed!',
         description: isBuying 
           ? `Bought ${(response.tokensReceived / 1_000_000_000).toLocaleString()} ${symbol} for ${solAmount} SOL`
-          : `Sold ${(sellAmount / 1_000_000_000).toLocaleString()} ${symbol}`,
+          : `Sold ${formatTokenAmount(sellAmountBigInt, 2)} ${symbol}`,
       });
       
       onClose();
@@ -220,15 +230,8 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
       return;
     }
     
-    // Use Jupiter quote data if available for realistic trade execution
-    const tradeData = jupiterQuote ? {
-      tokenAddress: token.tokenAddress,
-      tokenName: token.name,
-      tokenSymbol: token.symbol,
-      solAmount: data.solAmount,
-      price: jupiterQuote.effectivePriceLamports,
-      tokenAmount: jupiterQuote.tokenAmountOut,
-    } : {
+    // Always use currentPrice for precision (Jupiter quotes are display-only)
+    const tradeData = {
       tokenAddress: token.tokenAddress,
       tokenName: token.name,
       tokenSymbol: token.symbol,
@@ -241,17 +244,18 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
 
   const onSellSubmit = sellForm.handleSubmit((data) => {
     if (!position) return;
-    const tokensToSell = Number((toBigInt(position.amount) * BigInt(data.percentage)) / BigInt(100)) / 1_000_000_000;
     
-    // Use Jupiter quote exit price if available for realistic trade execution
-    const exitPrice = jupiterSellQuote 
-      ? jupiterSellQuote.effectivePriceLamports 
-      : currentPrice;
+    // Keep BigInt throughout - send lamports as string to backend
+    const sellAmountLamports = (toBigInt(position.amount) * BigInt(data.percentage)) / BigInt(100);
+    
+    // Always use currentPrice for trade execution (Jupiter quote is display-only)
+    // This ensures precision for large values (Jupiter API returns JS numbers which truncate)
+    const exitPriceLamports = BigInt(Math.floor(currentPrice));
     
     tradeMutation.mutate({
       positionId: position.id,
-      amount: tokensToSell,
-      exitPrice: exitPrice,
+      amountLamports: sellAmountLamports.toString(),
+      exitPriceLamports: exitPriceLamports.toString(),
     });
   });
 
@@ -426,13 +430,13 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Selling:</span>
                       <span className="font-mono font-semibold">
-                        {(sellAmount / 1_000_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })} {symbol}
+                        {Number(formatTokenAmount(sellAmountBigInt, 2)).toLocaleString(undefined, { maximumFractionDigits: 2 })} {symbol}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Est. SOL Received:</span>
                       <span className="font-mono font-semibold flex items-center gap-2" data-testid="text-sell-value">
-                        {sellQuoteLoading && sellAmount > 0 ? (
+                        {sellQuoteLoading && sellAmountBigInt > 0n ? (
                           <><Loader2 className="h-3 w-3 animate-spin" /> Loading...</>
                         ) : (
                           `${formatSol(sellValue)} SOL`
