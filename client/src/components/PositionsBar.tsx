@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
+import { useAuth } from '@/lib/auth-context';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, Wallet, ChevronRight } from 'lucide-react';
@@ -8,9 +9,11 @@ import type { Position } from '@shared/schema';
 
 export function PositionsBar() {
   const [location, setLocation] = useLocation();
+  const { isAuthenticated } = useAuth();
 
   const { data: positionsData, isLoading } = useQuery<{ positions: Position[] }>({
     queryKey: ['/api/trades/positions'],
+    enabled: isAuthenticated,
     staleTime: 5000,
   });
 

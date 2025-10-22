@@ -37,7 +37,14 @@ export default function Trade() {
     queryKey: ['/api/tokens/search', debouncedQuery],
     queryFn: async () => {
       const response = await fetch(`/api/tokens/search?q=${encodeURIComponent(debouncedQuery)}`);
-      if (!response.ok) throw new Error('Search failed');
+      if (!response.ok) {
+        toast({
+          title: 'Search Failed',
+          description: 'Could not search tokens. Please try again.',
+          variant: 'destructive',
+        });
+        throw new Error('Search failed');
+      }
       return response.json();
     },
     enabled: debouncedQuery.length >= 3,
@@ -55,10 +62,11 @@ export default function Trade() {
       return;
     }
 
-    if (trimmedAddress.length < 32) {
+    const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+    if (!base58Regex.test(trimmedAddress)) {
       toast({
         title: 'Invalid Address',
-        description: 'Contract addresses must be at least 32 characters',
+        description: 'Contract address must be 32-44 characters of valid Base58',
         variant: 'destructive',
       });
       return;
