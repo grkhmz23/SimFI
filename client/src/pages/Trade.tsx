@@ -153,7 +153,7 @@ export default function Trade() {
                     <div className="flex items-center gap-3 text-lg">
                       <span className="text-muted-foreground">Balance:</span>
                       <span className="font-mono font-bold text-primary text-2xl">
-                        {(Number(user?.balance || 0) / 1_000_000_000).toFixed(2)} SOL
+                        {(Number(user?.balance || 0) / 1_000_000_000).toFixed(0)} SOL
                       </span>
                     </div>
                   </div>
