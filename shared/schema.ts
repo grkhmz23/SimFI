@@ -56,6 +56,15 @@ export const leaderboardPeriods = pgTable("leaderboard_periods", {
   winnerProfit: bigint("winner_profit", { mode: "bigint" }),
 });
 
+export const telegramSessions = pgTable("telegram_sessions", {
+  telegramUserId: text("telegram_user_id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  token: text("token").notNull(),
+  balance: bigint("balance", { mode: "bigint" }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
 // Insert Schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -87,6 +96,7 @@ export type User = typeof users.$inferSelect;
 export type Position = typeof positions.$inferSelect;
 export type Trade = typeof tradeHistory.$inferSelect;
 export type LeaderboardPeriod = typeof leaderboardPeriods.$inferSelect;
+export type TelegramSession = typeof telegramSessions.$inferSelect;
 export type InsertPosition = z.infer<typeof insertPositionSchema>;
 export type InsertTrade = z.infer<typeof insertTradeSchema>;
 
