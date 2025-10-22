@@ -42,7 +42,7 @@ interface TokenChartProps {
   height?: string;
 }
 
-type Timeframe = '5M' | '15M' | '1H' | '4H' | '1D' | '1W';
+type Timeframe = '5S' | '15S' | '30S' | '1M' | '3M' | '5M';
 
 interface PriceDataPoint {
   timestamp: Date;
@@ -64,7 +64,7 @@ const TokenChart = ({
   const [chartData, setChartData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>('1H');
+  const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>('1M');
   const [priceChange, setPriceChange] = useState<number>(0);
   const [latestPrice, setLatestPrice] = useState<number>(currentPrice);
 
@@ -159,14 +159,14 @@ const TokenChart = ({
 
   const getTimeUnit = (tf: Timeframe): 'minute' | 'hour' | 'day' | 'week' => {
     const units: Record<Timeframe, 'minute' | 'hour' | 'day' | 'week'> = {
-      '5M': 'minute',
-      '15M': 'minute',
-      '1H': 'hour',
-      '4H': 'hour',
-      '1D': 'day',
-      '1W': 'week'
+      '5S': 'minute',
+      '15S': 'minute',
+      '30S': 'minute',
+      '1M': 'minute',
+      '3M': 'minute',
+      '5M': 'minute'
     };
-    return units[tf] || 'hour';
+    return units[tf] || 'minute';
   };
 
   const chartOptions: ChartOptions<'line' | 'bar'> = {
@@ -263,7 +263,7 @@ const TokenChart = ({
     }
   };
 
-  const timeframes: Timeframe[] = ['5M', '15M', '1H', '4H', '1D', '1W'];
+  const timeframes: Timeframe[] = ['5S', '15S', '30S', '1M', '3M', '5M'];
 
   if (loading) {
     return (
