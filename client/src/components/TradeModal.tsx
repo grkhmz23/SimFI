@@ -142,7 +142,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
 
   // Fetch Jupiter quote for selling
   const sellTokenAddress = position?.tokenAddress || '';
-  const sellAmount = !isBuying && position ? (position.amount * percentage / 100) : 0;
+  const sellAmount = !isBuying && position ? (Number(position.amount) * percentage / 100) : 0;
   const sellTokenAmount = sellAmount / 1_000_000_000; // Convert to token amount
   const sellQuoteUrl = sellTokenAddress && sellTokenAmount > 0
     ? `/api/tokens/quote/sell?tokenAddress=${sellTokenAddress}&tokenAmount=${sellTokenAmount}`
@@ -168,7 +168,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   const sellValue = !isBuying 
     ? (jupiterSellQuote?.solAmountOut || ((sellAmount / 1_000_000_000) * currentPrice))
     : 0;
-  const proportionalCost = !isBuying && position ? (position.solSpent * percentage / 100) : 0;
+  const proportionalCost = !isBuying && position ? (Number(position.solSpent) * percentage / 100) : 0;
   const profitLoss = !isBuying ? sellValue - proportionalCost : 0;
 
   const tradeMutation = useMutation({
@@ -237,7 +237,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
 
   const onSellSubmit = sellForm.handleSubmit((data) => {
     if (!position) return;
-    const tokensToSell = (position.amount * data.percentage) / 100 / 1_000_000_000;
+    const tokensToSell = (Number(position.amount) * data.percentage) / 100 / 1_000_000_000;
     
     // Use Jupiter quote exit price if available for realistic trade execution
     const exitPrice = jupiterSellQuote 
@@ -416,7 +416,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Your Position:</span>
                       <span className="font-mono">
-                        {(position.amount / 1_000_000_000).toLocaleString()} {symbol}
+                        {(Number(position.amount) / 1_000_000_000).toLocaleString()} {symbol}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
