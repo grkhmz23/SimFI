@@ -32,15 +32,15 @@
 
   --sidebar-border: 0 0% 86%;
 
-  --sidebar-primary: 270 80% 60%;
+  --sidebar-primary: 172 81% 55%;
 
-  --sidebar-primary-foreground: 270 20% 98%;
+  --sidebar-primary-foreground: 172 20% 98%;
 
-  --sidebar-accent: 270 15% 88%;
+  --sidebar-accent: 172 15% 88%;
 
-  --sidebar-accent-foreground: 270 15% 12%;
+  --sidebar-accent-foreground: 172 15% 12%;
 
-  --sidebar-ring: 270 80% 60%;
+  --sidebar-ring: 172 81% 55%;
 
   --popover: 0 0% 92%;
 
@@ -48,9 +48,9 @@
 
   --popover-border: 0 0% 84%;
 
-  --primary: 270 80% 60%;
+  --primary: 172 81% 55%;
 
-  --primary-foreground: 270 20% 98%;
+  --primary-foreground: 172 20% 98%;
 
   --secondary: 0 0% 86%;
 
@@ -69,9 +69,9 @@
   --destructive-foreground: 0 20% 98%;
 
   --input: 0 0% 28%;
-  --ring: 270 80% 60%;
-  --chart-1: 270 80% 45%;
-  --chart-2: 200 95% 40%;
+  --ring: 172 81% 55%;
+  --chart-1: 172 81% 55%;
+  --chart-2: 249 79% 67%;
   --chart-3: 142 76% 35%;
   --chart-4: 38 92% 40%;
   --chart-5: 0 84% 50%;
@@ -150,15 +150,15 @@
 
   --sidebar-border: 15 5% 18%;
 
-  --sidebar-primary: 270 80% 60%;
+  --sidebar-primary: 172 81% 55%;
 
-  --sidebar-primary-foreground: 270 20% 98%;
+  --sidebar-primary-foreground: 172 20% 98%;
 
   --sidebar-accent: 15 8% 18%;
 
   --sidebar-accent-foreground: 0 0% 88%;
 
-  --sidebar-ring: 270 80% 60%;
+  --sidebar-ring: 172 81% 55%;
 
   --popover: 15 5% 16%;
 
@@ -166,9 +166,9 @@
 
   --popover-border: 15 5% 20%;
 
-  --primary: 270 80% 60%;
+  --primary: 172 81% 55%;
 
-  --primary-foreground: 270 20% 98%;
+  --primary-foreground: 172 20% 98%;
 
   --secondary: 15 6% 20%;
 
@@ -188,9 +188,9 @@
 
   /* Used as the border around inputs. Dark mode: Should be a border that is light enough to have high contrast when rendered on a --card background. More contrast than standard --border */
   --input: 0 0% 28%;
-  --ring: 270 80% 60%;
-  --chart-1: 270 80% 70%;
-  --chart-2: 200 95% 65%;
+  --ring: 172 81% 55%;
+  --chart-1: 172 81% 65%;
+  --chart-2: 249 79% 67%;
   --chart-3: 142 76% 60%;
   --chart-4: 38 92% 65%;
   --chart-5: 0 84% 70%;
