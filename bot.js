@@ -285,23 +285,109 @@ bot.action('positions', async (ctx) => {
     );
   }
 
-  let message = '📊 *Your Positions:*\n\n';
-  positions.forEach((pos, i) => {
-    message += `${i + 1}. *${pos.tokenSymbol}*\n`;
-    message += `   Amount: ${formatTokenAmount(pos.amount)}\n`;
-    message += `   Entry: ${formatSol(pos.entryPrice)} SOL\n`;
-    message += `   Spent: ${formatSol(pos.solSpent)} SOL\n\n`;
-  });
+  const buttons = positions.map(pos => [
+    Markup.button.callback(
+      `${pos.tokenSymbol} (${formatTokenAmount(pos.amount)})`,
+      `view_position:${pos.id}`
+    )
+  ]);
+  buttons.push([Markup.button.callback('⬅️ Back', 'main_menu')]);
 
   await ctx.reply(
-    message,
+    '📊 *Your Positions:*\n\nSelect a position to view details:',
     {
       parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('⬅️ Back', 'main_menu')]
-      ])
+      ...Markup.inlineKeyboard(buttons)
     }
   );
+});
+
+// Helper function to display position details with refresh button
+const showPositionDetails = async (ctx, positionId, isRefresh = false) => {
+  const session = userSessions.get(ctx.from.id);
+  if (!session) {
+    return ctx.reply('Please /start to login first.');
+  }
+
+  // Fetch all positions to find the one we want
+  const positionsResult = await apiRequest('/trades/positions', 'GET', null, session.token);
+  if (!positionsResult.success) {
+    return ctx.reply('❌ Error fetching positions: ' + positionsResult.error);
+  }
+
+  const position = positionsResult.data.positions?.find(p => p.id === positionId);
+  if (!position) {
+    return ctx.reply('❌ Position not found.');
+  }
+
+  // Fetch current user balance
+  const profileResult = await apiRequest('/auth/profile', 'GET', null, session.token);
+  if (!profileResult.success) {
+    return ctx.reply('❌ Error fetching profile: ' + profileResult.error);
+  }
+
+  const user = profileResult.data;
+
+  // Fetch current token price
+  const tokenResult = await apiRequest(`/tokens/${position.tokenAddress}`, 'GET', null, session.token);
+  if (!tokenResult.success) {
+    return ctx.reply('❌ Error fetching token price: ' + tokenResult.error);
+  }
+
+  const currentPrice = BigInt(tokenResult.data.token.price);
+  const positionAmount = BigInt(position.amount);
+  const entryPrice = BigInt(position.entryPrice);
+  const solSpent = BigInt(position.solSpent);
+
+  // Calculate current value: (amount * currentPrice) / 1e9
+  const currentValue = (positionAmount * currentPrice) / BigInt(1_000_000_000);
+  
+  // Calculate P&L: currentValue - solSpent
+  const profitLoss = currentValue - solSpent;
+  const profitLossPercent = solSpent > 0n 
+    ? (Number(profitLoss) / Number(solSpent)) * 100 
+    : 0;
+
+  const message = 
+    `📊 *Position Details${isRefresh ? ' (Refreshed)' : ''}*\n\n` +
+    `🪙 *${position.tokenSymbol}* (${position.tokenName})\n\n` +
+    `💼 Amount: *${formatTokenAmount(position.amount)}*\n` +
+    `💰 Balance: *${formatSol(user.balance)} SOL*\n\n` +
+    `📈 Entry Price: *${formatSol(position.entryPrice)} SOL*\n` +
+    `📊 Current Price: *${formatSol(currentPrice.toString())} SOL*\n\n` +
+    `💸 Spent: *${formatSol(position.solSpent)} SOL*\n` +
+    `💎 Current Value: *${formatSol(currentValue.toString())} SOL*\n\n` +
+    `${profitLoss >= 0n ? '📈' : '📉'} P&L: *${formatSol(profitLoss.toString())} SOL* (${profitLossPercent >= 0 ? '+' : ''}${profitLossPercent.toFixed(2)}%)`;
+
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('🔄 Refresh', `refresh_position:${positionId}`)],
+    [Markup.button.callback('⬅️ Back to Positions', 'positions')],
+    [Markup.button.callback('🏠 Main Menu', 'main_menu')]
+  ]);
+
+  if (isRefresh) {
+    await ctx.editMessageText(message, {
+      parse_mode: 'Markdown',
+      ...keyboard
+    });
+  } else {
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      ...keyboard
+    });
+  }
+};
+
+bot.action(/^view_position:(.+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const positionId = parseInt(ctx.match[1]);
+  await showPositionDetails(ctx, positionId, false);
+});
+
+bot.action(/^refresh_position:(.+)$/, async (ctx) => {
+  await ctx.answerCbQuery('🔄 Refreshing...');
+  const positionId = parseInt(ctx.match[1]);
+  await showPositionDetails(ctx, positionId, true);
 });
 
 bot.action('leaderboard', async (ctx) => {
