@@ -203,7 +203,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
       toast({
         title: isBuying ? 'Position Opened!' : 'Position Closed!',
         description: isBuying 
-          ? `Bought ${(response.tokensReceived / 1_000_000_000).toLocaleString()} ${symbol} for ${solAmount} SOL`
+          ? `Bought ${formatTokenAmount(toBigInt(response.tokensReceived || 0), 2)} ${symbol} for ${solAmount} SOL`
           : `Sold ${formatTokenAmount(sellAmountBigInt, 2)} ${symbol}`,
       });
       
@@ -220,8 +220,9 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
 
   const onBuySubmit = buyForm.handleSubmit((data) => {
     if (!token) return;
-    const solSpent = data.solAmount * 1_000_000_000;
-    if (solSpent > (user?.balance || 0)) {
+    const solSpentBigInt = BigInt(Math.floor(data.solAmount * 1_000_000_000));
+    const userBalanceBigInt = toBigInt(user?.balance || 0);
+    if (solSpentBigInt > userBalanceBigInt) {
       toast({
         title: 'Insufficient Balance',
         description: `You need ${data.solAmount} SOL but only have ${formatSol(user?.balance || 0)} SOL`,

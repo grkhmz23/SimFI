@@ -640,7 +640,7 @@ bot.on('text', async (ctx) => {
     }
 
     userStates.delete(userId);
-    const tokenAmount = result.data.trade?.amount || 0;
+    const tokenAmount = result.data.tokensReceived || 0;
     
     await ctx.reply(
       `✅ Successfully bought *${state.token.symbol}*!\n\n` +
@@ -687,7 +687,7 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
   }
 
   userStates.delete(userId);
-  const tokenAmount = result.data.trade?.amount || 0;
+  const tokenAmount = result.data.tokensReceived || 0;
   
   await ctx.reply(
     `✅ Successfully bought *${state.token.symbol}*!\n\n` +
