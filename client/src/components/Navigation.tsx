@@ -15,7 +15,7 @@ import {
 import { TrendingUp, Home, BarChart3, History, Trophy, User, LogOut, Search, X, Wallet, Flame } from 'lucide-react';
 import { formatSol } from '@/lib/lamports';
 import { useQuery } from '@tanstack/react-query';
-import logoUrl from '@assets/Gemini_Generated_Image_psjmlkpsjmlkpsjm_1761162060724.png';
+import logoUrl from '@assets/Gemini_Generated_Image_b4urolb4urolb4ur_1761162361437.png';
 
 interface SearchResult {
   tokenAddress: string;
@@ -78,7 +78,7 @@ export function Navigation() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-4 flex-1">
             <Link href="/" className="flex items-center gap-2 hover-elevate rounded-md px-2 py-1 shrink-0" data-testid="link-home">
-              <img src={logoUrl} alt="SimFi Logo" className="h-10 w-auto" style={{ mixBlendMode: 'multiply' }} />
+              <img src={logoUrl} alt="SimFi Logo" className="h-14 w-auto" />
             </Link>
             
             <div className="hidden md:flex gap-1">
