@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Search, Loader2, ArrowRight, TrendingUp, Zap, Shield, BarChart3, Users, Rocket, Star, Trophy } from 'lucide-react';
+import { Search, Loader2, ArrowRight, TrendingUp, Zap, Shield, BarChart3, Users, Rocket, Star, Trophy, Send } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth-context';
@@ -31,7 +31,6 @@ export default function Trade() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const { isAuthenticated, user } = useAuth();
-  const [contractAddress, setContractAddress] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
@@ -65,38 +64,8 @@ export default function Trade() {
     staleTime: 60000,
   });
 
-  const handleGoToToken = () => {
-    const trimmedAddress = contractAddress.trim();
-    if (!trimmedAddress) {
-      toast({
-        title: 'Invalid Input',
-        description: 'Please enter a valid contract address',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-    if (!base58Regex.test(trimmedAddress)) {
-      toast({
-        title: 'Invalid Address',
-        description: 'Contract address must be 32-44 characters of valid Base58',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setLocation(`/token/${trimmedAddress}`);
-  };
-
   const handleTokenClick = (address: string) => {
     setLocation(`/token/${address}`);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleGoToToken();
-    }
   };
 
   const hasSearchResults = searchResults && searchResults.results.length > 0;
@@ -206,42 +175,11 @@ export default function Trade() {
         <div className="mb-12">
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold mb-2">Start Trading</h2>
-            <p className="text-muted-foreground">Enter a contract address or search to begin</p>
+            <p className="text-muted-foreground">Search for tokens to begin trading</p>
           </div>
 
           <Card className="p-6 md:p-8">
-            <div className="mb-6">
-              <label className="block text-sm font-semibold mb-3 text-foreground">
-                Contract Address
-              </label>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Input
-                  type="text"
-                  placeholder="Enter Solana token contract address..."
-                  value={contractAddress}
-                  onChange={(e) => setContractAddress(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  className="flex-1 font-mono"
-                  data-testid="input-contract-address"
-                />
-                <Button
-                  onClick={handleGoToToken}
-                  className="gap-2 whitespace-nowrap"
-                  data-testid="button-go-to-token"
-                >
-                  Go to Token
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                Example: 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
-              </p>
-            </div>
-
-            <div className="relative pt-6 border-t">
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-3">
-                <span className="text-sm text-muted-foreground font-semibold">OR</span>
-              </div>
+            <div>
               <label className="block text-sm font-semibold mb-3 text-foreground">
                 Search Tokens
               </label>
@@ -258,6 +196,28 @@ export default function Trade() {
                 {isSearching && (
                   <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 animate-spin text-muted-foreground" />
                 )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Example: POPCAT, pump, or paste a token contract address
+              </p>
+            </div>
+
+            {/* Telegram Bot Link */}
+            <div className="mt-6 pt-6 border-t">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-center sm:text-left">
+                  <h3 className="text-sm font-semibold mb-1">Trade on Telegram</h3>
+                  <p className="text-xs text-muted-foreground">Access SimFi directly from Telegram</p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="gap-2 gradient-simfi-border"
+                  onClick={() => window.open('https://t.me/SimFinance_Bot', '_blank')}
+                  data-testid="button-telegram-bot"
+                >
+                  <Send className="h-4 w-4" />
+                  @SimFinance_Bot
+                </Button>
               </div>
             </div>
           </Card>
