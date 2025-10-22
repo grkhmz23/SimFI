@@ -73,12 +73,14 @@ export function Navigation() {
   };
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <nav className="sticky top-0 z-50 border-b border-border bg-gradient-to-r from-primary/10 via-background to-chart-2/10 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-4 flex-1">
             <Link href="/" className="flex items-center gap-2 hover-elevate rounded-md px-2 py-1 shrink-0" data-testid="link-home">
-              <img src={logoUrl} alt="SimFi Logo" className="h-10 w-auto" />
+              <div className="bg-background rounded-full p-1.5 flex items-center justify-center">
+                <img src={logoUrl} alt="SimFi Logo" className="h-8 w-auto" />
+              </div>
             </Link>
             
             <div className="hidden md:flex gap-1">
