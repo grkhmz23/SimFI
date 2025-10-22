@@ -102,11 +102,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/auth/login', async (req, res) => {
     try {
-      // Validate request body with Zod
+      // Validate request body with Zod - accept either email OR username
       const loginSchema = z.object({
-        email: z.string().email('Invalid email format'),
+        email: z.string().optional(),
+        username: z.string().optional(),
         password: z.string().min(1, 'Password is required'),
-      });
+      }).refine(
+        data => data.email || data.username,
+        { message: 'Either email or username is required' }
+      );
       
       const validationResult = loginSchema.safeParse(req.body);
       if (!validationResult.success) {
@@ -115,9 +119,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const { email, password } = validationResult.data;
+      const { email, username, password } = validationResult.data;
       
-      const user = await storage.getUserByEmail(email);
+      // Try to find user by email or username
+      let user;
+      if (email) {
+        user = await storage.getUserByEmail(email);
+      } else if (username) {
+        user = await storage.getUserByUsername(username);
+      }
+      
       if (!user) {
         return res.status(400).json({ error: 'Invalid credentials' });
       }
