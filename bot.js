@@ -19,8 +19,8 @@ const formatSol = (lamports) => {
   return sol.toFixed(4);
 };
 
-const formatTokenAmount = (lamports) => {
-  const tokens = Number(lamports) / 1_000_000_000;
+const formatTokenAmount = (lamports, decimals = 6) => {
+  const tokens = Number(lamports) / (10 ** decimals);
   return tokens.toFixed(2);
 };
 
@@ -190,7 +190,7 @@ bot.action('sell', async (ctx) => {
 
   const buttons = positions.map(pos => [
     Markup.button.callback(
-      `${pos.tokenSymbol} (${formatTokenAmount(pos.amount)})`,
+      `${pos.tokenSymbol} (${formatTokenAmount(pos.amount, pos.decimals || 6)})`,
       `sell_token:${pos.tokenAddress}`
     )
   ]);
@@ -233,7 +233,7 @@ bot.action(/^sell_token:(.+)$/, async (ctx) => {
 
   await ctx.reply(
     `📉 *Selling ${position.tokenSymbol}*\n\n` +
-    `You hold: *${formatTokenAmount(position.amount)} ${position.tokenSymbol}*\n` +
+    `You hold: *${formatTokenAmount(position.amount, position.decimals || 6)} ${position.tokenSymbol}*\n` +
     `Entry Price: *${formatSol(position.entryPrice)} SOL*\n\n` +
     `Select how much to sell:`,
     {
@@ -289,9 +289,10 @@ bot.action(/^sell_pct:(\d+)$/, async (ctx) => {
   }
 
   userStates.delete(ctx.from.id);
+  const decimals = state.position.decimals || 6;
   await ctx.reply(
     `✅ Successfully sold ${percentage}% of ${state.position.tokenSymbol}!\n\n` +
-    `Amount: *${formatTokenAmount(sellAmountLamports)} ${state.position.tokenSymbol}*\n` +
+    `Amount: *${formatTokenAmount(sellAmountLamports, decimals)} ${state.position.tokenSymbol}*\n` +
     `Received: *${formatSol(result.data.trade?.solReceived || result.data.solReceived)} SOL*\n` +
     `Profit/Loss: *${formatSol(result.data.trade?.profitLoss || result.data.profitLoss)} SOL*`,
     { parse_mode: 'Markdown' }
@@ -324,7 +325,7 @@ bot.action('positions', async (ctx) => {
 
   const buttons = positions.map(pos => [
     Markup.button.callback(
-      `${pos.tokenSymbol} (${formatTokenAmount(pos.amount)})`,
+      `${pos.tokenSymbol} (${formatTokenAmount(pos.amount, pos.decimals || 6)})`,
       `view_position:${pos.id}`
     )
   ]);
@@ -375,9 +376,11 @@ const showPositionDetails = async (ctx, positionId, isRefresh = false) => {
   const positionAmount = BigInt(position.amount);
   const entryPrice = BigInt(position.entryPrice);
   const solSpent = BigInt(position.solSpent);
+  const decimals = position.decimals || 6;
 
-  // Calculate current value: (amount * currentPrice) / 1e9
-  const currentValue = (positionAmount * currentPrice) / BigInt(1_000_000_000);
+  // Calculate current value: (amount * currentPrice) / 10^decimals
+  const decimalDivisor = BigInt(10 ** decimals);
+  const currentValue = (positionAmount * currentPrice) / decimalDivisor;
   
   // Calculate P&L: currentValue - solSpent
   const profitLoss = currentValue - solSpent;
@@ -388,7 +391,7 @@ const showPositionDetails = async (ctx, positionId, isRefresh = false) => {
   const message = 
     `📊 *Position Details${isRefresh ? ' (Refreshed)' : ''}*\n\n` +
     `🪙 *${position.tokenSymbol}* (${position.tokenName})\n\n` +
-    `💼 Amount: *${formatTokenAmount(position.amount)}*\n` +
+    `💼 Amount: *${formatTokenAmount(position.amount, decimals)}*\n` +
     `💰 Balance: *${formatSol(user.balance)} SOL*\n\n` +
     `📈 Entry Price: *${formatSol(position.entryPrice)} SOL*\n` +
     `📊 Current Price: *${formatSol(currentPrice.toString())} SOL*\n\n` +
@@ -642,10 +645,11 @@ bot.on('text', async (ctx) => {
 
     userStates.delete(userId);
     const tokenAmount = result.data.tokensReceived || 0;
+    const decimals = 6; // pump.fun tokens use 6 decimals
     
     await ctx.reply(
       `✅ Successfully bought *${state.token.symbol}*!\n\n` +
-      `Amount: *${formatTokenAmount(tokenAmount)} ${state.token.symbol}*\n` +
+      `Amount: *${formatTokenAmount(tokenAmount, decimals)} ${state.token.symbol}*\n` +
       `Spent: *${amount} SOL*`,
       { parse_mode: 'Markdown' }
     );
@@ -690,10 +694,11 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
 
   userStates.delete(userId);
   const tokenAmount = result.data.tokensReceived || 0;
+  const decimals = 6; // pump.fun tokens use 6 decimals
   
   await ctx.reply(
     `✅ Successfully bought *${state.token.symbol}*!\n\n` +
-    `Amount: *${formatTokenAmount(tokenAmount)} ${state.token.symbol}*\n` +
+    `Amount: *${formatTokenAmount(tokenAmount, decimals)} ${state.token.symbol}*\n` +
     `Spent: *${amount} SOL*`,
     { parse_mode: 'Markdown' }
   );
