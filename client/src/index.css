@@ -346,4 +346,46 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
   }
+
+  /* SimFi Brand Gradients */
+  .gradient-simfi {
+    background: linear-gradient(135deg, hsl(172 81% 55%) 0%, hsl(249 79% 67%) 100%);
+  }
+
+  .gradient-simfi-radial {
+    background: radial-gradient(ellipse at top, hsl(172 81% 55% / 0.15), transparent 50%),
+                radial-gradient(ellipse at bottom, hsl(249 79% 67% / 0.15), transparent 50%);
+  }
+
+  .gradient-simfi-text {
+    background: linear-gradient(135deg, hsl(172 81% 65%) 0%, hsl(249 79% 75%) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Animated gradient background */
+  @keyframes gradient-shift {
+    0%, 100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
+
+  .gradient-animated {
+    background: linear-gradient(135deg, hsl(172 81% 55%), hsl(249 79% 67%), hsl(172 81% 55%));
+    background-size: 200% 200%;
+    animation: gradient-shift 8s ease infinite;
+  }
+
+  /* Section backgrounds with gradients */
+  .section-gradient-top {
+    background: linear-gradient(to bottom, hsl(172 81% 55% / 0.05), transparent);
+  }
+
+  .section-gradient-bottom {
+    background: linear-gradient(to top, hsl(249 79% 67% / 0.05), transparent);
+  }
 }
