@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TradeModal } from '@/components/TradeModal';
+import TokenChart from '@/components/TokenChart';
 import { useAuth } from '@/lib/auth-context';
 import { ArrowLeft, TrendingUp, ExternalLink } from 'lucide-react';
 import { formatSol, formatTokenAmount, toBigInt } from '@/lib/lamports';
@@ -176,17 +177,16 @@ export default function TokenPage() {
         </div>
 
         {/* Chart Container */}
-        <Card className="p-0 overflow-hidden mb-6">
-          <div className="w-full" style={{ height: '600px', minHeight: '500px' }}>
-            <iframe
-              title={`${token.symbol} Price Chart`}
-              src={`https://www.gmgn.cc/kline/sol/${tokenAddress}?theme=dark&interval=15`}
-              className="w-full h-full border-0"
-              data-testid="iframe-chart"
-              allow="clipboard-write"
-            />
-          </div>
-        </Card>
+        <TokenChart
+          tokenAddress={tokenAddress!}
+          tokenSymbol={token.symbol}
+          tokenName={token.name}
+          currentPrice={token.price}
+          priceChange24h={0}
+          volume24h={0}
+          liquidity={0}
+          height="600px"
+        />
 
         {/* Position Info (if user owns this token) */}
         {userPosition && (
