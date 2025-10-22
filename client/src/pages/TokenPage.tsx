@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { TradeModal } from '@/components/TradeModal';
 import TokenChart from '@/components/TokenChart';
 import { useAuth } from '@/lib/auth-context';
-import { ArrowLeft, TrendingUp, ExternalLink } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { ArrowLeft, TrendingUp, ExternalLink, Copy } from 'lucide-react';
 import { formatSol, formatTokenAmount, toBigInt, formatUSD } from '@/lib/lamports';
 import type { Token, Position } from '@shared/schema';
 
@@ -16,6 +17,7 @@ export default function TokenPage() {
   const tokenAddress = params.address;
   const [location, setLocation] = useLocation();
   const { isAuthenticated } = useAuth();
+  const { toast } = useToast();
   
   // Get token from location state (passed from navigation)
   const locationState = (typeof window !== 'undefined' && (window.history.state as any)?.state) || {};
@@ -94,6 +96,22 @@ export default function TokenPage() {
     return `$${mc.toFixed(0)}`;
   };
 
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(tokenAddress!);
+      toast({
+        title: 'Copied!',
+        description: 'Token address copied to clipboard',
+      });
+    } catch (err) {
+      toast({
+        title: 'Failed to copy',
+        description: 'Please copy manually',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-6 max-w-7xl">
@@ -118,9 +136,14 @@ export default function TokenPage() {
                 </Badge>
               </div>
               <div className="flex items-center gap-2">
-                <p className="text-sm font-mono text-muted-foreground" data-testid="text-token-address">
+                <button
+                  onClick={copyToClipboard}
+                  className="text-sm font-mono text-muted-foreground hover:text-primary transition-colors cursor-pointer flex items-center gap-2 group"
+                  data-testid="button-copy-address"
+                >
                   {tokenAddress}
-                </p>
+                  <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
                 <a
                   href={`https://solscan.io/token/${tokenAddress}`}
                   target="_blank"
@@ -156,13 +179,7 @@ export default function TokenPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <Card className="p-4">
-            <p className="text-xs text-muted-foreground uppercase mb-1">Current Price</p>
-            <p className="text-2xl font-bold font-mono text-primary" data-testid="text-price">
-              {formatUSD(token.price, 6)}
-            </p>
-          </Card>
+        <div className="mb-6">
           <Card className="p-4">
             <p className="text-xs text-muted-foreground uppercase mb-1">Market Cap</p>
             <p className="text-2xl font-bold text-foreground" data-testid="text-marketcap">
