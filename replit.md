@@ -6,6 +6,16 @@ This is a full-stack web application for paper trading Solana memecoins from pum
 
 **Core Purpose**: Enable users to simulate trading of Solana memecoins without financial risk, using real-time market data from pump.fun's WebSocket API.
 
+## Recent Changes (October 22, 2025)
+
+**BigInt Precision Implementation**:
+- Migrated from Number to BigInt arithmetic to prevent precision loss for positions >2^53 lamports
+- Updated database schema to use `bigint({ mode: "bigint" })` for all currency fields
+- Removed Jupiter quotes from trade execution (now display-only)
+- All trades now use deterministic BigInt calculations with `currentPrice`
+- Added BigInt utilities: `toBigInt()`, `formatTokenAmount()`, `lamportsToTokens()`
+- Created `serializeBigInts()` helper for JSON responses (converts BigInt→string, preserves Date objects)
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
@@ -51,10 +61,15 @@ Preferred communication style: Simple, everyday language.
 - Tables: users, positions, tradeHistory, leaderboardPeriods
 
 **Critical Architectural Decision**: 
-- **Problem**: Floating-point arithmetic is imprecise for currency
-- **Solution**: Store all SOL values as Lamport integers (1 billion = 1 SOL)
-- **Rationale**: Prevents rounding errors in financial calculations, ensures accuracy in profit/loss tracking
-- **Tradeoff**: Requires conversion functions but eliminates floating-point precision issues
+- **Problem**: Floating-point arithmetic is imprecise for currency; Number type loses precision above 2^53 lamports
+- **Solution**: Store all SOL values as Lamport integers (1 billion = 1 SOL) using BigInt end-to-end
+- **Rationale**: Prevents rounding errors in financial calculations, ensures accuracy for positions of any size
+- **Implementation**: 
+  - Database: All currency columns use `bigint({ mode: "bigint" })` with SQL literal defaults
+  - Backend: All arithmetic uses BigInt, serializes to strings for JSON transmission
+  - Frontend: Accepts strings, uses BigInt utilities for calculations, Number conversion only for display
+  - Jupiter quotes: Display-only (price impact estimation), never used for trade execution
+- **Tradeoff**: Requires string transmission and BigInt utilities, but eliminates all precision loss
 
 ### Authentication & Authorization
 
