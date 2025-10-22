@@ -12,8 +12,8 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
   walletAddress: text("wallet_address").notNull(),
-  balance: bigint("balance", { mode: "bigint" }).notNull().default(BigInt(10 * LAMPORTS_PER_SOL)),
-  totalProfit: bigint("total_profit", { mode: "bigint" }).notNull().default(0n),
+  balance: bigint("balance", { mode: "bigint" }).notNull().default(sql`10000000000`),
+  totalProfit: bigint("total_profit", { mode: "bigint" }).notNull().default(sql`0`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
