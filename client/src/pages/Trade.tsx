@@ -79,15 +79,36 @@ export default function Trade() {
         <div className="container mx-auto px-4 py-16 md:py-24 relative">
           <div className="max-w-5xl mx-auto">
             {/* Hero Content */}
-            <div className="text-center mb-12">
+            <div className="text-center">
               <h1 className="text-4xl md:text-6xl font-bold mb-4">
                 <span className="gradient-simfi-text">Your Gateway to</span>
                 <br />
                 <span className="text-foreground">Risk-Free DeFi Trading</span>
               </h1>
-              <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
+              <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-12">
                 Practice trading Solana memecoins with virtual SOL. Master your strategy without financial risk.
               </p>
+
+              {/* Google-style Search */}
+              <div className="max-w-3xl mx-auto mb-8">
+                <div className="relative">
+                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-6 w-6 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="Search tokens by name, symbol, or address..."
+                    className="h-16 pl-16 pr-5 text-lg rounded-full border-2 shadow-lg hover:shadow-xl transition-shadow bg-background/95 backdrop-blur"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    data-testid="input-search"
+                  />
+                  {isSearching && (
+                    <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 h-6 w-6 animate-spin text-primary" />
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground mt-3">
+                  Example: POPCAT, pump, or paste a token contract address
+                </p>
+              </div>
 
               {/* CTAs */}
               {!isAuthenticated && (
@@ -113,38 +134,6 @@ export default function Trade() {
                   </Button>
                 </div>
               )}
-
-              {/* Stats Row */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
-                <Card className="p-4 text-center bg-card/50 backdrop-blur">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <Zap className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="text-2xl font-bold gradient-simfi-text">Instant</div>
-                  <div className="text-sm text-muted-foreground">Execution</div>
-                </Card>
-                <Card className="p-4 text-center bg-card/50 backdrop-blur">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <Shield className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="text-2xl font-bold gradient-simfi-text">100%</div>
-                  <div className="text-sm text-muted-foreground">Risk-Free</div>
-                </Card>
-                <Card className="p-4 text-center bg-card/50 backdrop-blur">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <BarChart3 className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="text-2xl font-bold gradient-simfi-text">Real</div>
-                  <div className="text-sm text-muted-foreground">Market Data</div>
-                </Card>
-                <Card className="p-4 text-center bg-card/50 backdrop-blur">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <Users className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="text-2xl font-bold gradient-simfi-text">Live</div>
-                  <div className="text-sm text-muted-foreground">Leaderboard</div>
-                </Card>
-              </div>
             </div>
           </div>
         </div>
@@ -159,55 +148,28 @@ export default function Trade() {
         </div>
       )}
 
-      {/* Main Search Section */}
+      {/* Main Content Section */}
       <div className="container mx-auto px-4 py-12 max-w-5xl">
+        {/* Telegram Bot Link */}
         <div className="mb-12">
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold mb-2">Start Trading</h2>
-            <p className="text-muted-foreground">Search for tokens to begin trading</p>
-          </div>
-
-          <Card className="p-6 md:p-8">
-            <div>
-              <label className="block text-sm font-semibold mb-3 text-foreground">
-                Search Tokens
-              </label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="Search by name, symbol, or address..."
-                  className="pl-10"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  data-testid="input-search"
-                />
-                {isSearching && (
-                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 animate-spin text-muted-foreground" />
-                )}
+          <Card className="p-6">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="text-center sm:text-left">
+                <h3 className="text-sm font-semibold mb-1 flex items-center gap-2">
+                  <Send className="h-4 w-4 text-primary" />
+                  Trade on Telegram
+                </h3>
+                <p className="text-xs text-muted-foreground">Access SimFi directly from Telegram</p>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                Example: POPCAT, pump, or paste a token contract address
-              </p>
-            </div>
-
-            {/* Telegram Bot Link */}
-            <div className="mt-6 pt-6 border-t">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="text-center sm:text-left">
-                  <h3 className="text-sm font-semibold mb-1">Trade on Telegram</h3>
-                  <p className="text-xs text-muted-foreground">Access SimFi directly from Telegram</p>
-                </div>
-                <Button
-                  variant="outline"
-                  className="gap-2 gradient-simfi-border"
-                  onClick={() => window.open('https://t.me/SimFinance_Bot', '_blank')}
-                  data-testid="button-telegram-bot"
-                >
-                  <Send className="h-4 w-4" />
-                  @SimFinance_Bot
-                </Button>
-              </div>
+              <Button
+                variant="outline"
+                className="gap-2 gradient-simfi-border"
+                onClick={() => window.open('https://t.me/SimFinance_Bot', '_blank')}
+                data-testid="button-telegram-bot"
+              >
+                <Send className="h-4 w-4" />
+                @SimFinance_Bot
+              </Button>
             </div>
           </Card>
         </div>
