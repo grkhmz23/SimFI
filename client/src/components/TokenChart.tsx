@@ -15,7 +15,7 @@ import {
 } from 'chart.js';
 import { Chart } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
-import axios from 'axios';
+import { AlertCircle } from 'lucide-react';
 
 // Register Chart.js components
 ChartJS.register(
@@ -66,82 +66,45 @@ const TokenChart = ({
   const [error, setError] = useState<string | null>(null);
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>('1H');
   const [priceChange, setPriceChange] = useState<number>(0);
-
-  const getIntervalsForTimeframe = (tf: Timeframe): number => {
-    const intervals: Record<Timeframe, number> = {
-      '5M': 60,
-      '15M': 60,
-      '1H': 60,
-      '4H': 48,
-      '1D': 24,
-      '1W': 168
-    };
-    return intervals[tf] || 60;
-  };
-
-  const getMillisecondsPerInterval = (tf: Timeframe): number => {
-    const intervals: Record<Timeframe, number> = {
-      '5M': 5 * 60 * 1000,
-      '15M': 15 * 60 * 1000,
-      '1H': 60 * 60 * 1000,
-      '4H': 4 * 60 * 60 * 1000,
-      '1D': 24 * 60 * 60 * 1000,
-      '1W': 7 * 24 * 60 * 60 * 1000
-    };
-    return intervals[tf] || 60 * 60 * 1000;
-  };
-
-  const generatePriceAndVolumeHistory = (
-    current: number, 
-    intervals: number, 
-    tf: Timeframe
-  ): PriceDataPoint[] => {
-    const history: PriceDataPoint[] = [];
-    const msPerInterval = getMillisecondsPerInterval(tf);
-    const now = Date.now();
-    
-    let price = current * (0.85 + Math.random() * 0.15);
-    const avgVolume = 10000 + Math.random() * 90000;
-    
-    for (let i = intervals; i >= 0; i--) {
-      const timestamp = now - (i * msPerInterval);
-      
-      const volatility = 0.015 + Math.random() * 0.015;
-      const trend = (current - price) * 0.05;
-      const randomWalk = (Math.random() - 0.5) * volatility * price;
-      price = Math.max(0.000001, price + randomWalk + trend);
-      
-      const priceChangePercent = Math.abs(randomWalk / price);
-      const volumeMultiplier = 0.5 + Math.random() + priceChangePercent * 10;
-      const volume = avgVolume * volumeMultiplier;
-      
-      history.push({
-        timestamp: new Date(timestamp),
-        price: price,
-        volume: volume
-      });
-    }
-    
-    history[history.length - 1].price = current;
-    
-    return history;
-  };
+  const [latestPrice, setLatestPrice] = useState<number>(currentPrice);
 
   const fetchTokenData = async (tf: Timeframe) => {
     try {
       setLoading(true);
       setError(null);
 
-      const intervals = getIntervalsForTimeframe(tf);
-      const priceHistory = generatePriceAndVolumeHistory(currentPrice, intervals, tf);
+      // Fetch real OHLCV data from backend
+      const response = await fetch(`/api/tokens/${tokenAddress}/ohlcv?timeframe=${tf}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch chart data');
+      }
 
-      const oldestPrice = priceHistory[0].price;
-      const change = ((currentPrice - oldestPrice) / oldestPrice) * 100;
+      const data = await response.json();
+      const candles = data.candles || [];
+
+      if (candles.length === 0) {
+        throw new Error('No chart data available for this token');
+      }
+
+      // Convert OHLCV array to our format: [timestamp, open, high, low, close, volume]
+      const priceHistory = candles.map((candle: any[]) => {
+        const [timestamp, open, high, low, close, volume] = candle;
+        return {
+          timestamp: new Date(timestamp * 1000), // Convert Unix timestamp to milliseconds
+          price: close, // Use closing price
+          volume: volume || 0
+        };
+      });
+
+      const oldestPrice = priceHistory[0]?.price || currentPrice;
+      const latest = priceHistory[priceHistory.length - 1]?.price || currentPrice;
+      const change = ((latest - oldestPrice) / oldestPrice) * 100;
       setPriceChange(change);
+      setLatestPrice(latest); // Use the latest candle close price from OHLCV data
 
-      const labels = priceHistory.map(d => d.timestamp);
-      const prices = priceHistory.map(d => d.price);
-      const volumes = priceHistory.map(d => d.volume);
+      const labels = priceHistory.map((d: PriceDataPoint) => d.timestamp);
+      const prices = priceHistory.map((d: PriceDataPoint) => d.price);
+      const volumes = priceHistory.map((d: PriceDataPoint) => d.volume);
 
       const formattedData = {
         labels: labels,
@@ -235,7 +198,7 @@ const TokenChart = ({
             const y = context.parsed?.y;
             if (!y) return '';
             if (label === 'Price') {
-              return `Price: ${y.toFixed(8)} SOL`;
+              return `Price: $${y.toFixed(8)} USD`;
             } else if (label === 'Volume') {
               return `Volume: $${y.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
             }
@@ -273,7 +236,7 @@ const TokenChart = ({
         ticks: {
           color: '#888',
           callback: function(value) {
-            return (value as number).toFixed(8) + ' SOL';
+            return '$' + (value as number).toFixed(8);
           }
         }
       },
@@ -317,11 +280,12 @@ const TokenChart = ({
     return (
       <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'hsl(var(--card))', borderRadius: '12px' }}>
         <div style={{ textAlign: 'center', color: 'hsl(var(--destructive))' }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
+          <AlertCircle className="h-12 w-12 mx-auto mb-4" />
           <div>Error loading chart: {error}</div>
           <button 
             onClick={() => fetchTokenData(selectedTimeframe)}
             className="mt-4 px-6 py-2 bg-destructive text-destructive-foreground rounded-md hover-elevate active-elevate-2"
+            data-testid="button-retry-chart"
           >
             Retry
           </button>
@@ -339,7 +303,7 @@ const TokenChart = ({
             {tokenSymbol} <span style={{ color: 'hsl(var(--muted-foreground))', fontSize: '14px' }}>/ {tokenName}</span>
           </h3>
           <div style={{ fontSize: '28px', fontWeight: 'bold', color: priceChange >= 0 ? '#4CAF50' : '#f44336' }}>
-            {currentPrice.toFixed(8)} SOL
+            ${latestPrice.toFixed(8)} USD
             {priceChange !== null && (
               <span style={{ fontSize: '16px', marginLeft: '12px' }}>
                 {priceChange >= 0 ? '▲' : '▼'} {Math.abs(priceChange).toFixed(2)}%

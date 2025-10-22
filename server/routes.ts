@@ -607,6 +607,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get historical OHLCV data for charting
+  app.get('/api/tokens/:address/ohlcv', async (req, res) => {
+    try {
+      const { address } = req.params;
+      const { timeframe = '1H' } = req.query;
+
+      // First, find the pool address from DexScreener
+      const poolResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${address}`, 5000);
+      if (!poolResponse.ok) {
+        return res.status(404).json({ error: 'Token not found' });
+      }
+
+      const poolData = await poolResponse.json();
+      if (!poolData.pairs || poolData.pairs.length === 0) {
+        return res.status(404).json({ error: 'No trading pairs found' });
+      }
+
+      // Get the main pair (highest liquidity usually first)
+      const pair = poolData.pairs[0];
+      const pairAddress = pair.pairAddress;
+
+      // Map timeframe to GeckoTerminal aggregate and time unit
+      const timeframeMap: Record<string, { unit: string; aggregate: number; limit: number }> = {
+        '5M': { unit: 'minute', aggregate: 5, limit: 60 },
+        '15M': { unit: 'minute', aggregate: 15, limit: 60 },
+        '1H': { unit: 'hour', aggregate: 1, limit: 60 },
+        '4H': { unit: 'hour', aggregate: 4, limit: 48 },
+        '1D': { unit: 'day', aggregate: 1, limit: 24 },
+        '1W': { unit: 'day', aggregate: 7, limit: 24 }
+      };
+
+      const tfConfig = timeframeMap[timeframe as string] || timeframeMap['1H'];
+
+      // Fetch OHLCV data from GeckoTerminal
+      const geckoUrl = `https://api.geckoterminal.com/api/v2/networks/solana/pools/${pairAddress}/ohlcv/${tfConfig.unit}`;
+      const geckoResponse = await fetchWithTimeout(
+        `${geckoUrl}?aggregate=${tfConfig.aggregate}&limit=${tfConfig.limit}&currency=usd`,
+        10000
+      );
+
+      if (!geckoResponse.ok) {
+        console.warn(`GeckoTerminal API error: ${geckoResponse.status}`);
+        return res.status(500).json({ error: 'Failed to fetch chart data' });
+      }
+
+      const ohlcvData = await geckoResponse.json();
+      const candles = ohlcvData?.data?.attributes?.ohlcv_list || [];
+
+      res.json({ 
+        success: true,
+        candles,
+        pairAddress,
+        timeframe
+      });
+    } catch (error: any) {
+      console.error('OHLCV fetch error:', error);
+      res.status(500).json({ error: 'Failed to fetch chart data' });
+    }
+  });
+
   // Get trending tokens from DexScreener (must come BEFORE :address route)
   // Note: Using top boosts as proxy for trending since DexScreener doesn't have a dedicated trending endpoint
   app.get('/api/tokens/trending', async (req, res) => {
