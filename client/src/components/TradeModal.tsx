@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { Token, Position } from '@shared/schema';
 import { TrendingUp, TrendingDown, LogIn, Loader2 } from 'lucide-react';
-import { formatSol, toBigInt, formatTokenAmount, lamportsToTokens } from '@/lib/lamports';
+import { formatSol, toBigInt, formatTokenAmount, lamportsToTokens, formatUSD } from '@/lib/lamports';
 
 interface TradeModalProps {
   token?: Token;
@@ -286,9 +286,9 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
 
         <div className="space-y-6">
           <div className="rounded-lg bg-card p-4 text-center border border-card-border">
-            <p className="text-sm text-muted-foreground mb-2">Current Price (SOL)</p>
+            <p className="text-sm text-muted-foreground mb-2">Current Price</p>
             <p className="text-3xl font-bold font-mono text-primary" data-testid="text-current-price">
-              {formatSol(currentPrice, 8)}
+              {formatUSD(currentPrice, 6)}
             </p>
           </div>
 
