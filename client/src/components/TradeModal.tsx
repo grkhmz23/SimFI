@@ -174,8 +174,10 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   
   // Calculate sell value with BigInt arithmetic (always use currentPrice for precision)
   // Jupiter quotes are JS numbers which can lose precision for large values
+  // CRITICAL: Use token's decimals (6 for pump.fun), not SOL decimals (9)!
+  const tokenDecimals = position?.decimals || token?.decimals || 6;
   const sellValueBigInt = !isBuying 
-    ? (sellAmountBigInt * BigInt(Math.floor(currentPrice))) / BigInt(1_000_000_000)
+    ? (sellAmountBigInt * BigInt(Math.floor(currentPrice))) / BigInt(10 ** tokenDecimals)
     : BigInt(0);
   
   const profitLossBigInt = !isBuying ? sellValueBigInt - proportionalCostBigInt : BigInt(0);
