@@ -238,7 +238,8 @@ bot.action(/^sell_pct:(\d+)$/, async (ctx) => {
     return ctx.reply('❌ Error fetching token price: ' + tokenResult.error);
   }
   
-  const currentPriceLamports = BigInt(Math.floor(tokenResult.data.token.price * 1_000_000_000));
+  // token.price is already in lamports, don't convert again!
+  const currentPriceLamports = BigInt(Math.floor(tokenResult.data.token.price));
 
   const result = await apiRequest('/trades/sell', 'POST', {
     positionId: state.position.id,
@@ -480,7 +481,8 @@ bot.on('text', async (ctx) => {
     }
     
     // Send SOL amount as-is - API will convert to lamports internally
-    const priceLamports = BigInt(Math.floor(state.token.price * 1_000_000_000));
+    // token.price is already in lamports, don't convert again!
+    const priceLamports = BigInt(Math.floor(state.token.price));
 
     const result = await apiRequest('/trades/buy', 'POST', {
       tokenAddress: state.tokenAddress,
@@ -525,8 +527,9 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
     return ctx.reply('❌ Session expired. Please try again.');
   }
 
-  // Send SOL amount as-is - API will convert to lamports internally
-  const priceLamports = BigInt(Math.floor(state.token.price * 1_000_000_000));
+  // Send SOL amount as-is - API will convert to lamports internally  
+  // token.price is already in lamports, don't convert again!
+  const priceLamports = BigInt(Math.floor(state.token.price));
 
   const result = await apiRequest('/trades/buy', 'POST', {
     tokenAddress: state.tokenAddress,
