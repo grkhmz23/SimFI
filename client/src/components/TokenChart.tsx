@@ -302,14 +302,6 @@ const TokenChart = ({
           <h3 style={{ margin: '0 0 8px 0', color: 'hsl(var(--foreground))', fontSize: '20px', fontWeight: '600' }}>
             {tokenSymbol} <span style={{ color: 'hsl(var(--muted-foreground))', fontSize: '14px' }}>/ {tokenName}</span>
           </h3>
-          <div style={{ fontSize: '28px', fontWeight: 'bold', color: priceChange >= 0 ? '#4CAF50' : '#f44336' }}>
-            ${latestPrice.toFixed(8)} USD
-            {priceChange !== null && (
-              <span style={{ fontSize: '16px', marginLeft: '12px' }}>
-                {priceChange >= 0 ? '▲' : '▼'} {Math.abs(priceChange).toFixed(2)}%
-              </span>
-            )}
-          </div>
         </div>
         <div style={{ display: 'flex', gap: '24px', color: 'hsl(var(--muted-foreground))', fontSize: '14px' }}>
           <div>
