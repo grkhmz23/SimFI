@@ -23,18 +23,19 @@ export default function TokenPage() {
   const [showModal, setShowModal] = useState(false);
   const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
 
-  // Fetch token from API if not in navigation state (handles direct URLs and refresh)
+  // Fetch token from API with auto-refresh every 10 seconds
   const { data: tokenData, isLoading: tokenLoading } = useQuery<{ token: Token }>({
     queryKey: ['/api/tokens', tokenAddress],
-    enabled: !token && !!tokenAddress,
+    enabled: !!tokenAddress,
+    refetchInterval: 10000, // Refresh every 10 seconds to keep price and market cap up to date
   });
 
-  // Update token state when API data is available
+  // Update token state when API data is available or on refresh
   useEffect(() => {
-    if (tokenData?.token && !token) {
+    if (tokenData?.token) {
       setToken(tokenData.token);
     }
-  }, [tokenData, token]);
+  }, [tokenData]);
 
   // Fetch user's positions to check if they own this token
   const { data: positionsData } = useQuery<{ positions: Position[] }>({
