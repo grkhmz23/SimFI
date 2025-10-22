@@ -10,6 +10,19 @@ SimFi is a full-stack web and Telegram bot application for paper trading Solana 
 
 ## Recent Changes (October 22, 2025)
 
+**Telegram Bot Persistent Sessions (October 22, 2025 - Latest)**:
+- Implemented database-backed session persistence for Telegram bot
+- Users no longer need to login every time the bot restarts
+- Added `telegram_sessions` table to store session data (token, balance, expiry)
+- Sessions expire after 30 days of inactivity
+- Security: Protected telegram session endpoints with bot-secret authentication
+  - Added `x-bot-secret` header verification using TELEGRAM_BOT_TOKEN
+  - Prevents unauthorized access to stored JWT tokens
+  - Only bot process can access session endpoints
+- User flow: /start checks for existing session → auto-login if found → login flow if not
+- Logout deletes session from both database and memory
+- Status: ✅ Implemented and architect-reviewed
+
 **Telegram Bot Position Refresh Feature (October 22, 2025 - Late Evening)**:
 - Added position details view with real-time refresh capability
 - Users can now click on any position to view detailed information including:
