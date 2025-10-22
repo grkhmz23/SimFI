@@ -73,13 +73,14 @@ const showMainMenu = async (ctx) => {
     return ctx.reply('Please /start to login first.');
   }
 
-  const result = await apiRequest('/auth/me', 'GET', null, session.token);
+  const result = await apiRequest('/auth/profile', 'GET', null, session.token);
   if (!result.success) {
     userSessions.delete(ctx.from.id);
     return ctx.reply('Session expired. Please /start to login again.');
   }
 
-  const user = result.data.user;
+  // Profile endpoint returns user object directly, not wrapped
+  const user = result.data;
   session.balance = user.balance;
   
   await ctx.reply(
@@ -370,8 +371,10 @@ bot.on('text', async (ctx) => {
       return ctx.reply('❌ Login failed: ' + result.error + '\n\nPlease /start again.');
     }
 
+    // Extract token from Set-Cookie header
     const cookies = result.headers?.['set-cookie'];
     let token = null;
+    
     if (cookies && Array.isArray(cookies)) {
       const tokenCookie = cookies.find(c => c.startsWith('token='));
       if (tokenCookie) {
@@ -382,7 +385,9 @@ bot.on('text', async (ctx) => {
     }
 
     if (!token) {
-      console.error('Failed to extract token. Headers:', result.headers);
+      console.error('Failed to extract token from cookies');
+      console.error('Set-Cookie header:', result.headers?.['set-cookie']);
+      console.error('All headers:', JSON.stringify(result.headers, null, 2));
       return ctx.reply('❌ Authentication token not received. Please try again.');
     }
 
