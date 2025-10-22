@@ -23,6 +23,7 @@ export const positions = pgTable("positions", {
   tokenAddress: text("token_address").notNull(),
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
+  decimals: integer("decimals").notNull().default(6), // Most pump.fun tokens use 6 decimals
   entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(),
   amount: bigint("amount", { mode: "bigint" }).notNull(),
   solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(),
@@ -38,6 +39,7 @@ export const tradeHistory = pgTable("trade_history", {
   tokenAddress: text("token_address").notNull(),
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
+  decimals: integer("decimals").notNull().default(6), // Most pump.fun tokens use 6 decimals
   entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(),
   exitPrice: bigint("exit_price", { mode: "bigint" }).notNull(),
   amount: bigint("amount", { mode: "bigint" }).notNull(),
@@ -105,6 +107,7 @@ export interface Token {
   tokenAddress: string;
   name: string;
   symbol: string;
+  decimals?: number; // Token decimals (6 for most pump.fun tokens, 9 for SOL)
   price: number; // Price in Lamports per token
   marketCap: number;
   creator?: string;

@@ -306,7 +306,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/trades/buy', authenticateToken, async (req, res) => {
     try {
-      const { tokenAddress, tokenName, tokenSymbol, solAmount, price, tokenAmount: providedTokenAmount } = req.body;
+      const { tokenAddress, tokenName, tokenSymbol, solAmount, price, decimals = 6 } = req.body;
       
       if (!tokenAddress || !tokenName || !tokenSymbol || solAmount <= 0 || price <= 0) {
         return res.status(400).json({ error: 'Invalid trade data' });
@@ -321,10 +321,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const solSpent = BigInt(Math.floor(solAmount * 1_000_000_000)); // Convert SOL to Lamports
       const priceBigInt = BigInt(Math.floor(price)); // Price in Lamports per token
       
-      // Calculate tokens: solSpent (lamports) / price (lamports per token) = tokens
-      // Then multiply by 1e9 to store as "token-lamports" for precision
-      const tokenAmount = (solSpent * BigInt(1_000_000_000)) / priceBigInt;
-      console.log(`🔢 BigInt calculation: ${solAmount} SOL → ${Number(tokenAmount) / 1_000_000_000} tokens at ${price} Lamports/token`);
+      // Calculate tokens using correct decimals (6 for pump.fun, 9 for SOL-like tokens)
+      // tokenAmount = solSpent (lamports) / price (lamports per token) * 10^decimals
+      const decimalMultiplier = BigInt(10 ** decimals);
+      const tokenAmount = (solSpent * decimalMultiplier) / priceBigInt;
+      const tokensDisplay = Number(tokenAmount) / (10 ** decimals);
+      console.log(`🔢 Buy: ${solAmount} SOL → ${tokensDisplay.toFixed(2)} tokens (${decimals} decimals) at ${price} Lamports/token`);
       
       if (tokenAmount <= 0n) {
         return res.status(400).json({ error: 'SOL amount too small to buy tokens' });
@@ -344,12 +346,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tokenAddress,
         tokenName,
         tokenSymbol,
+        decimals,
         entryPrice: priceBigInt,
         amount: tokenAmount,
         solSpent,
       });
       
-      console.log(`💼 Position for ${tokenSymbol}: ${Number(position.amount) / 1_000_000_000} tokens (${position.id})`);
+      console.log(`💼 Position for ${tokenSymbol}: ${tokensDisplay.toFixed(2)} tokens (${position.id})`);
       
       const newUser = await storage.getUserById(req.userId!);
       
@@ -382,6 +385,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sellAmount = amountLamports ? BigInt(amountLamports) : position.amount;
       const exitPriceBigInt = BigInt(exitPriceLamports);
       
+      // Use position's decimals (6 for pump.fun tokens, 9 for SOL-like tokens)
+      const decimals = position.decimals || 6;
+      const decimalDivisor = BigInt(10 ** decimals);
+      
       // Validate sell amount is positive and not zero after rounding
       if (sellAmount <= 0n) {
         return res.status(400).json({ error: 'Sell amount must be greater than zero' });
@@ -392,8 +399,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Use BigInt arithmetic to prevent overflow
-      // solReceived = (sellAmount * exitPrice) / 1e9
-      const solReceived = (sellAmount * exitPriceBigInt) / BigInt(1_000_000_000);
+      // solReceived = (sellAmount * exitPrice) / 10^decimals
+      const solReceived = (sellAmount * exitPriceBigInt) / decimalDivisor;
       
       // proportionalCost = (solSpent * sellAmount) / totalAmount
       const proportionalCost = (position.solSpent * sellAmount) / position.amount;
@@ -409,6 +416,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tokenAddress: position.tokenAddress,
         tokenName: position.tokenName,
         tokenSymbol: position.tokenSymbol,
+        decimals,
         entryPrice: position.entryPrice,
         exitPrice: exitPriceBigInt,
         amount: sellAmount,
@@ -431,6 +439,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           tokenAddress: position.tokenAddress,
           tokenName: position.tokenName,
           tokenSymbol: position.tokenSymbol,
+          decimals,
           entryPrice: position.entryPrice,
           amount: remainingAmount,
           solSpent: remainingCost,
@@ -472,11 +481,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Convert exitPrice to BigInt
       const exitPriceBigInt = BigInt(Math.floor(exitPrice));
       
+      // Get decimals from first position (all positions of same token have same decimals)
+      const decimals = tokenPositions[0].decimals || 6;
+      const decimalDivisor = BigInt(10 ** decimals);
+      
       // Sell all positions
       for (const position of tokenPositions) {
         const sellAmount = position.amount;
-        // Use BigInt arithmetic: (sellAmount * exitPrice) / 1e9
-        const solReceived = (sellAmount * exitPriceBigInt) / BigInt(1_000_000_000);
+        // Use BigInt arithmetic: (sellAmount * exitPrice) / 10^decimals
+        const solReceived = (sellAmount * exitPriceBigInt) / decimalDivisor;
         const profitLoss = solReceived - position.solSpent;
         
         totalSolReceived += solReceived;
@@ -493,6 +506,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           tokenAddress: position.tokenAddress,
           tokenName: position.tokenName,
           tokenSymbol: position.tokenSymbol,
+          decimals,
           entryPrice: position.entryPrice,
           exitPrice: exitPriceBigInt,
           amount: sellAmount,
@@ -506,7 +520,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.deletePosition(position.id);
       }
       
-      console.log(`✅ Sold all ${tokenPositions.length} positions of ${tokenAddress}: ${Number(totalTokensSold) / 1_000_000_000} tokens for ${Number(totalSolReceived) / 1_000_000_000} SOL (P/L: ${Number(totalProfit) / 1_000_000_000} SOL)`);
+      const tokensDisplay = Number(totalTokensSold) / (10 ** decimals);
+      const solDisplay = Number(totalSolReceived) / 1_000_000_000;
+      const profitDisplay = Number(totalProfit) / 1_000_000_000;
+      console.log(`✅ Sold all ${tokenPositions.length} positions of ${tokenAddress}: ${tokensDisplay.toFixed(2)} tokens for ${solDisplay.toFixed(4)} SOL (P/L: ${profitDisplay.toFixed(4)} SOL)`);
       
       res.json({
         message: `Successfully sold ${tokenPositions.length} position(s)`,

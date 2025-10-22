@@ -631,7 +631,8 @@ bot.on('text', async (ctx) => {
       tokenName: state.token.name,
       tokenSymbol: state.token.symbol,
       solAmount: amount,  // Send as SOL number, not lamports
-      price: priceLamports.toString()
+      price: priceLamports.toString(),
+      decimals: 6  // Most pump.fun tokens use 6 decimals
     }, session.token);
 
     if (!result.success) {
@@ -678,7 +679,8 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
     tokenName: state.token.name,
     tokenSymbol: state.token.symbol,
     solAmount: amount,  // Send as SOL number, not lamports
-    price: priceLamports.toString()
+    price: priceLamports.toString(),
+    decimals: 6  // Most pump.fun tokens use 6 decimals
   }, session.token);
 
   if (!result.success) {
