@@ -27,7 +27,7 @@ export default function TokenPage() {
 
   // Fetch token from API with auto-refresh every 10 seconds
   const { data: tokenData, isLoading: tokenLoading } = useQuery<{ token: Token }>({
-    queryKey: ['/api/tokens', tokenAddress],
+    queryKey: [`/api/tokens/${tokenAddress}`],
     enabled: !!tokenAddress,
     refetchInterval: 10000, // Refresh every 10 seconds to keep price and market cap up to date
   });
