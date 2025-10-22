@@ -6,6 +6,8 @@ import { Card } from '@/components/ui/card';
 import { Search, Loader2, ArrowRight, TrendingUp } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/lib/auth-context';
+import { PositionsBar } from '@/components/PositionsBar';
 
 interface SearchResult {
   tokenAddress: string;
@@ -19,6 +21,7 @@ interface SearchResult {
 export default function Trade() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
+  const { isAuthenticated } = useAuth();
   const [contractAddress, setContractAddress] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -88,6 +91,12 @@ export default function Trade() {
             Enter a contract address or search to start trading
           </p>
         </div>
+
+        {isAuthenticated && (
+          <div className="mb-8">
+            <PositionsBar />
+          </div>
+        )}
 
         <Card className="p-8 mb-8">
           <div className="mb-6">
