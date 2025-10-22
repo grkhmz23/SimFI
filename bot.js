@@ -380,13 +380,13 @@ const showPositionDetails = async (ctx, positionId, isRefresh = false) => {
 
 bot.action(/^view_position:(.+)$/, async (ctx) => {
   await ctx.answerCbQuery();
-  const positionId = parseInt(ctx.match[1]);
+  const positionId = ctx.match[1]; // Keep as string (UUID)
   await showPositionDetails(ctx, positionId, false);
 });
 
 bot.action(/^refresh_position:(.+)$/, async (ctx) => {
   await ctx.answerCbQuery('🔄 Refreshing...');
-  const positionId = parseInt(ctx.match[1]);
+  const positionId = ctx.match[1]; // Keep as string (UUID)
   await showPositionDetails(ctx, positionId, true);
 });
 
