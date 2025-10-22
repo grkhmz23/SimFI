@@ -12,11 +12,17 @@ export function toBigInt(value: number | bigint | string): bigint {
 // Convert lamports to decimal token amount (BigInt → string, no precision loss)
 export function lamportsToTokens(lamports: number | bigint | string): string {
   const value = toBigInt(lamports);
+  if (value === 0n) return '0';
+  
   const wholePart = value / LAMPORTS_PER_SOL_BIGINT;
   const fractionalPart = value % LAMPORTS_PER_SOL_BIGINT;
   
-  // Convert to decimal string with proper precision
-  const fractionalStr = fractionalPart.toString().padStart(9, '0');
+  if (fractionalPart === 0n) {
+    return wholePart.toString();
+  }
+  
+  // Convert to decimal string and trim trailing zeros
+  const fractionalStr = fractionalPart.toString().padStart(9, '0').replace(/0+$/, '');
   return `${wholePart}.${fractionalStr}`;
 }
 

@@ -245,19 +245,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const solSpent = BigInt(Math.floor(solAmount * 1_000_000_000)); // Convert SOL to Lamports
       const priceBigInt = BigInt(Math.floor(price)); // Price in Lamports per token
       
-      // Use provided token amount from Jupiter quote if available, otherwise calculate
-      let tokenAmount: bigint;
-      if (providedTokenAmount && providedTokenAmount > 0) {
-        // Use Jupiter quote amount directly (already in correct format with 9 decimals)
-        tokenAmount = BigInt(Math.floor(providedTokenAmount));
-        console.log(`✅ Using Jupiter quote: ${solAmount} SOL → ${Number(tokenAmount) / 1_000_000_000} tokens at ${price} Lamports/token`);
-      } else {
-        // Fallback to simple calculation using BigInt arithmetic
-        // tokenAmount = (solSpent * 1e9) / price
-        tokenAmount = (solSpent * BigInt(1_000_000_000)) / priceBigInt;
-        console.log(`🔢 Simple calculation: solAmount=${solAmount} SOL, price=${price} Lamports/token`);
-        console.log(`🔢 solSpent=${solSpent} Lamports, tokenAmount=${tokenAmount}`);
-      }
+      // Always calculate tokens with BigInt arithmetic (no Jupiter quote usage)
+      // tokenAmount = (solSpent * 1e9) / price
+      const tokenAmount = (solSpent * BigInt(1_000_000_000)) / priceBigInt;
+      console.log(`🔢 BigInt calculation: ${solAmount} SOL → ${Number(tokenAmount) / 1_000_000_000} tokens at ${price} Lamports/token`);
       
       if (tokenAmount <= 0n) {
         return res.status(400).json({ error: 'SOL amount too small to buy tokens' });
@@ -300,9 +291,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/trades/sell', authenticateToken, async (req, res) => {
     try {
-      const { positionId, amount, exitPrice } = req.body as SellRequest;
+      const { positionId, amountLamports, exitPriceLamports } = req.body as any;
       
-      if (!positionId || exitPrice <= 0) {
+      if (!positionId || !exitPriceLamports) {
         return res.status(400).json({ error: 'Invalid sell data' });
       }
       
@@ -311,9 +302,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Position not found' });
       }
       
-      // Determine sell amount (full or partial) - convert to BigInt
-      const sellAmount = amount ? BigInt(Math.floor(amount * 1_000_000_000)) : position.amount;
-      const exitPriceBigInt = BigInt(Math.floor(exitPrice));
+      // Parse both as BigInt (sent as strings from frontend for precision)
+      const sellAmount = amountLamports ? BigInt(amountLamports) : position.amount;
+      const exitPriceBigInt = BigInt(exitPriceLamports);
       
       // Validate sell amount is positive and not zero after rounding
       if (sellAmount <= 0n) {
