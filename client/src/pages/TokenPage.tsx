@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { TradeModal } from '@/components/TradeModal';
 import { useAuth } from '@/lib/auth-context';
 import { ArrowLeft, TrendingUp, ExternalLink } from 'lucide-react';
-import { formatSol } from '@/lib/lamports';
+import { formatSol, formatTokenAmount, toBigInt } from '@/lib/lamports';
 import type { Token, Position } from '@shared/schema';
 
 export default function TokenPage() {
@@ -196,7 +196,7 @@ export default function TokenPage() {
               <div>
                 <p className="text-xs text-muted-foreground uppercase mb-1">Amount Held</p>
                 <p className="text-xl font-bold font-mono">
-                  {(Number(userPosition.amount) / 1_000_000_000).toLocaleString()} {token.symbol}
+                  {Number(formatTokenAmount(userPosition.amount, 2)).toLocaleString()} {token.symbol}
                 </p>
               </div>
               <div>
@@ -208,7 +208,12 @@ export default function TokenPage() {
               <div>
                 <p className="text-xs text-muted-foreground uppercase mb-1">Current Value</p>
                 <p className="text-xl font-bold font-mono text-primary">
-                  {formatSol((Number(userPosition.amount) / 1_000_000_000) * token.price)} SOL
+                  {(() => {
+                    const amount = toBigInt(userPosition.amount);
+                    const priceLamports = BigInt(Math.floor(token.price));
+                    const valueLamports = (amount * priceLamports) / BigInt(1_000_000_000);
+                    return formatSol(valueLamports);
+                  })()} SOL
                 </p>
               </div>
             </div>

@@ -1,8 +1,28 @@
 // 1 SOL = 1,000,000,000 Lamports
 export const LAMPORTS_PER_SOL = 1_000_000_000;
+export const LAMPORTS_PER_SOL_BIGINT = BigInt(LAMPORTS_PER_SOL);
 
+// Convert any input to BigInt (handles strings from API)
+export function toBigInt(value: number | bigint | string): bigint {
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'string') return BigInt(value);
+  return BigInt(Math.floor(value));
+}
+
+// Convert lamports to decimal token amount (BigInt → string, no precision loss)
+export function lamportsToTokens(lamports: number | bigint | string): string {
+  const value = toBigInt(lamports);
+  const wholePart = value / LAMPORTS_PER_SOL_BIGINT;
+  const fractionalPart = value % LAMPORTS_PER_SOL_BIGINT;
+  
+  // Convert to decimal string with proper precision
+  const fractionalStr = fractionalPart.toString().padStart(9, '0');
+  return `${wholePart}.${fractionalStr}`;
+}
+
+// Convert lamports to SOL for display (converts to Number - use only for display!)
 export function lamportsToSol(lamports: number | bigint | string): number {
-  const value = typeof lamports === 'string' ? BigInt(lamports) : lamports;
+  const value = toBigInt(lamports);
   return Number(value) / LAMPORTS_PER_SOL;
 }
 
@@ -16,4 +36,12 @@ export function formatSol(lamports: number | bigint | string, decimals: number =
 
 export function formatSolWithSymbol(lamports: number | bigint | string, decimals: number = 4): string {
   return `${formatSol(lamports, decimals)} SOL`;
+}
+
+// Format token amount with proper precision (no Number conversion)
+export function formatTokenAmount(amount: number | bigint | string, decimals: number = 2): string {
+  const tokenStr = lamportsToTokens(amount);
+  const [whole, frac] = tokenStr.split('.');
+  if (decimals === 0) return whole;
+  return `${whole}.${frac.slice(0, decimals)}`;
 }
