@@ -155,7 +155,7 @@ export default function TokenPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <Card className="p-4">
             <p className="text-xs text-muted-foreground uppercase mb-1">Current Price</p>
             <p className="text-2xl font-bold font-mono text-primary" data-testid="text-price">
@@ -166,12 +166,6 @@ export default function TokenPage() {
             <p className="text-xs text-muted-foreground uppercase mb-1">Market Cap</p>
             <p className="text-2xl font-bold text-foreground" data-testid="text-marketcap">
               {formatMarketCap(token.marketCap)}
-            </p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-xs text-muted-foreground uppercase mb-1">Creator</p>
-            <p className="text-lg font-mono text-foreground">
-              {token.creator ? `${token.creator.slice(0, 6)}...${token.creator.slice(-6)}` : 'N/A'}
             </p>
           </Card>
         </div>
