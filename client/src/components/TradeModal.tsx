@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { Token, Position } from '@shared/schema';
 import { TrendingUp, TrendingDown, LogIn, Loader2 } from 'lucide-react';
-import { formatSol } from '@/lib/lamports';
+import { formatSol, toBigInt, formatTokenAmount } from '@/lib/lamports';
 
 interface TradeModalProps {
   token?: Token;
@@ -140,9 +140,11 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     staleTime: 10000, // 10 seconds
   });
 
-  // Fetch Jupiter quote for selling
+  // Fetch Jupiter quote for selling (use BigInt arithmetic)
   const sellTokenAddress = position?.tokenAddress || '';
-  const sellAmount = !isBuying && position ? (Number(position.amount) * percentage / 100) : 0;
+  const sellAmount = !isBuying && position 
+    ? Number((toBigInt(position.amount) * BigInt(percentage)) / BigInt(100))
+    : 0;
   const sellTokenAmount = sellAmount / 1_000_000_000; // Convert to token amount
   const sellQuoteUrl = sellTokenAddress && sellTokenAmount > 0
     ? `/api/tokens/quote/sell?tokenAddress=${sellTokenAddress}&tokenAmount=${sellTokenAmount}`
@@ -164,11 +166,13 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     ? (jupiterQuote?.priceImpactPct || 0)
     : (jupiterSellQuote?.priceImpactPct || 0);
   
-  // Use Jupiter quote for sell value if available, fallback to simple calculation
+  // Use Jupiter quote for sell value if available, fallback to BigInt calculation
   const sellValue = !isBuying 
-    ? (jupiterSellQuote?.solAmountOut || ((sellAmount / 1_000_000_000) * currentPrice))
+    ? (jupiterSellQuote?.solAmountOut || Number((BigInt(sellAmount) * BigInt(Math.floor(currentPrice))) / BigInt(1_000_000_000)))
     : 0;
-  const proportionalCost = !isBuying && position ? (Number(position.solSpent) * percentage / 100) : 0;
+  const proportionalCost = !isBuying && position 
+    ? Number((toBigInt(position.solSpent) * BigInt(percentage)) / BigInt(100))
+    : 0;
   const profitLoss = !isBuying ? sellValue - proportionalCost : 0;
 
   const tradeMutation = useMutation({
@@ -237,7 +241,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
 
   const onSellSubmit = sellForm.handleSubmit((data) => {
     if (!position) return;
-    const tokensToSell = (Number(position.amount) * data.percentage) / 100 / 1_000_000_000;
+    const tokensToSell = Number((toBigInt(position.amount) * BigInt(data.percentage)) / BigInt(100)) / 1_000_000_000;
     
     // Use Jupiter quote exit price if available for realistic trade execution
     const exitPrice = jupiterSellQuote 
@@ -416,7 +420,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Your Position:</span>
                       <span className="font-mono">
-                        {(Number(position.amount) / 1_000_000_000).toLocaleString()} {symbol}
+                        {Number(formatTokenAmount(position.amount, 2)).toLocaleString()} {symbol}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">

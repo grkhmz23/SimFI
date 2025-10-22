@@ -41,6 +41,7 @@ async function fetchWithTimeout(url: string, timeoutMs: number = 5000): Promise<
 function serializeBigInts(obj: any): any {
   if (typeof obj === 'bigint') return obj.toString();
   if (obj === null || obj === undefined) return obj;
+  if (obj instanceof Date) return obj;
   if (typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.map(serializeBigInts);
   return Object.fromEntries(
