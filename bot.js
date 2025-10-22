@@ -1,5 +1,5 @@
-const { Telegraf, Markup } = require('telegraf');
-const axios = require('axios');
+import { Telegraf, Markup } from 'telegraf';
+import axios from 'axios';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:5000/api';
