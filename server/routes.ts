@@ -256,8 +256,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const solSpent = BigInt(Math.floor(solAmount * 1_000_000_000)); // Convert SOL to Lamports
       const priceBigInt = BigInt(Math.floor(price)); // Price in Lamports per token
       
-      // Always calculate tokens with BigInt arithmetic (no Jupiter quote usage)
-      // tokenAmount = (solSpent * 1e9) / price
+      // Calculate tokens: solSpent (lamports) / price (lamports per token) = tokens
+      // Then multiply by 1e9 to store as "token-lamports" for precision
       const tokenAmount = (solSpent * BigInt(1_000_000_000)) / priceBigInt;
       console.log(`🔢 BigInt calculation: ${solAmount} SOL → ${Number(tokenAmount) / 1_000_000_000} tokens at ${price} Lamports/token`);
       
