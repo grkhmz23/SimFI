@@ -1,6 +1,6 @@
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, desc, and, sql, gt } from 'drizzle-orm';
 import { db } from './db';
-import { users, positions, tradeHistory, leaderboardPeriods, type User, type Position, type Trade, type InsertUser, type InsertPosition, type InsertTrade, LAMPORTS_PER_SOL, solToLamports } from '@shared/schema';
+import { users, positions, tradeHistory, leaderboardPeriods, telegramSessions, type User, type Position, type Trade, type TelegramSession, type InsertUser, type InsertPosition, type InsertTrade, LAMPORTS_PER_SOL, solToLamports } from '@shared/schema';
 
 export interface IStorage {
   // User operations
@@ -34,6 +34,13 @@ export interface IStorage {
   createLeaderboardPeriod(startTime: Date, endTime: Date): Promise<typeof leaderboardPeriods.$inferSelect>;
   updateLeaderboardPeriodWinner(periodId: string, winnerId: string, winnerProfit: bigint): Promise<void>;
   getPastWinners(limit: number): Promise<any[]>;
+
+  // Telegram session operations
+  saveTelegramSession(telegramUserId: string, userId: string, token: string, balance: bigint): Promise<TelegramSession>;
+  getTelegramSession(telegramUserId: string): Promise<TelegramSession | undefined>;
+  getAllActiveTelegramSessions(): Promise<TelegramSession[]>;
+  deleteTelegramSession(telegramUserId: string): Promise<void>;
+  deleteExpiredTelegramSessions(): Promise<void>;
 }
 
 class DbStorage implements IStorage {
@@ -237,6 +244,58 @@ class DbStorage implements IStorage {
     .limit(limit);
     
     return result;
+  }
+
+  async saveTelegramSession(telegramUserId: string, userId: string, token: string, balance: bigint): Promise<TelegramSession> {
+    // Session expires in 30 days
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    
+    const [session] = await db.insert(telegramSessions)
+      .values({
+        telegramUserId,
+        userId,
+        token,
+        balance,
+        expiresAt,
+      })
+      .onConflictDoUpdate({
+        target: telegramSessions.telegramUserId,
+        set: {
+          userId,
+          token,
+          balance,
+          expiresAt,
+        },
+      })
+      .returning();
+    
+    return session;
+  }
+
+  async getTelegramSession(telegramUserId: string): Promise<TelegramSession | undefined> {
+    const [session] = await db.select()
+      .from(telegramSessions)
+      .where(and(
+        eq(telegramSessions.telegramUserId, telegramUserId),
+        gt(telegramSessions.expiresAt, new Date())
+      ));
+    return session;
+  }
+
+  async getAllActiveTelegramSessions(): Promise<TelegramSession[]> {
+    return db.select()
+      .from(telegramSessions)
+      .where(gt(telegramSessions.expiresAt, new Date()));
+  }
+
+  async deleteTelegramSession(telegramUserId: string): Promise<void> {
+    await db.delete(telegramSessions)
+      .where(eq(telegramSessions.telegramUserId, telegramUserId));
+  }
+
+  async deleteExpiredTelegramSessions(): Promise<void> {
+    await db.delete(telegramSessions)
+      .where(sql`${telegramSessions.expiresAt} <= NOW()`);
   }
 }
 
