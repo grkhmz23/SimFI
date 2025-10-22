@@ -226,6 +226,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================================================
+  // Telegram Session Routes (Bot-Only - Protected by shared secret)
+  // ============================================================================
+
+  // Middleware to verify telegram bot requests
+  const verifyBotSecret = (req: any, res: any, next: any) => {
+    const botSecret = req.headers['x-bot-secret'];
+    const expectedSecret = process.env.TELEGRAM_BOT_TOKEN;
+    
+    if (!botSecret || botSecret !== expectedSecret) {
+      return res.status(403).json({ error: 'Forbidden - Invalid bot secret' });
+    }
+    
+    next();
+  };
+
+  app.post('/api/telegram/session', verifyBotSecret, async (req, res) => {
+    try {
+      const { telegramUserId, userId, token, balance } = req.body;
+      
+      if (!telegramUserId || !userId || !token || balance === undefined) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+      
+      const session = await storage.saveTelegramSession(
+        telegramUserId,
+        userId,
+        token,
+        BigInt(balance)
+      );
+      
+      res.json(serializeBigInts({ session }));
+    } catch (error: any) {
+      console.error('Save telegram session error:', error);
+      res.status(500).json({ error: 'Could not save session' });
+    }
+  });
+
+  app.get('/api/telegram/session/:telegramUserId', verifyBotSecret, async (req, res) => {
+    try {
+      const { telegramUserId } = req.params;
+      const session = await storage.getTelegramSession(telegramUserId);
+      
+      if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+      }
+      
+      res.json(serializeBigInts({ session }));
+    } catch (error: any) {
+      console.error('Get telegram session error:', error);
+      res.status(500).json({ error: 'Could not fetch session' });
+    }
+  });
+
+  app.delete('/api/telegram/session/:telegramUserId', verifyBotSecret, async (req, res) => {
+    try {
+      const { telegramUserId } = req.params;
+      await storage.deleteTelegramSession(telegramUserId);
+      res.json({ message: 'Session deleted successfully' });
+    } catch (error: any) {
+      console.error('Delete telegram session error:', error);
+      res.status(500).json({ error: 'Could not delete session' });
+    }
+  });
+
+  // ============================================================================
   // Trading Routes
   // ============================================================================
   
