@@ -58,3 +58,22 @@ export function formatTokenAmount(amount: number | bigint | string, displayDecim
   const paddedFrac = frac.padEnd(displayDecimals, '0');
   return `${whole}.${paddedFrac.slice(0, displayDecimals)}`;
 }
+
+// USD conversion functions
+// Approximate SOL price in USD (can be updated or fetched from API)
+export const SOL_PRICE_USD = 175; // Update this value as needed
+
+// Convert lamports to USD
+export function lamportsToUSD(lamports: number | bigint | string): number {
+  const solAmount = lamportsToSol(lamports);
+  return solAmount * SOL_PRICE_USD;
+}
+
+// Format lamports as USD with $ symbol
+export function formatUSD(lamports: number | bigint | string, decimals: number = 4): string {
+  const usdAmount = lamportsToUSD(lamports);
+  if (usdAmount < 0.01 && usdAmount > 0) {
+    return `$${usdAmount.toFixed(6)}`;
+  }
+  return `$${usdAmount.toFixed(decimals)}`;
+}

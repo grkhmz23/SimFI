@@ -8,7 +8,7 @@ import { TradeModal } from '@/components/TradeModal';
 import TokenChart from '@/components/TokenChart';
 import { useAuth } from '@/lib/auth-context';
 import { ArrowLeft, TrendingUp, ExternalLink } from 'lucide-react';
-import { formatSol, formatTokenAmount, toBigInt } from '@/lib/lamports';
+import { formatSol, formatTokenAmount, toBigInt, formatUSD } from '@/lib/lamports';
 import type { Token, Position } from '@shared/schema';
 
 export default function TokenPage() {
@@ -160,7 +160,7 @@ export default function TokenPage() {
           <Card className="p-4">
             <p className="text-xs text-muted-foreground uppercase mb-1">Current Price</p>
             <p className="text-2xl font-bold font-mono text-primary" data-testid="text-price">
-              {formatSol(token.price, 8)} SOL
+              {formatUSD(token.price, 6)}
             </p>
           </Card>
           <Card className="p-4">
