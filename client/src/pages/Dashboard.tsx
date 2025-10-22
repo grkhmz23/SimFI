@@ -62,6 +62,7 @@ export default function Dashboard() {
   const { data: profile } = useQuery<Omit<User, 'password'>>({
     queryKey: ['/api/auth/profile'],
     enabled: !!user,
+    refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
 
   const currentUser = profile || user;
