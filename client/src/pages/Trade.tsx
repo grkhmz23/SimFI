@@ -90,40 +90,29 @@ export default function Trade() {
               </p>
 
               {/* CTAs */}
-              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-                {!isAuthenticated ? (
-                  <>
-                    <Button
-                      size="lg"
-                      onClick={() => setLocation('/register')}
-                      className="gradient-simfi text-white hover:opacity-90 transition-opacity gap-2 min-w-[200px]"
-                      data-testid="button-get-started"
-                    >
-                      <Rocket className="h-5 w-5" />
-                      Get Started Free
-                    </Button>
-                    <Button
-                      size="lg"
-                      variant="outline"
-                      onClick={() => setLocation('/leaderboard')}
-                      className="min-w-[200px]"
-                      data-testid="button-view-leaderboard"
-                    >
-                      <Trophy className="h-5 w-5" />
-                      View Leaderboard
-                    </Button>
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="flex items-center gap-3 text-lg">
-                      <span className="text-muted-foreground">Balance:</span>
-                      <span className="font-mono font-bold text-primary text-2xl">
-                        {(Number(user?.balance || 0) / 1_000_000_000).toFixed(0)} SOL
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
+              {!isAuthenticated && (
+                <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
+                  <Button
+                    size="lg"
+                    onClick={() => setLocation('/register')}
+                    className="gradient-simfi text-white hover:opacity-90 transition-opacity gap-2 min-w-[200px]"
+                    data-testid="button-get-started"
+                  >
+                    <Rocket className="h-5 w-5" />
+                    Get Started Free
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={() => setLocation('/leaderboard')}
+                    className="min-w-[200px]"
+                    data-testid="button-view-leaderboard"
+                  >
+                    <Trophy className="h-5 w-5" />
+                    View Leaderboard
+                  </Button>
+                </div>
+              )}
 
               {/* Stats Row */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
