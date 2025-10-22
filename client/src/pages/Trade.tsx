@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth-context';
 import { PositionsBar } from '@/components/PositionsBar';
-import logoUrl from '@assets/Gemini_Generated_Image_b4urolb4urolb4ur_1761160658932.png';
+import logoUrl from '@assets/Gemini_Generated_Image_psjmlkpsjmlkpsjm_1761162060724.png';
 
 interface SearchResult {
   tokenAddress: string;
@@ -113,9 +113,7 @@ export default function Trade() {
             {/* Hero Content */}
             <div className="text-center mb-12">
               <div className="flex items-center justify-center gap-2 mb-6">
-                <div className="bg-background rounded-full p-3 inline-flex items-center justify-center shadow-lg">
-                  <img src={logoUrl} alt="SimFi" className="h-16 w-auto" />
-                </div>
+                <img src={logoUrl} alt="SimFi" className="h-32 w-auto" />
               </div>
               <h1 className="text-4xl md:text-6xl font-bold mb-4">
                 <span className="gradient-simfi-text">Your Gateway to</span>
