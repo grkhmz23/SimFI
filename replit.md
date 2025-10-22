@@ -1,12 +1,28 @@
-# Solana Pump.Fun Paper Trading Application
+# SimFi - Simulation Finance
 
 ## Overview
 
-This is a full-stack web application for paper trading Solana memecoins from pump.fun. Users can practice trading with virtual SOL, track real-time token launches via WebSocket, and compete on leaderboards. The application provides a crypto-native trading interface inspired by pump.fun, Uniswap, Jupiter Exchange, and Raydium.
+SimFi is a full-stack web and Telegram bot application for paper trading Solana memecoins from pump.fun. Users can practice trading with virtual SOL, track real-time token launches via WebSocket, and compete on leaderboards. The application provides a crypto-native trading interface inspired by pump.fun, Uniswap, Jupiter Exchange, and Raydium.
+
+**Brand**: "SimFi - Your Gateway to Risk-Free DeFi"
 
 **Core Purpose**: Enable users to simulate trading of Solana memecoins without financial risk, using real-time market data from pump.fun's WebSocket API.
 
 ## Recent Changes (October 22, 2025)
+
+**SimFi Branding Implementation**:
+- Updated application name to SimFi (Simulation Finance)
+- Added SimFi logo with cyan-to-purple gradient branding
+- Updated color scheme to match logo: Primary cyan (172 81% 55%), Secondary purple (249 79% 67%)
+- Set favicon to SimFi logo
+- Updated all page titles and meta descriptions
+
+**Telegram Bot Implementation**:
+- Built complete Telegram bot with Telegraf framework
+- Features: Login, buy/sell tokens, view positions, leaderboard
+- JWT authentication with session management
+- Comprehensive session validation across all handlers
+- Bot running on process with token: 8488146641:AAH8wx1isl2XwrxTPFrlMYN4lxqusyyDOD4
 
 **BigInt Precision Implementation**:
 - Migrated from Number to BigInt arithmetic to prevent precision loss for positions >2^53 lamports
@@ -33,6 +49,7 @@ Preferred communication style: Simple, everyday language.
 
 **Design Philosophy**: 
 - Dark mode primary with high-contrast colors for trading data
+- SimFi cyan-to-purple gradient branding
 - Monospace fonts for prices and numerical values
 - Color-coded buy/sell actions (green/red)
 - Minimal visual distractions for rapid data scanning

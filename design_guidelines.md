@@ -1,8 +1,10 @@
-# Design Guidelines: Solana Pump.Fun Paper Trading Application
+# Design Guidelines: SimFi - Simulation Finance
 
-## Design Approach
+## Brand Identity
 
-**Reference-Based Approach**: Drawing inspiration from pump.fun, Uniswap, Jupiter Exchange, and Raydium to create a familiar, crypto-native trading interface that prioritizes clarity, speed, and data density.
+**SimFi**: Your Gateway to Risk-Free DeFi
+
+**Design Approach**: Drawing inspiration from pump.fun, Uniswap, Jupiter Exchange, and Raydium to create a familiar, crypto-native trading interface that prioritizes clarity, speed, and data density.
 
 **Core Principle**: Build a high-performance trading interface where users can quickly scan data, execute trades, and monitor positions without visual distractions.
 
@@ -15,9 +17,10 @@
 - Surface: 15 6% 12% (elevated panels)
 - Surface Elevated: 15 5% 16% (cards, modals)
 
-**Primary Brand** (Solana-inspired):
-- Primary: 270 80% 60% (vibrant purple)
-- Primary Hover: 270 80% 55%
+**Primary Brand** (SimFi cyan-to-purple gradient):
+- Primary: 172 81% 55% (vibrant cyan)
+- Primary Hover: 172 81% 50%
+- Secondary Accent: 249 79% 67% (vibrant purple)
 
 **Accent Colors**:
 - Success/Buy: 142 76% 45% (bright green)
@@ -74,8 +77,8 @@
 ### Navigation
 **Top Navigation Bar**:
 - Fixed header with backdrop blur
-- Logo left, wallet connection right
-- Navigation links centered (Dashboard, Trade, Portfolio, History)
+- SimFi logo left (cyan-to-purple gradient), wallet connection right
+- Navigation links centered (Trade, Trending, Leaderboard)
 - Height: 64px, dark background with subtle border-bottom
 
 ### Trading Interface
@@ -126,7 +129,7 @@
 - Monospace font for numerical inputs
 
 **Buttons**:
-- Primary: Purple gradient background, white text, medium shadow
+- Primary: Cyan background (172 81% 55%), white text, medium shadow
 - Success: Green solid, white text (Buy actions)
 - Danger: Red solid, white text (Sell actions)
 - Ghost: Transparent with border, text matches context
