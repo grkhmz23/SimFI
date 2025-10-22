@@ -24,12 +24,23 @@ const formatTokenAmount = (lamports) => {
   return tokens.toFixed(2);
 };
 
-const apiRequest = async (endpoint, method = 'GET', data = null, token = null) => {
+const apiRequest = async (endpoint, method = 'GET', data = null, token = null, isBotRequest = false) => {
   try {
+    const headers = {};
+    
+    if (token) {
+      headers['Cookie'] = `token=${token}`;
+    }
+    
+    // Add bot secret for telegram session endpoints
+    if (isBotRequest) {
+      headers['x-bot-secret'] = BOT_TOKEN;
+    }
+    
     const config = {
       method,
       url: `${API_BASE_URL}${endpoint}`,
-      headers: token ? { Cookie: `token=${token}` } : {},
+      headers,
       withCredentials: true
     };
 
@@ -96,6 +107,25 @@ const showMainMenu = async (ctx) => {
 };
 
 bot.start(async (ctx) => {
+  const telegramUserId = ctx.from.id.toString();
+  
+  // Check if user has an existing session
+  const sessionResult = await apiRequest(`/telegram/session/${telegramUserId}`, 'GET', null, null, true);
+  
+  if (sessionResult.success && sessionResult.data.session) {
+    const session = sessionResult.data.session;
+    userSessions.set(ctx.from.id, {
+      username: session.username,
+      token: session.token,
+      balance: BigInt(session.balance)
+    });
+    
+    await ctx.reply('👋 Welcome back! Your session has been restored.');
+    await showMainMenu(ctx);
+    return;
+  }
+  
+  // No existing session, start login flow
   userStates.set(ctx.from.id, { state: 'awaiting_username' });
   await ctx.reply(
     '👋 Welcome to Solana Paper Trading Bot!\n\n' +
@@ -105,8 +135,15 @@ bot.start(async (ctx) => {
 });
 
 bot.command('logout', async (ctx) => {
+  const telegramUserId = ctx.from.id.toString();
+  
+  // Delete session from database
+  await apiRequest(`/telegram/session/${telegramUserId}`, 'DELETE', null, null, true);
+  
+  // Delete from memory
   userSessions.delete(ctx.from.id);
   userStates.delete(ctx.from.id);
+  
   await ctx.reply('✅ Logged out successfully. Use /start to login again.');
 });
 
@@ -438,8 +475,16 @@ bot.action('main_menu', async (ctx) => {
 
 bot.action('logout', async (ctx) => {
   await ctx.answerCbQuery();
+  
+  const telegramUserId = ctx.from.id.toString();
+  
+  // Delete session from database
+  await apiRequest(`/telegram/session/${telegramUserId}`, 'DELETE', null, null, true);
+  
+  // Delete from memory
   userSessions.delete(ctx.from.id);
   userStates.delete(ctx.from.id);
+  
   await ctx.reply('✅ Logged out successfully. Use /start to login again.');
 });
 
@@ -488,11 +533,22 @@ bot.on('text', async (ctx) => {
       return ctx.reply('❌ Authentication token not received. Please try again.');
     }
 
+    const balance = result.data.user?.balance || 0;
+    
     userSessions.set(userId, {
       username: state.username,
       token,
-      balance: result.data.user?.balance || 0
+      balance
     });
+
+    // Save session to database for persistence
+    const telegramUserId = userId.toString();
+    await apiRequest('/telegram/session', 'POST', {
+      telegramUserId,
+      userId: result.data.user?.id,
+      token,
+      balance: balance.toString()
+    }, null, true);
 
     userStates.delete(userId);
     await ctx.reply(`✅ Welcome, *${state.username}*!`, { parse_mode: 'Markdown' });
