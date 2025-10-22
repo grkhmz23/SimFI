@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { TrendingUp, Home, BarChart3, History, Trophy, User, LogOut, Search, X, Wallet, Flame } from 'lucide-react';
+import { TrendingUp, Home, BarChart3, History, Trophy, User, LogOut, Search, X, Wallet, Flame, Info } from 'lucide-react';
 import { formatSol } from '@/lib/lamports';
 import { useQuery } from '@tanstack/react-query';
 import logoUrl from '@assets/Gemini_Generated_Image_b4urolb4urolb4ur_1761162361437.png';
@@ -36,6 +36,7 @@ export function Navigation() {
     { path: '/', label: 'Trade', icon: TrendingUp },
     { path: '/trending', label: 'Trending', icon: Flame },
     { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
+    { path: '/about', label: 'About', icon: Info },
   ];
 
   // Search tokens via API
