@@ -50,8 +50,8 @@ app.use((req, res, next) => {
     res.status(status).json({ message });
   });
 
-  // Serve static files from public directory (for favicon, etc.)
-  app.use(express.static("public"));
+  // Serve static files from client/public directory (for favicon, etc.) in development
+  app.use(express.static("client/public"));
   
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
