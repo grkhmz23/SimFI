@@ -10,6 +10,16 @@ SimFi is a full-stack web and Telegram bot application for paper trading Solana 
 
 ## Recent Changes (October 22, 2025)
 
+**Telegram Bot Position Refresh Feature (October 22, 2025 - Late Evening)**:
+- Added position details view with real-time refresh capability
+- Users can now click on any position to view detailed information including:
+  - Current balance, position amount, entry price, current price
+  - Current position value and profit/loss with percentage
+  - Refresh button to update prices without leaving the view
+- Implementation: Created showPositionDetails() helper with BigInt P&L calculations
+- Fixed UUID handling: Position IDs kept as strings (not parseInt) for correct comparison
+- Status: ✅ Implemented and architect-reviewed
+
 **CRITICAL FIX - Telegram Bot Token Calculation (October 22, 2025 - Late Evening)**:
 - **Issue**: Bot was giving users 1 billion times fewer tokens than they should receive
 - **Root Cause**: Double-conversion bug - API returns prices already in lamports, but bot was multiplying by 1B again
