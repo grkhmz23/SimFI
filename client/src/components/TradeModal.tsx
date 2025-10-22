@@ -200,11 +200,12 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
       
       await refreshUser();
       
+      const decimals = (token?.decimals || position?.decimals || 6);
       toast({
         title: isBuying ? 'Position Opened!' : 'Position Closed!',
         description: isBuying 
-          ? `Bought ${formatTokenAmount(toBigInt(response.tokensReceived || 0), 2)} ${symbol} for ${solAmount} SOL`
-          : `Sold ${formatTokenAmount(sellAmountBigInt, 2)} ${symbol}`,
+          ? `Bought ${formatTokenAmount(toBigInt(response.tokensReceived || 0), 2, decimals)} ${symbol} for ${solAmount} SOL`
+          : `Sold ${formatTokenAmount(sellAmountBigInt, 2, decimals)} ${symbol}`,
       });
       
       onClose();
@@ -232,12 +233,14 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     }
     
     // Always use currentPrice for precision (Jupiter quotes are display-only)
+    // Most pump.fun tokens use 6 decimals
     const tradeData = {
       tokenAddress: token.tokenAddress,
       tokenName: token.name,
       tokenSymbol: token.symbol,
       solAmount: data.solAmount,
       price: currentPrice,
+      decimals: token.decimals || 6, // Default to 6 for pump.fun tokens
     };
     
     tradeMutation.mutate(tradeData);

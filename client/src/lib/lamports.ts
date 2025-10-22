@@ -2,6 +2,9 @@
 export const LAMPORTS_PER_SOL = 1_000_000_000;
 export const LAMPORTS_PER_SOL_BIGINT = BigInt(LAMPORTS_PER_SOL);
 
+// Default decimals for pump.fun tokens
+export const DEFAULT_TOKEN_DECIMALS = 6;
+
 // Convert any input to BigInt (handles strings from API)
 export function toBigInt(value: number | bigint | string): bigint {
   if (typeof value === 'bigint') return value;
@@ -9,20 +12,21 @@ export function toBigInt(value: number | bigint | string): bigint {
   return BigInt(Math.floor(value));
 }
 
-// Convert lamports to decimal token amount (BigInt → string, no precision loss)
-export function lamportsToTokens(lamports: number | bigint | string): string {
+// Convert token smallest units to decimal amount (BigInt → string, no precision loss)
+export function lamportsToTokens(lamports: number | bigint | string, decimals: number = DEFAULT_TOKEN_DECIMALS): string {
   const value = toBigInt(lamports);
   if (value === 0n) return '0';
   
-  const wholePart = value / LAMPORTS_PER_SOL_BIGINT;
-  const fractionalPart = value % LAMPORTS_PER_SOL_BIGINT;
+  const divisor = BigInt(10 ** decimals);
+  const wholePart = value / divisor;
+  const fractionalPart = value % divisor;
   
   if (fractionalPart === 0n) {
     return wholePart.toString();
   }
   
   // Convert to decimal string and trim trailing zeros
-  const fractionalStr = fractionalPart.toString().padStart(9, '0').replace(/0+$/, '');
+  const fractionalStr = fractionalPart.toString().padStart(decimals, '0').replace(/0+$/, '');
   return `${wholePart}.${fractionalStr}`;
 }
 
@@ -45,9 +49,12 @@ export function formatSolWithSymbol(lamports: number | bigint | string, decimals
 }
 
 // Format token amount with proper precision (no Number conversion)
-export function formatTokenAmount(amount: number | bigint | string, decimals: number = 2): string {
-  const tokenStr = lamportsToTokens(amount);
-  const [whole, frac] = tokenStr.split('.');
-  if (decimals === 0) return whole;
-  return `${whole}.${frac.slice(0, decimals)}`;
+// displayDecimals: how many decimal places to show (default 2)
+// tokenDecimals: the token's actual decimals (6 for pump.fun, 9 for SOL)
+export function formatTokenAmount(amount: number | bigint | string, displayDecimals: number = 2, tokenDecimals: number = DEFAULT_TOKEN_DECIMALS): string {
+  const tokenStr = lamportsToTokens(amount, tokenDecimals);
+  const [whole, frac = ''] = tokenStr.split('.');
+  if (displayDecimals === 0) return whole;
+  const paddedFrac = frac.padEnd(displayDecimals, '0');
+  return `${whole}.${paddedFrac.slice(0, displayDecimals)}`;
 }
