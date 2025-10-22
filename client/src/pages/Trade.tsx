@@ -85,30 +85,9 @@ export default function Trade() {
                 <br />
                 <span className="text-foreground">Risk-Free DeFi Trading</span>
               </h1>
-              <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-12">
+              <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
                 Practice trading Solana memecoins with virtual SOL. Master your strategy without financial risk.
               </p>
-
-              {/* Google-style Search */}
-              <div className="max-w-3xl mx-auto mb-8">
-                <div className="relative">
-                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-6 w-6 text-muted-foreground" />
-                  <Input
-                    type="search"
-                    placeholder="Search tokens by name, symbol, or address..."
-                    className="h-16 pl-16 pr-5 text-lg rounded-full border-2 shadow-lg hover:shadow-xl transition-shadow bg-background/95 backdrop-blur"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    data-testid="input-search"
-                  />
-                  {isSearching && (
-                    <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 h-6 w-6 animate-spin text-primary" />
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground mt-3">
-                  Example: POPCAT, pump, or paste a token contract address
-                </p>
-              </div>
 
               {/* CTAs */}
               {!isAuthenticated && (
