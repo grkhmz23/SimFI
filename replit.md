@@ -10,6 +10,14 @@ SimFi is a full-stack web and Telegram bot application for paper trading Solana 
 
 ## Recent Changes (October 22, 2025)
 
+**CRITICAL FIX - Telegram Bot Token Calculation (October 22, 2025 - Late Evening)**:
+- **Issue**: Bot was giving users 1 billion times fewer tokens than they should receive
+- **Root Cause**: Double-conversion bug - API returns prices already in lamports, but bot was multiplying by 1B again
+- **Impact**: User buying 0.5 SOL received 0.00140845 tokens instead of ~1.4 million tokens
+- **Fix**: Removed incorrect `* 1_000_000_000` conversion in bot.js buy/sell handlers (3 locations)
+- **Result**: Token amounts now calculated correctly using price_lamports as-is from API
+- Status: ✅ Fixed and architect-reviewed
+
 **Landing Page Redesign (October 22, 2025 - Evening)**:
 - Complete professional redesign of Trade page with marketing-style layout
 - Added hero section with gradient background and SimFi branding
