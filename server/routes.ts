@@ -629,16 +629,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const pairAddress = pair.pairAddress;
 
       // Map timeframe to GeckoTerminal aggregate and time unit
+      // Note: GeckoTerminal doesn't support sub-minute data, so we use 1-minute data for 5S, 15S, 30S
       const timeframeMap: Record<string, { unit: string; aggregate: number; limit: number }> = {
-        '5M': { unit: 'minute', aggregate: 5, limit: 60 },
-        '15M': { unit: 'minute', aggregate: 15, limit: 60 },
-        '1H': { unit: 'hour', aggregate: 1, limit: 60 },
-        '4H': { unit: 'hour', aggregate: 4, limit: 48 },
-        '1D': { unit: 'day', aggregate: 1, limit: 24 },
-        '1W': { unit: 'day', aggregate: 7, limit: 24 }
+        '5S': { unit: 'minute', aggregate: 1, limit: 5 },   // ~5 minutes of 1-min candles
+        '15S': { unit: 'minute', aggregate: 1, limit: 15 },  // ~15 minutes of 1-min candles
+        '30S': { unit: 'minute', aggregate: 1, limit: 30 },  // ~30 minutes of 1-min candles
+        '1M': { unit: 'minute', aggregate: 1, limit: 60 },   // 1 hour of 1-min candles
+        '3M': { unit: 'minute', aggregate: 3, limit: 60 },   // 3 hours of 3-min candles
+        '5M': { unit: 'minute', aggregate: 5, limit: 60 }    // 5 hours of 5-min candles
       };
 
-      const tfConfig = timeframeMap[timeframe as string] || timeframeMap['1H'];
+      const tfConfig = timeframeMap[timeframe as string] || timeframeMap['1M'];
 
       // Fetch OHLCV data from GeckoTerminal
       const geckoUrl = `https://api.geckoterminal.com/api/v2/networks/solana/pools/${pairAddress}/ohlcv/${tfConfig.unit}`;
