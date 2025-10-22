@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { spawn } from "child_process";
 
 const app = express();
 app.use(express.json());
@@ -70,4 +71,27 @@ app.use((req, res, next) => {
   }, () => {
     log(`serving on port ${port}`);
   });
+
+  // Start Telegram bot in development mode
+  if (app.get("env") === "development" && process.env.TELEGRAM_BOT_TOKEN) {
+    console.log('🤖 Starting Telegram bot...');
+    const botProcess = spawn('node', ['bot.js'], {
+      stdio: 'inherit',
+      env: process.env
+    });
+
+    botProcess.on('error', (err) => {
+      console.error('❌ Failed to start Telegram bot:', err);
+    });
+
+    process.on('SIGINT', () => {
+      botProcess.kill();
+      process.exit();
+    });
+
+    process.on('SIGTERM', () => {
+      botProcess.kill();
+      process.exit();
+    });
+  }
 })();
