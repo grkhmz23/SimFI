@@ -102,10 +102,82 @@ export default function Trade() {
                     data-testid="input-search-main"
                   />
                 </div>
+
+                {/* Search Results - Shown directly below search bar */}
+                {showSearchResults && (
+                  <div className="mt-6">
+                    {isSearching ? (
+                      <Card className="p-8 text-center bg-card/95 backdrop-blur">
+                        <Loader2 className="h-8 w-8 mx-auto text-primary animate-spin mb-2" />
+                        <p className="text-sm text-muted-foreground">Searching tokens...</p>
+                      </Card>
+                    ) : hasSearchResults ? (
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {searchResults.results.map((result) => (
+                          <Card
+                            key={result.tokenAddress}
+                            className="p-4 hover-elevate active-elevate-2 cursor-pointer transition-all bg-card/95 backdrop-blur"
+                            onClick={() => handleTokenClick(result.tokenAddress)}
+                            data-testid={`search-result-${result.tokenAddress}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              {result.icon && (
+                                <img
+                                  src={result.icon}
+                                  alt={result.name}
+                                  className="w-10 h-10 rounded-full shrink-0"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                  }}
+                                />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h3 className="font-bold truncate" data-testid={`text-name-${result.tokenAddress}`}>
+                                    {result.name}
+                                  </h3>
+                                  <Badge variant="outline" className="text-xs">
+                                    {result.symbol}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs font-mono text-muted-foreground truncate">
+                                  {result.tokenAddress}
+                                </p>
+                                {result.marketCap !== undefined && result.marketCap > 0 && (
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <TrendingUp className="h-3 w-3 text-muted-foreground" />
+                                    <span className="text-sm font-semibold">
+                                      ${result.marketCap >= 1_000_000
+                                        ? `${(result.marketCap / 1_000_000).toFixed(2)}M`
+                                        : result.marketCap >= 1_000
+                                        ? `${(result.marketCap / 1_000).toFixed(1)}K`
+                                        : result.marketCap.toFixed(0)}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                              <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <Card className="p-8 text-center bg-card/95 backdrop-blur">
+                        <Search className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          No tokens found for "{debouncedQuery}"
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Try a different search term
+                        </p>
+                      </Card>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* CTAs */}
-              {!isAuthenticated && (
+              {!isAuthenticated && !showSearchResults && (
                 <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
                   <Button
                     size="lg"
@@ -168,87 +240,6 @@ export default function Trade() {
           </Card>
         </div>
 
-        {/* Search Results */}
-        {showSearchResults && (
-          <div className="mb-12">
-            <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-              <Search className="h-6 w-6 text-primary" />
-              Search Results
-              {hasSearchResults && (
-                <Badge variant="secondary" className="ml-2">
-                  {searchResults.results.length}
-                </Badge>
-              )}
-            </h2>
-
-            {isSearching ? (
-              <Card className="p-12 text-center">
-                <Loader2 className="h-12 w-12 mx-auto text-primary animate-spin mb-4" />
-                <p className="text-muted-foreground">Searching tokens...</p>
-              </Card>
-            ) : hasSearchResults ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {searchResults.results.map((result) => (
-                  <Card
-                    key={result.tokenAddress}
-                    className="p-4 hover-elevate active-elevate-2 cursor-pointer transition-all"
-                    onClick={() => handleTokenClick(result.tokenAddress)}
-                    data-testid={`search-result-${result.tokenAddress}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      {result.icon && (
-                        <img
-                          src={result.icon}
-                          alt={result.name}
-                          className="w-12 h-12 rounded-full shrink-0"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                          }}
-                        />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-bold text-lg truncate" data-testid={`text-name-${result.tokenAddress}`}>
-                            {result.name}
-                          </h3>
-                          <Badge variant="outline" className="text-xs">
-                            {result.symbol}
-                          </Badge>
-                        </div>
-                        <p className="text-xs font-mono text-muted-foreground truncate">
-                          {result.tokenAddress}
-                        </p>
-                        {result.marketCap !== undefined && result.marketCap > 0 && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <TrendingUp className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-sm font-semibold">
-                              ${result.marketCap >= 1_000_000
-                                ? `${(result.marketCap / 1_000_000).toFixed(2)}M`
-                                : result.marketCap >= 1_000
-                                ? `${(result.marketCap / 1_000).toFixed(1)}K`
-                                : result.marketCap.toFixed(0)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      <ArrowRight className="h-5 w-5 text-muted-foreground shrink-0" />
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <Card className="p-12 text-center">
-                <Search className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">
-                  No tokens found for "{debouncedQuery}"
-                </p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Try searching by token name, symbol, or contract address
-                </p>
-              </Card>
-            )}
-          </div>
-        )}
 
         {/* Trending Tokens Section */}
         {!showSearchResults && trendingTokens && trendingTokens.tokens && trendingTokens.tokens.length > 0 && (
