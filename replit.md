@@ -8,6 +8,22 @@ SimFi is a full-stack web and Telegram bot application for paper trading Solana 
 
 **Core Purpose**: Enable users to simulate trading of Solana memecoins without financial risk, using real-time market data from pump.fun's WebSocket API.
 
+## Recent Changes (October 23, 2025)
+
+**Telegram Bot Production Mode (October 23, 2025 - Morning)**:
+- Fixed Telegram bot to run in both development and production environments
+- Bot now starts automatically with server deployment (not just in development)
+- Users can close Replit and bot continues running when app is published
+- Removed development-only restriction from bot startup code
+- Status: ✅ Implemented and verified
+
+**Search UX & Error Handling (October 23, 2025 - Morning)**:
+- Moved search bar from header to centered Google-style position on Trade page
+- Added WebSocket error handler to suppress Vite HMR errors in production
+- Fixed token page crashes by preventing unhandled WebSocket rejections
+- Search functionality verified working correctly with DexScreener API
+- Status: ✅ Implemented and verified
+
 ## Recent Changes (October 22, 2025)
 
 **Telegram Bot Persistent Sessions (October 22, 2025 - Latest)**:
