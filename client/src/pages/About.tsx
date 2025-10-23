@@ -12,8 +12,10 @@ import {
   Users, 
   Target,
   Rocket,
-  AlertCircle
+  AlertCircle,
+  ExternalLink
 } from 'lucide-react';
+import { SiX } from 'react-icons/si';
 
 export default function About() {
   const [, setLocation] = useLocation();
@@ -242,6 +244,67 @@ export default function About() {
               for learning crypto trading. Every fee collected goes toward improving the platform, rewarding 
               skilled traders, and building a healthier trading community.
             </p>
+          </div>
+        </Card>
+
+        {/* Social Links */}
+        <Card className="p-8 mb-12">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold mb-2">Join Our Community</h2>
+            <p className="text-muted-foreground">
+              Connect with us on X (Twitter) for updates, tips, and community discussions
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+            <a
+              href="https://x.com/i/communities/1981329893569835367"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
+            >
+              <Card className="p-6 hover-elevate active-elevate-2 cursor-pointer transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="rounded-full bg-primary/10 p-3 shrink-0">
+                    <Users className="h-6 w-6 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <SiX className="h-4 w-4" />
+                      <h3 className="font-semibold">SimFi Community</h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Join our X community for discussions
+                    </p>
+                  </div>
+                  <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0" />
+                </div>
+              </Card>
+            </a>
+
+            <a
+              href="https://x.com/uncgorkh?s=21"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
+            >
+              <Card className="p-6 hover-elevate active-elevate-2 cursor-pointer transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="rounded-full bg-chart-2/10 p-3 shrink-0">
+                    <Rocket className="h-6 w-6 text-chart-2" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <SiX className="h-4 w-4" />
+                      <h3 className="font-semibold">Developer</h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Follow the SimFi developer on X
+                    </p>
+                  </div>
+                  <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0" />
+                </div>
+              </Card>
+            </a>
           </div>
         </Card>
 
