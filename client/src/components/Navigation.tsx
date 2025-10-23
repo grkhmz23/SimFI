@@ -16,7 +16,7 @@ import { TrendingUp, History, Trophy, User, LogOut, Wallet, Flame, Info, Search,
 import { formatSol } from '@/lib/lamports';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
-import logoUrl from '@assets/Gemini_Generated_Image_b4urolb4urolb4ur_1761162361437.png';
+import logoUrl from '@assets/simfilogo_1761226731940.png';
 
 interface SearchResult {
   tokenAddress: string;
