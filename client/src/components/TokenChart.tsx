@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, ColorType, type IChartApi, type ISeriesApi, type CandlestickData, type HistogramData } from 'lightweight-charts';
+import { createChart, ColorType, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi, type CandlestickData, type HistogramData } from 'lightweight-charts';
 import { AlertCircle } from 'lucide-react';
 
 interface TokenChartProps {
@@ -84,8 +84,8 @@ const TokenChart = ({
       },
     });
 
-    // Add candlestick series
-    const candleSeries = (chart as any).addCandlestickSeries({
+    // Add candlestick series (v5 API)
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#4ade80',
       downColor: '#f87171',
       borderUpColor: '#4ade80',
@@ -94,8 +94,8 @@ const TokenChart = ({
       wickDownColor: '#f87171',
     });
 
-    // Add volume series
-    const volumeSeries = (chart as any).addHistogramSeries({
+    // Add volume series (v5 API)
+    const volumeSeries = chart.addSeries(HistogramSeries, {
       color: '#6366f1',
       priceFormat: {
         type: 'volume',
