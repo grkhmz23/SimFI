@@ -1,0 +1,97 @@
+// hooks/useRealtimePrice.js
+// FREE real-time price updates using Jupiter API
+
+import { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+
+/**
+ * Hook for real-time token price updates
+ * Updates automatically every 5 seconds without page refresh
+ * Uses Jupiter API (FREE, no API key needed)
+ */
+const useRealtimePrice = (tokenAddress, updateInterval = 5000) => {
+  const [price, setPrice] = useState(null);
+  const [priceChange, setPriceChange] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastUpdate, setLastUpdate] = useState(null);
+
+  // Fetch price from Jupiter (FREE API)
+  const fetchPrice = useCallback(async () => {
+    if (!tokenAddress) return;
+
+    try {
+      // Jupiter Price API v4 (FREE, no authentication)
+      const response = await axios.get(
+        `https://price.jup.ag/v4/price?ids=${tokenAddress}&vsToken=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` // vs USDC
+      );
+
+      const tokenData = response.data.data[tokenAddress];
+      
+      if (tokenData && tokenData.price) {
+        const newPrice = parseFloat(tokenData.price);
+        
+        // Calculate price change if we have a previous price
+        if (price !== null) {
+          const change = ((newPrice - price) / price) * 100;
+          setPriceChange(change);
+        }
+        
+        setPrice(newPrice);
+        setLastUpdate(new Date());
+        setError(null);
+      } else {
+        // Fallback to DexScreener if Jupiter doesn't have the token
+        const fallbackResponse = await axios.get(
+          `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`
+        );
+        
+        if (fallbackResponse.data?.pairs?.[0]) {
+          const newPrice = parseFloat(fallbackResponse.data.pairs[0].priceUsd);
+          
+          if (price !== null) {
+            const change = ((newPrice - price) / price) * 100;
+            setPriceChange(change);
+          }
+          
+          setPrice(newPrice);
+          setLastUpdate(new Date());
+          setError(null);
+        }
+      }
+      
+      setLoading(false);
+    } catch (err) {
+      console.error('Error fetching price:', err);
+      setError('Failed to fetch price');
+      setLoading(false);
+    }
+  }, [tokenAddress, price]);
+
+  // Initial fetch
+  useEffect(() => {
+    fetchPrice();
+  }, [tokenAddress]);
+
+  // Set up auto-refresh interval
+  useEffect(() => {
+    if (!tokenAddress) return;
+
+    const interval = setInterval(() => {
+      fetchPrice();
+    }, updateInterval);
+
+    return () => clearInterval(interval);
+  }, [tokenAddress, updateInterval, fetchPrice]);
+
+  return {
+    price,
+    priceChange,
+    loading,
+    error,
+    lastUpdate,
+    refresh: fetchPrice
+  };
+};
+
+export default useRealtimePrice;
