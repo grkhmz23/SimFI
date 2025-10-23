@@ -24,28 +24,44 @@ export default function TokenPage() {
   const [token, setToken] = useState<Token | null>(locationState.token || null);
   const [showModal, setShowModal] = useState(false);
   const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
+  const [priceChange, setPriceChange] = useState<number>(0);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [previousPrice, setPreviousPrice] = useState<number | null>(null);
 
-  // Fetch token from API with auto-refresh every 10 seconds
-  const { data: tokenData, isLoading: tokenLoading, error: tokenError } = useQuery<{ token: Token }>({
+  // Fetch token from API with auto-refresh every 5 seconds (real-time updates)
+  const { data: tokenData, isLoading: tokenLoading, error: tokenError, dataUpdatedAt } = useQuery<{ token: Token }>({
     queryKey: [`/api/tokens/${tokenAddress}`],
     enabled: !!tokenAddress,
-    refetchInterval: 10000, // Refresh every 10 seconds to keep price and market cap up to date
+    refetchInterval: 5000, // Real-time: Refresh every 5 seconds
+    refetchIntervalInBackground: true, // Continue refreshing even when tab is not focused
     retry: 3, // Retry failed requests
     retryDelay: 1000, // Wait 1 second between retries
   });
 
-  // Update token state when API data is available or on refresh
+  // Update token state and calculate price change when API data is available
   useEffect(() => {
     if (tokenData?.token) {
       // Validate token data before setting state
       const newToken = tokenData.token;
       if (newToken.tokenAddress && newToken.name && newToken.symbol) {
+        // Calculate price change if we have a previous price
+        if (previousPrice !== null && newToken.price && previousPrice !== newToken.price) {
+          const change = ((newToken.price - previousPrice) / previousPrice) * 100;
+          setPriceChange(change);
+        }
+        
+        // Update previous price for next comparison
+        if (newToken.price) {
+          setPreviousPrice(newToken.price);
+        }
+        
         setToken(newToken);
+        setLastUpdate(new Date(dataUpdatedAt));
       } else {
         console.error('Invalid token data received:', newToken);
       }
     }
-  }, [tokenData]);
+  }, [tokenData, dataUpdatedAt]);
 
   // Fetch user's positions to check if they own this token
   const { data: positionsData } = useQuery<{ positions: Position[] }>({
@@ -207,15 +223,46 @@ export default function TokenPage() {
 
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-4xl font-bold text-foreground" data-testid="text-token-name">
+              <div className="flex items-center gap-3 mb-2 flex-wrap">
+                <h1 className="text-3xl font-bold text-foreground" data-testid="text-token-name">
                   {token.name}
                 </h1>
                 <Badge variant="outline" className="shrink-0">
                   <TrendingUp className="h-3 w-3 mr-1" />
                   {token.symbol}
                 </Badge>
+                {/* Live Indicator */}
+                <Badge 
+                  variant="outline" 
+                  className="shrink-0 border-destructive/50 bg-destructive/10 text-destructive animate-pulse"
+                  data-testid="badge-live"
+                >
+                  🔴 LIVE
+                </Badge>
               </div>
+              
+              {/* Real-time Price Display */}
+              <div className="mb-2">
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  <span className="text-4xl font-bold font-mono" data-testid="text-current-price">
+                    {formatUSD(token.price)}
+                  </span>
+                  {priceChange !== 0 && (
+                    <span 
+                      className={`text-lg font-semibold ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                      data-testid="text-price-change"
+                    >
+                      {priceChange >= 0 ? '▲' : '▼'} {Math.abs(priceChange).toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+                {lastUpdate && (
+                  <div className="text-xs text-muted-foreground mt-1" data-testid="text-last-update">
+                    Last updated: {lastUpdate.toLocaleTimeString()}
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center gap-2">
                 <button
                   onClick={copyToClipboard}
