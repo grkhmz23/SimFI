@@ -4,7 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Search, Loader2, ArrowRight, TrendingUp, Zap, Shield, BarChart3, Users, Rocket, Star, Trophy, Send } from 'lucide-react';
+import { Search, Loader2, ArrowRight, TrendingUp, Zap, Shield, BarChart3, Users, Rocket, Star, Trophy, Send, ExternalLink } from 'lucide-react';
+import { SiX } from 'react-icons/si';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth-context';
@@ -334,6 +335,46 @@ export default function Trade() {
           </div>
         )}
       </div>
+
+      {/* Footer with Social Links */}
+      <footer className="border-t border-border bg-muted/30">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-5xl mx-auto">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="text-center md:text-left">
+                <h3 className="font-bold mb-1 gradient-simfi-text">SimFi</h3>
+                <p className="text-sm text-muted-foreground">Your Gateway to Risk-Free DeFi</p>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground hidden sm:block">Connect with us:</span>
+                <a
+                  href="https://x.com/i/communities/1981329893569835367"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 hover-elevate active-elevate-2 rounded-md px-3 py-2 transition-all"
+                  data-testid="link-community"
+                >
+                  <SiX className="h-4 w-4" />
+                  <span className="text-sm font-medium">Community</span>
+                  <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                </a>
+                <a
+                  href="https://x.com/uncgorkh?s=21"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 hover-elevate active-elevate-2 rounded-md px-3 py-2 transition-all"
+                  data-testid="link-developer"
+                >
+                  <SiX className="h-4 w-4" />
+                  <span className="text-sm font-medium">Developer</span>
+                  <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
