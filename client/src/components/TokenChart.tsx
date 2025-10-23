@@ -63,14 +63,21 @@ const TokenChart = ({
   const chartRef = useRef(null);
   const [chartData, setChartData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>('1M');
   const [priceChange, setPriceChange] = useState<number>(0);
   const [latestPrice, setLatestPrice] = useState<number>(currentPrice);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
-  const fetchTokenData = async (tf: Timeframe) => {
+  const fetchTokenData = async (tf: Timeframe, isBackgroundRefresh = false) => {
     try {
-      setLoading(true);
+      // Show refreshing state for background updates, loading state for initial/timeframe changes
+      if (isBackgroundRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
 
       // Fetch real OHLCV data from backend
@@ -133,11 +140,14 @@ const TokenChart = ({
       };
 
       setChartData(formattedData);
+      setLastUpdate(new Date());
       setLoading(false);
+      setRefreshing(false);
     } catch (err: any) {
       console.error('Error generating chart data:', err);
       setError(err.message);
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -147,11 +157,12 @@ const TokenChart = ({
     }
   }, [tokenAddress, selectedTimeframe, currentPrice]);
 
+  // Auto-refresh every 30 seconds (background updates)
   useEffect(() => {
     if (!tokenAddress || !currentPrice || isNaN(currentPrice) || !isFinite(currentPrice) || currentPrice <= 0) return;
     
     const interval = setInterval(() => {
-      fetchTokenData(selectedTimeframe);
+      fetchTokenData(selectedTimeframe, true); // Mark as background refresh
     }, 30000);
     
     return () => clearInterval(interval);
@@ -345,6 +356,13 @@ const TokenChart = ({
 
       {/* Chart */}
       <div style={{ height: '400px', position: 'relative' }}>
+        {/* Refreshing Indicator */}
+        {refreshing && (
+          <div className="absolute top-2 right-2 flex items-center gap-2 bg-primary/20 text-primary px-3 py-1 rounded-full text-xs font-medium animate-pulse z-10">
+            <div className="w-2 h-2 bg-primary rounded-full"></div>
+            Updating...
+          </div>
+        )}
         {chartData && (
           <Chart 
             ref={chartRef}
@@ -352,6 +370,21 @@ const TokenChart = ({
             data={chartData} 
             options={chartOptions as any} 
           />
+        )}
+      </div>
+
+      {/* Chart Footer with Update Info */}
+      <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+        <span>Updates every 30 seconds</span>
+        <span>•</span>
+        <span>Data from GeckoTerminal</span>
+        {lastUpdate && (
+          <>
+            <span>•</span>
+            <span data-testid="text-chart-last-update">
+              Last updated: {lastUpdate.toLocaleTimeString()}
+            </span>
+          </>
         )}
       </div>
     </div>
