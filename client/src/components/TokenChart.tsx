@@ -71,12 +71,16 @@ const TokenChart = ({
           labelBackgroundColor: '#4f46e5',
         },
       },
-      rightPriceScale: {
+      leftPriceScale: {
+        visible: true,
         borderColor: 'rgba(255, 255, 255, 0.1)',
         scaleMargins: {
           top: 0.1,
           bottom: 0.25,
         },
+      },
+      rightPriceScale: {
+        visible: false,
       },
       timeScale: {
         borderColor: 'rgba(255, 255, 255, 0.1)',
@@ -85,7 +89,7 @@ const TokenChart = ({
       },
     });
 
-    // Add candlestick series (v5 API)
+    // Add candlestick series (v5 API) - attach to left price scale
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#4ade80',
       downColor: '#f87171',
@@ -93,6 +97,7 @@ const TokenChart = ({
       borderDownColor: '#f87171',
       wickUpColor: '#4ade80',
       wickDownColor: '#f87171',
+      priceScaleId: 'left',
     });
 
     // Add volume series (v5 API)
