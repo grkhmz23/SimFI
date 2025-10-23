@@ -30,6 +30,7 @@ const TokenChart = ({
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const priceLineRef = useRef<any>(null);
   
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -197,14 +198,19 @@ const TokenChart = ({
 
       // Add current price line indicator
       if (candleSeriesRef.current) {
-        // Remove any existing price lines first
-        candleSeriesRef.current.createPriceLine({
+        // Remove existing price line if it exists
+        if (priceLineRef.current) {
+          candleSeriesRef.current.removePriceLine(priceLineRef.current);
+        }
+        
+        // Create new price line with current price
+        priceLineRef.current = candleSeriesRef.current.createPriceLine({
           price: latest,
-          color: change >= 0 ? '#4ade80' : '#f87171',
+          color: change >= 0 ? '#22c55e' : '#ef4444',
           lineWidth: 2,
           lineStyle: 2, // Dashed line
           axisLabelVisible: true,
-          title: 'Current',
+          title: 'Last',
         });
       }
 
