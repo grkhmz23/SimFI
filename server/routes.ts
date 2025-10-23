@@ -749,9 +749,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const ohlcvData = await geckoResponse.json();
       const candles = ohlcvData?.data?.attributes?.ohlcv_list || [];
 
+      // Sort candles in ascending order by timestamp (required by TradingView Lightweight Charts)
+      // GeckoTerminal may return them in descending order, so we need to sort
+      const sortedCandles = candles.sort((a: number[], b: number[]) => a[0] - b[0]);
+
       res.json({ 
         success: true,
-        candles,
+        candles: sortedCandles,
         pairAddress,
         timeframe
       });
