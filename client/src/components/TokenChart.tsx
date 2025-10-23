@@ -82,6 +82,7 @@ const TokenChart = ({
           top: 0.1,
           bottom: 0.25,
         },
+        mode: 1, // Normal mode
       },
       timeScale: {
         borderColor: 'rgba(255, 255, 255, 0.1)',
@@ -99,6 +100,11 @@ const TokenChart = ({
       wickUpColor: '#4ade80',
       wickDownColor: '#f87171',
       priceScaleId: 'right',
+      priceFormat: {
+        type: 'price',
+        precision: 8,
+        minMove: 0.00000001,
+      },
     });
 
     // Add volume series (v5 API)
