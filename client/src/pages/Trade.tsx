@@ -98,9 +98,33 @@ export default function Trade() {
                 <br />
                 <span className="text-foreground">Risk-Free DeFi Trading</span>
               </h1>
-              <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-12">
+              <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
                 Practice trading Solana memecoins with virtual SOL. Master your strategy without financial risk.
               </p>
+
+              {/* $SimFi Token Contract Address */}
+              <div className="max-w-2xl mx-auto mb-8">
+                <Card className="p-4 bg-card/95 backdrop-blur">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="text-center sm:text-left flex-1 min-w-0">
+                      <h3 className="text-xs font-semibold mb-1">$SimFi Token Contract</h3>
+                      <code className="text-xs font-mono text-muted-foreground break-all">
+                        GPXG3Zo2c9ERhpGvuApzkqGjr1JZ2FqRrQj8YSFfGpLy
+                      </code>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 shrink-0"
+                      onClick={handleCopyContract}
+                      data-testid="button-copy-contract"
+                    >
+                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      {copied ? 'Copied!' : 'Copy'}
+                    </Button>
+                  </div>
+                </Card>
+              </div>
 
               {/* Google-style Search Bar */}
               <div className="max-w-2xl mx-auto mb-8">
@@ -229,30 +253,6 @@ export default function Trade() {
 
       {/* Main Content Section */}
       <div className="container mx-auto px-4 py-12 max-w-5xl">
-        {/* $SimFi Token Contract Address */}
-        <div className="mb-6">
-          <Card className="p-6">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="text-center sm:text-left flex-1 min-w-0">
-                <h3 className="text-sm font-semibold mb-2">$SimFi Token Contract</h3>
-                <code className="text-xs font-mono text-muted-foreground break-all">
-                  GPXG3Zo2c9ERhpGvuApzkqGjr1JZ2FqRrQj8YSFfGpLy
-                </code>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2 shrink-0"
-                onClick={handleCopyContract}
-                data-testid="button-copy-contract"
-              >
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                {copied ? 'Copied!' : 'Copy'}
-              </Button>
-            </div>
-          </Card>
-        </div>
-
         {/* Telegram Bot Link */}
         <div className="mb-12">
           <Card className="p-6">
