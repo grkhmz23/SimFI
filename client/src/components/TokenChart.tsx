@@ -142,13 +142,13 @@ const TokenChart = ({
   };
 
   useEffect(() => {
-    if (tokenAddress && currentPrice > 0) {
+    if (tokenAddress && currentPrice && !isNaN(currentPrice) && isFinite(currentPrice) && currentPrice > 0) {
       fetchTokenData(selectedTimeframe);
     }
   }, [tokenAddress, selectedTimeframe, currentPrice]);
 
   useEffect(() => {
-    if (!tokenAddress) return;
+    if (!tokenAddress || !currentPrice || isNaN(currentPrice) || !isFinite(currentPrice) || currentPrice <= 0) return;
     
     const interval = setInterval(() => {
       fetchTokenData(selectedTimeframe);

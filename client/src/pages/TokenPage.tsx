@@ -90,6 +90,42 @@ export default function TokenPage() {
     );
   }
 
+  // Validate token price - prevent crashes from invalid/missing price data
+  const hasValidPrice = token.price && !isNaN(token.price) && isFinite(token.price) && token.price > 0;
+  
+  if (!hasValidPrice) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <Link href="/">
+            <Button variant="ghost" size="sm" className="mb-4" data-testid="button-back">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Tokens
+            </Button>
+          </Link>
+          <Card className="p-8 text-center">
+            <h1 className="text-2xl font-bold mb-4">{token.name}</h1>
+            <Badge variant="outline" className="mb-4">
+              {token.symbol}
+            </Badge>
+            <p className="text-muted-foreground mb-6">
+              Price data is currently unavailable for this token. It may be too new or not yet indexed.
+            </p>
+            <p className="text-sm text-muted-foreground mb-4 font-mono">
+              {tokenAddress}
+            </p>
+            <Link href="/">
+              <Button variant="outline" data-testid="button-back-home">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Go back to Trade page
+              </Button>
+            </Link>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   const formatMarketCap = (mc: number) => {
     if (mc >= 1_000_000) return `$${(mc / 1_000_000).toFixed(2)}M`;
     if (mc >= 1_000) return `$${(mc / 1_000).toFixed(1)}K`;
