@@ -76,8 +76,12 @@ app.use((req, res, next) => {
   });
 
   // Start Telegram bot in both development and production
-  if (process.env.TELEGRAM_BOT_TOKEN) {
-    console.log('🤖 Starting Telegram bot...');
+  const botToken = app.get("env") === "development" 
+    ? process.env.TELEGRAM_BOT_TOKEN_DEV 
+    : process.env.TELEGRAM_BOT_TOKEN;
+    
+  if (botToken) {
+    console.log(`🤖 Starting Telegram bot in ${app.get("env")} mode...`);
     const botProcess = spawn('node', ['bot.js'], {
       stdio: 'inherit',
       env: process.env
@@ -103,6 +107,6 @@ app.use((req, res, next) => {
       process.exit();
     });
   } else {
-    console.warn('⚠️  TELEGRAM_BOT_TOKEN not found - bot will not start');
+    console.warn(`⚠️  No Telegram bot token found for ${app.get("env")} environment - bot will not start`);
   }
 })();

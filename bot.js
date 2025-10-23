@@ -1,13 +1,23 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+// Use dev token in development, production token in production
+const BOT_TOKEN = process.env.NODE_ENV === 'development' 
+  ? process.env.TELEGRAM_BOT_TOKEN_DEV 
+  : process.env.TELEGRAM_BOT_TOKEN;
+
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:5000/api';
 
 if (!BOT_TOKEN) {
   console.error('❌ TELEGRAM_BOT_TOKEN is required in environment variables');
+  console.error(`Environment: ${process.env.NODE_ENV}`);
+  console.error(`Dev token present: ${!!process.env.TELEGRAM_BOT_TOKEN_DEV}`);
+  console.error(`Prod token present: ${!!process.env.TELEGRAM_BOT_TOKEN}`);
   process.exit(1);
 }
+
+console.log(`🤖 Starting bot in ${process.env.NODE_ENV} mode`);
+console.log(`🔑 Using ${process.env.NODE_ENV === 'development' ? 'DEVELOPMENT' : 'PRODUCTION'} bot token`);
 
 const bot = new Telegraf(BOT_TOKEN);
 
