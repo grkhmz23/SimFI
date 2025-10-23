@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Search, Loader2, ArrowRight, TrendingUp, Zap, Shield, BarChart3, Users, Rocket, Star, Trophy, Send, ExternalLink } from 'lucide-react';
+import { Search, Loader2, ArrowRight, TrendingUp, Zap, Shield, BarChart3, Users, Rocket, Star, Trophy, Send, ExternalLink, Copy, Check } from 'lucide-react';
 import { SiX } from 'react-icons/si';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
@@ -34,6 +34,7 @@ export default function Trade() {
   const { isAuthenticated, user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -71,6 +72,17 @@ export default function Trade() {
 
   const hasSearchResults = searchResults && searchResults.results.length > 0;
   const showSearchResults = debouncedQuery.length >= 3;
+
+  const handleCopyContract = () => {
+    const contractAddress = 'GPXG3Zo2c9ERhpGvuApzkqGjr1JZ2FqRrQj8YSFfGpLy';
+    navigator.clipboard.writeText(contractAddress);
+    setCopied(true);
+    toast({
+      title: 'Copied!',
+      description: 'Contract address copied to clipboard',
+    });
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -217,6 +229,30 @@ export default function Trade() {
 
       {/* Main Content Section */}
       <div className="container mx-auto px-4 py-12 max-w-5xl">
+        {/* $SimFi Token Contract Address */}
+        <div className="mb-6">
+          <Card className="p-6">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="text-center sm:text-left flex-1 min-w-0">
+                <h3 className="text-sm font-semibold mb-2">$SimFi Token Contract</h3>
+                <code className="text-xs font-mono text-muted-foreground break-all">
+                  GPXG3Zo2c9ERhpGvuApzkqGjr1JZ2FqRrQj8YSFfGpLy
+                </code>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 shrink-0"
+                onClick={handleCopyContract}
+                data-testid="button-copy-contract"
+              >
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? 'Copied!' : 'Copy'}
+              </Button>
+            </div>
+          </Card>
+        </div>
+
         {/* Telegram Bot Link */}
         <div className="mb-12">
           <Card className="p-6">
