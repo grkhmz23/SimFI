@@ -75,8 +75,8 @@ app.use((req, res, next) => {
     log(`serving on port ${port}`);
   });
 
-  // Start Telegram bot in development mode
-  if (app.get("env") === "development" && process.env.TELEGRAM_BOT_TOKEN) {
+  // Start Telegram bot in both development and production
+  if (process.env.TELEGRAM_BOT_TOKEN) {
     console.log('🤖 Starting Telegram bot...');
     const botProcess = spawn('node', ['bot.js'], {
       stdio: 'inherit',
@@ -85,6 +85,12 @@ app.use((req, res, next) => {
 
     botProcess.on('error', (err) => {
       console.error('❌ Failed to start Telegram bot:', err);
+    });
+
+    botProcess.on('exit', (code, signal) => {
+      if (code !== 0 && code !== null) {
+        console.error(`❌ Telegram bot exited with code ${code}`);
+      }
     });
 
     process.on('SIGINT', () => {
@@ -96,5 +102,7 @@ app.use((req, res, next) => {
       botProcess.kill();
       process.exit();
     });
+  } else {
+    console.warn('⚠️  TELEGRAM_BOT_TOKEN not found - bot will not start');
   }
 })();
