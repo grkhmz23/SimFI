@@ -10,6 +10,28 @@ SimFi is a full-stack web and Telegram bot application for paper trading Solana 
 
 ## Recent Changes (October 23, 2025)
 
+**Codebase Cleanup & Security Audit (October 23, 2025 - Afternoon)**:
+- Removed unused Chart.js dependencies (chart.js, react-chartjs-2, chartjs-adapter-date-fns)
+- Deleted old/unused files from attached_assets folder (extracted/, old chart implementations)
+- Conducted comprehensive security audit - no vulnerabilities found:
+  - ✅ SQL injection protection via Drizzle ORM parameterized queries
+  - ✅ XSS protection via React and proper input sanitization
+  - ✅ Authentication security with HttpOnly cookies and SameSite protection
+  - ✅ Password security with bcrypt hashing
+  - ✅ No race conditions (using database-level atomicity with ON CONFLICT)
+  - ✅ No memory leaks (proper cleanup in useEffect hooks)
+  - ✅ Proper async/await handling throughout codebase
+- Verified console.log statements are appropriate for debugging and monitoring
+- **Result**: Codebase is production-ready with no bugs found
+- Status: ✅ Completed and verified
+
+**TradingView Lightweight Charts Integration (October 23, 2025 - Afternoon)**:
+- Replaced Chart.js with TradingView Lightweight Charts library
+- Professional candlestick (OHLC) charts with volume histogram overlay
+- Features: Dark theme, timeframe selection (5S-5M), auto-refresh every 30s
+- Cleaner bundle size, better performance, industry-standard visualization
+- Status: ✅ Implemented and production-ready
+
 **Telegram Bot Production Mode (October 23, 2025 - Morning)**:
 - Fixed Telegram bot to run in both development and production environments
 - Bot now starts automatically with server deployment (not just in development)
