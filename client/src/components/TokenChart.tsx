@@ -1,39 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  LineController,
-  BarController,
-  Title,
-  Tooltip,
-  Legend,
-  TimeScale,
-  Filler,
-  type ChartOptions
-} from 'chart.js';
-import { Chart } from 'react-chartjs-2';
-import 'chartjs-adapter-date-fns';
+import { createChart, ColorType, type IChartApi, type ISeriesApi, type CandlestickData, type HistogramData } from 'lightweight-charts';
 import { AlertCircle } from 'lucide-react';
-
-// Register Chart.js components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  LineController,
-  BarController,
-  Title,
-  Tooltip,
-  Legend,
-  TimeScale,
-  Filler
-);
 
 interface TokenChartProps {
   tokenAddress: string;
@@ -48,12 +15,6 @@ interface TokenChartProps {
 
 type Timeframe = '5S' | '15S' | '30S' | '1M' | '3M' | '5M';
 
-interface PriceDataPoint {
-  timestamp: Date;
-  price: number;
-  volume: number;
-}
-
 const TokenChart = ({ 
   tokenAddress, 
   tokenSymbol, 
@@ -64,8 +25,12 @@ const TokenChart = ({
   liquidity = 0,
   height = '500px' 
 }: TokenChartProps) => {
-  const chartRef = useRef(null);
-  const [chartData, setChartData] = useState<any>(null);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,9 +39,102 @@ const TokenChart = ({
   const [latestPrice, setLatestPrice] = useState<number>(currentPrice);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
+  const timeframes: Timeframe[] = ['5S', '15S', '30S', '1M', '3M', '5M'];
+
+  // Initialize chart
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+
+    const chart = createChart(chartContainerRef.current, {
+      width: chartContainerRef.current.clientWidth,
+      height: 400,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: '#888',
+      },
+      grid: {
+        vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
+        horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+      },
+      crosshair: {
+        mode: 1,
+        vertLine: {
+          color: 'rgba(172, 207, 223, 0.3)',
+          labelBackgroundColor: '#4f46e5',
+        },
+        horzLine: {
+          color: 'rgba(172, 207, 223, 0.3)',
+          labelBackgroundColor: '#4f46e5',
+        },
+      },
+      rightPriceScale: {
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.25,
+        },
+      },
+      timeScale: {
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+    });
+
+    // Add candlestick series
+    const candleSeries = (chart as any).addCandlestickSeries({
+      upColor: '#4ade80',
+      downColor: '#f87171',
+      borderUpColor: '#4ade80',
+      borderDownColor: '#f87171',
+      wickUpColor: '#4ade80',
+      wickDownColor: '#f87171',
+    });
+
+    // Add volume series
+    const volumeSeries = (chart as any).addHistogramSeries({
+      color: '#6366f1',
+      priceFormat: {
+        type: 'volume',
+      },
+      priceScaleId: 'volume',
+    });
+
+    chart.priceScale('volume').applyOptions({
+      scaleMargins: {
+        top: 0.8,
+        bottom: 0,
+      },
+    });
+
+    chartRef.current = chart;
+    candleSeriesRef.current = candleSeries;
+    volumeSeriesRef.current = volumeSeries;
+
+    // Handle resize
+    const handleResize = () => {
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+        });
+      }
+    };
+
+    resizeObserverRef.current = new ResizeObserver(handleResize);
+    resizeObserverRef.current.observe(chartContainerRef.current);
+
+    return () => {
+      if (resizeObserverRef.current && chartContainerRef.current) {
+        resizeObserverRef.current.unobserve(chartContainerRef.current);
+      }
+      if (chartRef.current) {
+        chartRef.current.remove();
+      }
+    };
+  }, []);
+
   const fetchTokenData = async (tf: Timeframe, isBackgroundRefresh = false) => {
     try {
-      // Show refreshing state for background updates, loading state for initial/timeframe changes
       if (isBackgroundRefresh) {
         setRefreshing(true);
       } else {
@@ -84,7 +142,6 @@ const TokenChart = ({
       }
       setError(null);
 
-      // Fetch real OHLCV data from backend
       const response = await fetch(`/api/tokens/${tokenAddress}/ohlcv?timeframe=${tf}`);
       if (!response.ok) {
         throw new Error('Failed to fetch chart data');
@@ -97,217 +154,74 @@ const TokenChart = ({
         throw new Error('No chart data available for this token');
       }
 
-      // Convert OHLCV array to our format: [timestamp, open, high, low, close, volume]
-      const priceHistory = candles.map((candle: any[]) => {
+      // Format data for TradingView Lightweight Charts
+      const candleData: CandlestickData[] = [];
+      const volumeData: HistogramData[] = [];
+
+      candles.forEach((candle: number[]) => {
         const [timestamp, open, high, low, close, volume] = candle;
-        return {
-          timestamp: new Date(timestamp * 1000), // Convert Unix timestamp to milliseconds
-          price: close, // Use closing price
-          volume: volume || 0
-        };
+        
+        candleData.push({
+          time: timestamp as any,
+          open,
+          high,
+          low,
+          close,
+        });
+
+        volumeData.push({
+          time: timestamp as any,
+          value: volume || 0,
+          color: close >= open ? 'rgba(74, 222, 128, 0.3)' : 'rgba(248, 113, 113, 0.3)',
+        });
       });
 
-      const oldestPrice = priceHistory[0]?.price || currentPrice;
-      const latest = priceHistory[priceHistory.length - 1]?.price || currentPrice;
+      // Update chart data
+      if (candleSeriesRef.current && volumeSeriesRef.current) {
+        candleSeriesRef.current.setData(candleData);
+        volumeSeriesRef.current.setData(volumeData);
+      }
+
+      // Calculate price change
+      const oldestPrice = candles[0]?.[4] || currentPrice;
+      const latest = candles[candles.length - 1]?.[4] || currentPrice;
       const change = ((latest - oldestPrice) / oldestPrice) * 100;
       setPriceChange(change);
-      setLatestPrice(latest); // Use the latest candle close price from OHLCV data
-
-      const labels = priceHistory.map((d: PriceDataPoint) => d.timestamp);
-      const prices = priceHistory.map((d: PriceDataPoint) => d.price);
-      const volumes = priceHistory.map((d: PriceDataPoint) => d.volume);
-
-      const formattedData = {
-        labels: labels,
-        datasets: [
-          {
-            label: 'Price',
-            data: prices,
-            borderColor: change >= 0 ? '#4CAF50' : '#f44336',
-            backgroundColor: change >= 0 ? 'rgba(76, 175, 80, 0.1)' : 'rgba(244, 67, 54, 0.1)',
-            fill: true,
-            tension: 0.4,
-            pointRadius: 0,
-            pointHoverRadius: 6,
-            borderWidth: 2,
-            yAxisID: 'y'
-          },
-          {
-            label: 'Volume',
-            data: volumes,
-            backgroundColor: 'rgba(100, 100, 100, 0.3)',
-            type: 'bar' as const,
-            yAxisID: 'y1',
-            barThickness: 'flex' as const
-          }
-        ]
-      };
-
-      setChartData(formattedData);
+      setLatestPrice(latest);
       setLastUpdate(new Date());
+
+      // Fit content
+      if (chartRef.current) {
+        chartRef.current.timeScale().fitContent();
+      }
+
       setLoading(false);
       setRefreshing(false);
     } catch (err: any) {
-      console.error('Error generating chart data:', err);
-      setError(err.message);
+      console.error('Chart data error:', err);
+      setError(err.message || 'Failed to load chart data');
       setLoading(false);
       setRefreshing(false);
     }
   };
 
+  // Fetch data on mount and timeframe change
   useEffect(() => {
     if (tokenAddress && currentPrice && !isNaN(currentPrice) && isFinite(currentPrice) && currentPrice > 0) {
       fetchTokenData(selectedTimeframe);
     }
   }, [tokenAddress, selectedTimeframe, currentPrice]);
 
-  // Auto-refresh every 30 seconds (background updates)
+  // Auto-refresh every 30 seconds
   useEffect(() => {
     if (!tokenAddress || !currentPrice || isNaN(currentPrice) || !isFinite(currentPrice) || currentPrice <= 0) return;
     
     const interval = setInterval(() => {
-      fetchTokenData(selectedTimeframe, true); // Mark as background refresh
+      fetchTokenData(selectedTimeframe, true);
     }, 30000);
     
     return () => clearInterval(interval);
   }, [tokenAddress, selectedTimeframe, currentPrice]);
-
-  const getTimeUnit = (tf: Timeframe): 'minute' | 'hour' | 'day' | 'week' => {
-    const units: Record<Timeframe, 'minute' | 'hour' | 'day' | 'week'> = {
-      '5S': 'minute',
-      '15S': 'minute',
-      '30S': 'minute',
-      '1M': 'minute',
-      '3M': 'minute',
-      '5M': 'minute'
-    };
-    return units[tf] || 'minute';
-  };
-
-  const chartOptions: ChartOptions<'line' | 'bar'> = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: 'index',
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        display: false
-      },
-      tooltip: {
-        backgroundColor: 'rgba(0, 0, 0, 0.9)',
-        padding: 16,
-        titleColor: '#fff',
-        bodyColor: '#fff',
-        borderColor: priceChange >= 0 ? 'rgba(76, 175, 80, 0.5)' : 'rgba(244, 67, 54, 0.5)',
-        borderWidth: 1,
-        displayColors: true,
-        callbacks: {
-          title: function(context) {
-            const x = context[0]?.parsed?.x;
-            return x ? new Date(x).toLocaleString() : '';
-          },
-          label: function(context) {
-            const label = context.dataset.label || '';
-            const y = context.parsed?.y;
-            if (!y) return '';
-            if (label === 'Price') {
-              return `Price: $${y.toFixed(8)} USD`;
-            } else if (label === 'Volume') {
-              return `Volume: $${y.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-            }
-            return '';
-          }
-        }
-      }
-    },
-    scales: {
-      x: {
-        type: 'time',
-        time: {
-          unit: getTimeUnit(selectedTimeframe),
-          displayFormats: {
-            minute: 'HH:mm',
-            hour: 'MMM d, HH:mm',
-            day: 'MMM d',
-            week: 'MMM d'
-          }
-        },
-        grid: {
-          color: 'rgba(255, 255, 255, 0.05)'
-        },
-        ticks: {
-          color: '#888',
-          maxRotation: 0
-        }
-      },
-      y: {
-        type: 'linear',
-        position: 'right',
-        grid: {
-          color: 'rgba(255, 255, 255, 0.05)'
-        },
-        ticks: {
-          color: '#888',
-          callback: function(value) {
-            return '$' + (value as number).toFixed(8);
-          }
-        }
-      },
-      y1: {
-        type: 'linear',
-        position: 'left',
-        grid: {
-          display: false
-        },
-        ticks: {
-          color: '#666',
-          callback: function(value) {
-            const v = value as number;
-            if (v >= 1000000) {
-              return '$' + (v / 1000000).toFixed(1) + 'M';
-            } else if (v >= 1000) {
-              return '$' + (v / 1000).toFixed(1) + 'K';
-            }
-            return '$' + v.toFixed(0);
-          }
-        },
-        max: chartData ? Math.max(...(chartData.datasets[1]?.data || [1])) * 2.5 : undefined
-      }
-    }
-  };
-
-  const timeframes: Timeframe[] = ['5S', '15S', '30S', '1M', '3M', '5M'];
-
-  if (loading) {
-    return (
-      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'hsl(var(--card))', borderRadius: '12px' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto mb-4"></div>
-          <div className="text-muted-foreground">Loading chart data...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'hsl(var(--card))', borderRadius: '12px' }}>
-        <div style={{ textAlign: 'center', color: 'hsl(var(--destructive))' }}>
-          <AlertCircle className="h-12 w-12 mx-auto mb-4" />
-          <div>Error loading chart: {error}</div>
-          <button 
-            onClick={() => fetchTokenData(selectedTimeframe)}
-            className="mt-4 px-6 py-2 bg-destructive text-destructive-foreground rounded-md hover-elevate active-elevate-2"
-            data-testid="button-retry-chart"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="bg-card p-5 rounded-xl" style={{ marginBottom: '20px' }}>
@@ -317,11 +231,23 @@ const TokenChart = ({
           <h3 style={{ margin: '0 0 8px 0', color: 'hsl(var(--foreground))', fontSize: '20px', fontWeight: '600' }}>
             {tokenSymbol} <span style={{ color: 'hsl(var(--muted-foreground))', fontSize: '14px' }}>/ {tokenName}</span>
           </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '28px', fontWeight: '700', color: 'hsl(var(--foreground))' }}>
+              ${latestPrice.toFixed(8)}
+            </span>
+            <span style={{ 
+              fontSize: '16px', 
+              fontWeight: '600',
+              color: priceChange >= 0 ? '#4ade80' : '#f87171'
+            }}>
+              {priceChange >= 0 ? '▲' : '▼'} {Math.abs(priceChange).toFixed(2)}%
+            </span>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: '24px', color: 'hsl(var(--muted-foreground))', fontSize: '14px' }}>
           <div>
             <div style={{ marginBottom: '4px' }}>24h Change</div>
-            <div style={{ color: priceChange24h >= 0 ? '#4CAF50' : '#f44336', fontWeight: 'bold' }}>
+            <div style={{ color: priceChange24h >= 0 ? '#4ade80' : '#f87171', fontWeight: 'bold' }}>
               {priceChange24h >= 0 ? '+' : ''}{priceChange24h.toFixed(2)}%
             </div>
           </div>
@@ -358,7 +284,7 @@ const TokenChart = ({
         ))}
       </div>
 
-      {/* Chart */}
+      {/* Chart Container */}
       <div style={{ height: '400px', position: 'relative' }}>
         {/* Refreshing Indicator */}
         {refreshing && (
@@ -367,30 +293,47 @@ const TokenChart = ({
             Updating...
           </div>
         )}
-        {chartData && (
-          <Chart 
-            ref={chartRef}
-            type="line" 
-            data={chartData} 
-            options={chartOptions as any} 
-          />
+
+        {/* Loading State */}
+        {loading && !error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-card/50 backdrop-blur-sm rounded-lg z-20">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-muted-foreground text-sm">Loading chart data...</p>
+            </div>
+          </div>
         )}
+
+        {/* Error State */}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-card/50 backdrop-blur-sm rounded-lg z-20">
+            <div className="flex flex-col items-center gap-3 max-w-md text-center px-4">
+              <AlertCircle className="w-12 h-12 text-destructive" />
+              <div>
+                <p className="text-destructive font-medium mb-2">Failed to Load Chart</p>
+                <p className="text-muted-foreground text-sm mb-4">{error}</p>
+                <button
+                  onClick={() => fetchTokenData(selectedTimeframe)}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover-elevate active-elevate-2"
+                  data-testid="button-retry-chart"
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TradingView Chart */}
+        <div ref={chartContainerRef} style={{ width: '100%', height: '100%' }} />
       </div>
 
-      {/* Chart Footer with Update Info */}
-      <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted-foreground">
-        <span>Updates every 30 seconds</span>
-        <span>•</span>
-        <span>Data from GeckoTerminal</span>
-        {lastUpdate && (
-          <>
-            <span>•</span>
-            <span data-testid="text-chart-last-update">
-              Last updated: {lastUpdate.toLocaleTimeString()}
-            </span>
-          </>
-        )}
-      </div>
+      {/* Footer - Last Update */}
+      {lastUpdate && !loading && (
+        <div className="mt-3 text-xs text-muted-foreground text-right">
+          Last updated: {lastUpdate.toLocaleTimeString()}
+        </div>
+      )}
     </div>
   );
 };
