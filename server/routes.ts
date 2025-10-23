@@ -747,15 +747,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const ohlcvData = await geckoResponse.json();
-      const candles = ohlcvData?.data?.attributes?.ohlcv_list || [];
+      let candles = ohlcvData?.data?.attributes?.ohlcv_list || [];
 
       // Sort candles in ascending order by timestamp (required by TradingView Lightweight Charts)
-      // GeckoTerminal may return them in descending order, so we need to sort
-      const sortedCandles = candles.sort((a: number[], b: number[]) => a[0] - b[0]);
+      // GeckoTerminal returns them in descending order (newest first), we need ascending (oldest first)
+      candles = [...candles].sort((a: number[], b: number[]) => a[0] - b[0]);
+
+      // Debug: Log first and last timestamps to verify sort order
+      if (candles.length >= 2) {
+        console.log(`📊 OHLCV data for ${address}: ${candles.length} candles, timestamps ${candles[0][0]} to ${candles[candles.length - 1][0]} (${candles[0][0] < candles[candles.length - 1][0] ? 'ASC ✅' : 'DESC ❌'})`);
+      }
+
+      // Prevent caching - chart data changes frequently and needs to be fresh
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
 
       res.json({ 
         success: true,
-        candles: sortedCandles,
+        candles,
         pairAddress,
         timeframe
       });
