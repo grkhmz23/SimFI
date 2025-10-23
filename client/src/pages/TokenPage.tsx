@@ -38,6 +38,13 @@ export default function TokenPage() {
     retryDelay: 1000, // Wait 1 second between retries
   });
 
+  // Reset price tracking state when navigating to a different token
+  useEffect(() => {
+    setPriceChange(0);
+    setPreviousPrice(null);
+    setLastUpdate(null);
+  }, [tokenAddress]);
+
   // Update token state and calculate price change when API data is available
   useEffect(() => {
     if (tokenData?.token) {
