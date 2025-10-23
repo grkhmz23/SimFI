@@ -40,6 +40,9 @@ const TokenChart = ({
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   const timeframes: Timeframe[] = ['5S', '15S', '30S', '1M', '3M', '5M'];
+  
+  // Parse height prop to number (remove 'px' if present)
+  const chartHeight = parseInt(height.replace('px', ''), 10) || 400;
 
   // Initialize chart
   useEffect(() => {
@@ -47,7 +50,7 @@ const TokenChart = ({
 
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
-      height: 400,
+      height: chartHeight,
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
         textColor: '#888',
@@ -161,6 +164,8 @@ const TokenChart = ({
       candles.forEach((candle: number[]) => {
         const [timestamp, open, high, low, close, volume] = candle;
         
+        // TradingView expects Unix timestamps in seconds (not milliseconds)
+        // GeckoTerminal returns timestamps in seconds, so use as-is
         candleData.push({
           time: timestamp as any,
           open,
@@ -285,7 +290,7 @@ const TokenChart = ({
       </div>
 
       {/* Chart Container */}
-      <div style={{ height: '400px', position: 'relative' }}>
+      <div style={{ height: `${chartHeight}px`, position: 'relative' }}>
         {/* Refreshing Indicator */}
         {refreshing && (
           <div className="absolute top-2 right-2 flex items-center gap-2 bg-primary/20 text-primary px-3 py-1 rounded-full text-xs font-medium animate-pulse z-10">
