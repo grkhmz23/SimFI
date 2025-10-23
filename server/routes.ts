@@ -1034,7 +1034,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/leaderboard/overall', async (req, res) => {
     try {
       const leaders = await storage.getTopUsersByTotalProfit(100);
-      res.json({ leaders: leaders.map((l, i) => ({ ...l, rank: i + 1 })) });
+      res.json(serializeBigInts({ leaders: leaders.map((l, i) => ({ ...l, rank: i + 1 })) }));
     } catch (error: any) {
       console.error('Get overall leaderboard error:', error);
       res.status(500).json({ error: 'Could not fetch leaderboard' });
@@ -1057,11 +1057,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         100
       );
       
-      res.json({ 
+      res.json(serializeBigInts({ 
         leaders: leaders.map((l, i) => ({ ...l, rank: i + 1 })), 
         periodStart: currentPeriod.startTime,
         periodEnd: currentPeriod.endTime
-      });
+      }));
     } catch (error: any) {
       console.error('Get period leaderboard error:', error);
       res.status(500).json({ error: 'Could not fetch period leaderboard' });
@@ -1071,7 +1071,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/leaderboard/winners', async (req, res) => {
     try {
       const winners = await storage.getPastWinners(10);
-      res.json({ winners });
+      res.json(serializeBigInts({ winners }));
     } catch (error: any) {
       console.error('Get winners error:', error);
       res.status(500).json({ error: 'Could not fetch winners' });
