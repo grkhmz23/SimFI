@@ -26,16 +26,24 @@ export default function TokenPage() {
   const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
 
   // Fetch token from API with auto-refresh every 10 seconds
-  const { data: tokenData, isLoading: tokenLoading } = useQuery<{ token: Token }>({
+  const { data: tokenData, isLoading: tokenLoading, error: tokenError } = useQuery<{ token: Token }>({
     queryKey: [`/api/tokens/${tokenAddress}`],
     enabled: !!tokenAddress,
     refetchInterval: 10000, // Refresh every 10 seconds to keep price and market cap up to date
+    retry: 3, // Retry failed requests
+    retryDelay: 1000, // Wait 1 second between retries
   });
 
   // Update token state when API data is available or on refresh
   useEffect(() => {
     if (tokenData?.token) {
-      setToken(tokenData.token);
+      // Validate token data before setting state
+      const newToken = tokenData.token;
+      if (newToken.tokenAddress && newToken.name && newToken.symbol) {
+        setToken(newToken);
+      } else {
+        console.error('Invalid token data received:', newToken);
+      }
     }
   }, [tokenData]);
 
@@ -53,6 +61,42 @@ export default function TokenPage() {
     setTradeMode(mode);
     setShowModal(true);
   };
+
+  // Show error if query failed
+  if (tokenError && !token) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <Link href="/">
+            <Button variant="ghost" size="sm" className="mb-4" data-testid="button-back">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Trade
+            </Button>
+          </Link>
+          <Card className="p-8 text-center">
+            <h1 className="text-2xl font-bold mb-4 text-destructive">Error Loading Token</h1>
+            <p className="text-muted-foreground mb-6">
+              Could not fetch token data. Please check your connection and try again.
+            </p>
+            <p className="text-sm text-muted-foreground mb-4 font-mono">
+              {tokenAddress}
+            </p>
+            <div className="flex gap-2 justify-center">
+              <Button onClick={() => window.location.reload()} variant="default" data-testid="button-retry">
+                Retry
+              </Button>
+              <Link href="/">
+                <Button variant="outline" data-testid="button-back-home">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Go back to Trade page
+                </Button>
+              </Link>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   if (!token && tokenLoading) {
     return (
@@ -90,8 +134,8 @@ export default function TokenPage() {
     );
   }
 
-  // Validate token price - prevent crashes from invalid/missing price data
-  const hasValidPrice = token.price && !isNaN(token.price) && isFinite(token.price) && token.price > 0;
+  // Validate token price - prevent crashes from invalid/missing price data  
+  const hasValidPrice = token?.price && !isNaN(token.price) && isFinite(token.price) && token.price > 0;
   
   if (!hasValidPrice) {
     return (
@@ -126,7 +170,8 @@ export default function TokenPage() {
     );
   }
 
-  const formatMarketCap = (mc: number) => {
+  const formatMarketCap = (mc: number | undefined) => {
+    if (!mc || isNaN(mc) || !isFinite(mc)) return '$0';
     if (mc >= 1_000_000) return `$${(mc / 1_000_000).toFixed(2)}M`;
     if (mc >= 1_000) return `$${(mc / 1_000).toFixed(1)}K`;
     return `$${mc.toFixed(0)}`;
@@ -257,11 +302,20 @@ export default function TokenPage() {
                 <p className="text-xs text-muted-foreground uppercase mb-1">Current Value</p>
                 <p className="text-xl font-bold font-mono text-primary">
                   {(() => {
-                    const amount = toBigInt(userPosition.amount);
-                    const priceLamports = BigInt(Math.floor(token.price));
-                    const valueLamports = (amount * priceLamports) / BigInt(1_000_000_000);
-                    return formatSol(valueLamports);
-                  })()} SOL
+                    try {
+                      const amount = toBigInt(userPosition.amount);
+                      const price = Number(token.price);
+                      if (!isFinite(price) || price <= 0) {
+                        return '0.00 SOL';
+                      }
+                      const priceLamports = BigInt(Math.floor(price));
+                      const valueLamports = (amount * priceLamports) / BigInt(1_000_000_000);
+                      return formatSol(valueLamports) + ' SOL';
+                    } catch (error) {
+                      console.error('Error calculating position value:', error);
+                      return '0.00 SOL';
+                    }
+                  })()}
                 </p>
               </div>
             </div>
