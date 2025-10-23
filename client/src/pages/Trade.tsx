@@ -85,9 +85,24 @@ export default function Trade() {
                 <br />
                 <span className="text-foreground">Risk-Free DeFi Trading</span>
               </h1>
-              <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
+              <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-12">
                 Practice trading Solana memecoins with virtual SOL. Master your strategy without financial risk.
               </p>
+
+              {/* Google-style Search Bar */}
+              <div className="max-w-2xl mx-auto mb-8">
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search tokens by name or address..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-14 pl-12 pr-4 text-base rounded-full border-2 border-border focus:border-primary shadow-lg"
+                    data-testid="input-search-main"
+                  />
+                </div>
+              </div>
 
               {/* CTAs */}
               {!isAuthenticated && (
