@@ -76,7 +76,8 @@ const TokenChart = ({
       },
       rightPriceScale: {
         visible: true,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        textColor: '#d1d5db',
         scaleMargins: {
           top: 0.1,
           bottom: 0.25,
