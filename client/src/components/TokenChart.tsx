@@ -195,6 +195,19 @@ const TokenChart = ({
       setLatestPrice(latest);
       setLastUpdate(new Date());
 
+      // Add current price line indicator
+      if (candleSeriesRef.current) {
+        // Remove any existing price lines first
+        candleSeriesRef.current.createPriceLine({
+          price: latest,
+          color: change >= 0 ? '#4ade80' : '#f87171',
+          lineWidth: 2,
+          lineStyle: 2, // Dashed line
+          axisLabelVisible: true,
+          title: 'Current',
+        });
+      }
+
       // Fit content
       if (chartRef.current) {
         chartRef.current.timeScale().fitContent();
