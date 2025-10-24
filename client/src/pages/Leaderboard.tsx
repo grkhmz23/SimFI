@@ -2,11 +2,16 @@ import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Trophy, Medal, Award } from 'lucide-react';
+import { Trophy, Medal, Award, Copy, Check } from 'lucide-react';
 import type { LeaderboardEntry } from '@shared/schema';
 import { formatSol } from '@/lib/lamports';
+import { useState } from 'react';
+import { useToast } from '@/hooks/use-toast';
 
 export default function Leaderboard() {
+  const { toast } = useToast();
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+
   const { data: overallData } = useQuery<{ leaders: LeaderboardEntry[] }>({
     queryKey: ['/api/leaderboard/overall'],
   });
@@ -22,6 +27,28 @@ export default function Leaderboard() {
   const overall = (overallData?.leaders || []);
   const currentPeriod = (periodData?.leaders || []);
   const pastWinners = (winnersData?.winners || []);
+
+  const copyWalletAddress = async (address: string) => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopiedAddress(address);
+      toast({
+        title: "Copied!",
+        description: "Wallet address copied to clipboard",
+      });
+      setTimeout(() => setCopiedAddress(null), 2000);
+    } catch (err) {
+      toast({
+        title: "Failed to copy",
+        description: "Could not copy wallet address",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const truncateAddress = (address: string) => {
+    return `${address.slice(0, 4)}...${address.slice(-4)}`;
+  };
 
   const getRankIcon = (index: number) => {
     switch (index) {
@@ -65,8 +92,22 @@ export default function Leaderboard() {
 
               <div className="flex-1">
                 <p className="font-semibold text-foreground text-lg">{entry.username}</p>
+                {entry.walletAddress && (
+                  <button
+                    onClick={() => copyWalletAddress(entry.walletAddress!)}
+                    className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1 group"
+                    data-testid={`button-copy-wallet-${index}`}
+                  >
+                    <span className="font-mono">{truncateAddress(entry.walletAddress)}</span>
+                    {copiedAddress === entry.walletAddress ? (
+                      <Check className="h-3 w-3 text-success" />
+                    ) : (
+                      <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    )}
+                  </button>
+                )}
                 {entry.balance !== undefined && (
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-muted-foreground mt-1">
                     Balance: {formatSol(entry.balance)} SOL
                   </p>
                 )}
