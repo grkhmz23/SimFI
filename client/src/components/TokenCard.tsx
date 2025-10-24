@@ -61,19 +61,11 @@ export function TokenCard({ token }: TokenCardProps) {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-muted-foreground uppercase">Market Cap</p>
-              <p className="text-sm font-semibold text-foreground" data-testid="text-marketcap">
-                {formatMarketCap(token.marketCap)}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground uppercase">Creator</p>
-              <p className="text-xs font-mono text-foreground">
-                {token.creator ? `${token.creator.slice(0, 4)}...${token.creator.slice(-4)}` : 'N/A'}
-              </p>
-            </div>
+          <div>
+            <p className="text-xs text-muted-foreground uppercase">Market Cap</p>
+            <p className="text-sm font-semibold text-foreground" data-testid="text-marketcap">
+              {formatMarketCap(token.marketCap)}
+            </p>
           </div>
 
           <div className="pt-3 border-t border-border">

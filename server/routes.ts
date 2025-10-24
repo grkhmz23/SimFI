@@ -884,68 +884,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get trending tokens from multiple sources (must come BEFORE :address route)
+  // Get trending tokens from DexScreener boosted with full metadata
   app.get('/api/tokens/trending', async (req, res) => {
     try {
       const allTrendingTokens: any[] = [];
       const seenAddresses = new Set<string>();
 
-      // 1. Fetch from Birdeye trending API
-      try {
-        console.log(`🔍 Fetching trending tokens from Birdeye...`);
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
-        
-        const birdeyeResponse = await fetch(
-          'https://public-api.birdeye.so/defi/token_trending?sort_by=rank&sort_type=asc&offset=0&limit=30&ui_amount_mode=scaled',
-          {
-            headers: {
-              'accept': 'application/json',
-              'x-chain': 'solana',
-            },
-            signal: controller.signal,
-          }
-        );
-        
-        clearTimeout(timeout);
-        console.log(`📊 Birdeye trending API response status: ${birdeyeResponse.status}`);
-
-        if (birdeyeResponse.ok) {
-          const birdeyeData = await birdeyeResponse.json();
-          console.log(`📊 Birdeye data structure: success=${birdeyeData.success}, has items=${!!birdeyeData.data?.items}`);
-          
-          if (birdeyeData.success && Array.isArray(birdeyeData.data?.items)) {
-            for (const item of birdeyeData.data.items) {
-              const address = item.address;
-              if (!address || seenAddresses.has(address)) continue;
-              
-              seenAddresses.add(address);
-              allTrendingTokens.push({
-                tokenAddress: address,
-                name: item.name || 'Unknown',
-                symbol: item.symbol || address.slice(0, 4).toUpperCase(),
-                price: 0, // Will be fetched from DexScreener if needed
-                marketCap: item.mc || 0,
-                volume24h: item.v24hUSD || 0,
-                priceChange24h: item.priceChange24hPercent || 0,
-                creator: undefined,
-                timestamp: new Date().toISOString(),
-                icon: item.logoURI || item.icon,
-                source: 'birdeye',
-              });
-            }
-            console.log(`✅ Fetched ${birdeyeData.data.items.length} trending tokens from Birdeye`);
-          } else {
-            console.log(`⚠️ Birdeye response format unexpected or no items`);
-          }
-        } else {
-          console.warn(`⚠️ Birdeye API returned non-OK status: ${birdeyeResponse.status}`);
-        }
-      } catch (error: any) {
-        console.warn(`⚠️ Birdeye trending fetch failed: ${error.message || error}`);
-      }
-
-      // 2. Fetch from DexScreener boosted tokens
+      // Fetch DexScreener boosted tokens
       try {
         const dexResponse = await fetchWithTimeout('https://api.dexscreener.com/token-boosts/top/v1', 5000);
         
@@ -957,56 +902,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
               .filter((item: any) => item.chainId === 'solana' && item.tokenAddress)
               .slice(0, 30);
             
+            // Collect addresses and boost info
+            const addressToBoostInfo = new Map();
+            const addresses: string[] = [];
+            
             for (const item of boostedSolanaTokens) {
               const address = item.tokenAddress;
-              if (seenAddresses.has(address)) continue; // Skip duplicates
-              
-              seenAddresses.add(address);
-              allTrendingTokens.push({
-                tokenAddress: address,
-                name: item.description?.split('\n')[0]?.trim() || 'Unknown',
-                symbol: address.slice(0, 4).toUpperCase(),
-                price: 0,
-                marketCap: 0,
-                volume24h: 0,
-                priceChange24h: 0,
-                creator: undefined,
-                timestamp: new Date().toISOString(),
-                icon: item.icon,
-                source: 'dexscreener',
-              });
+              if (!seenAddresses.has(address)) {
+                seenAddresses.add(address);
+                addresses.push(address);
+                addressToBoostInfo.set(address, {
+                  icon: item.icon,
+                  description: item.description,
+                });
+              }
             }
-            console.log(`📈 Fetched ${boostedSolanaTokens.length} boosted tokens from DexScreener`);
+            
+            // Batch fetch metadata in chunks of 20 addresses
+            const chunkSize = 20;
+            for (let i = 0; i < addresses.length; i += chunkSize) {
+              const chunk = addresses.slice(i, i + chunkSize);
+              const addressesParam = chunk.join(',');
+              
+              try {
+                const metadataResponse = await fetchWithTimeout(
+                  `https://api.dexscreener.com/latest/dex/tokens/${addressesParam}`,
+                  8000
+                );
+                
+                if (metadataResponse.ok) {
+                  const metadataData = await metadataResponse.json();
+                  const pairs = metadataData.pairs || [];
+                  
+                  // Build lookup map of best pair per token
+                  const tokenDataMap = new Map<string, any>();
+                  for (const pair of pairs) {
+                    const tokenAddr = pair.baseToken?.address;
+                    if (!tokenAddr || pair.chainId !== 'solana') continue;
+                    
+                    // Keep pair with highest liquidity
+                    const existing = tokenDataMap.get(tokenAddr);
+                    const currentLiq = pair.liquidity?.usd || 0;
+                    const existingLiq = existing?.liquidity?.usd || 0;
+                    
+                    if (!existing || currentLiq > existingLiq) {
+                      tokenDataMap.set(tokenAddr, pair);
+                    }
+                  }
+                  
+                  // Build tokens with full metadata
+                  for (const address of chunk) {
+                    const pairData = tokenDataMap.get(address);
+                    const boostInfo = addressToBoostInfo.get(address);
+                    
+                    if (pairData) {
+                      allTrendingTokens.push({
+                        tokenAddress: address,
+                        name: pairData.baseToken?.name || boostInfo?.description?.split('\n')[0]?.trim() || 'Unknown',
+                        symbol: pairData.baseToken?.symbol || address.slice(0, 4).toUpperCase(),
+                        price: pairData.priceNative ? parseFloat(pairData.priceNative) : 0,
+                        marketCap: pairData.fdv || pairData.marketCap || 0,
+                        volume24h: pairData.volume?.h24 || 0,
+                        priceChange24h: pairData.priceChange?.h24 || 0,
+                        creator: undefined,
+                        timestamp: new Date().toISOString(),
+                        icon: pairData.info?.imageUrl || boostInfo?.icon,
+                      });
+                    } else {
+                      // Fallback for tokens without metadata
+                      allTrendingTokens.push({
+                        tokenAddress: address,
+                        name: boostInfo?.description?.split('\n')[0]?.trim() || 'Unknown',
+                        symbol: address.slice(0, 4).toUpperCase(),
+                        price: 0,
+                        marketCap: 0,
+                        volume24h: 0,
+                        priceChange24h: 0,
+                        creator: undefined,
+                        timestamp: new Date().toISOString(),
+                        icon: boostInfo?.icon,
+                      });
+                    }
+                  }
+                }
+              } catch (error: any) {
+                console.warn(`⚠️ Metadata fetch failed for chunk ${i}: ${error.message}`);
+              }
+            }
+            
+            console.log(`✅ Fetched ${allTrendingTokens.length} trending tokens with metadata from DexScreener`);
           }
         }
       } catch (error: any) {
         console.warn(`⚠️ DexScreener trending fetch failed: ${error.message}`);
       }
 
-      // 3. Enhance tokens that don't have icons with metadata fetch
-      const tokensNeedingMetadata = allTrendingTokens.filter(t => !t.icon).slice(0, 10); // Only enhance first 10 without icons
-      
-      if (tokensNeedingMetadata.length > 0) {
-        console.log(`🔍 Fetching metadata for ${tokensNeedingMetadata.length} tokens without icons...`);
-        await Promise.all(
-          tokensNeedingMetadata.map(async (token) => {
-            const metadata = await fetchTokenMetadata(token.tokenAddress);
-            if (metadata?.icon) {
-              token.icon = metadata.icon;
-            }
-            if (metadata?.name && token.name === 'Unknown') {
-              token.name = metadata.name;
-            }
-            if (metadata?.symbol) {
-              token.symbol = metadata.symbol;
-            }
-          })
-        );
-      }
-
       // Return top 50 trending tokens
       const finalTokens = allTrendingTokens.slice(0, 50);
-      console.log(`✅ Returning ${finalTokens.length} trending tokens from multiple sources`);
+      console.log(`✅ Returning ${finalTokens.length} trending tokens`);
       res.json({ tokens: finalTokens });
     } catch (error: any) {
       console.error('Get trending tokens error:', error);
