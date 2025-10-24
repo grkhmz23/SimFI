@@ -884,52 +884,130 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get trending tokens from DexScreener (must come BEFORE :address route)
-  // Note: Using top boosts as proxy for trending since DexScreener doesn't have a dedicated trending endpoint
+  // Get trending tokens from multiple sources (must come BEFORE :address route)
   app.get('/api/tokens/trending', async (req, res) => {
     try {
-      // Fetch top boosted tokens (promoted tokens tend to be trending)
-      const dexResponse = await fetchWithTimeout('https://api.dexscreener.com/token-boosts/top/v1', 5000);
-      
-      if (!dexResponse.ok) {
-        console.error(`❌ DexScreener boosts API error: ${dexResponse.status}`);
-        return res.status(500).json({ error: 'Failed to fetch trending tokens', tokens: [] });
-      }
-      
-      const boostedTokens = await dexResponse.json();
-      
-      if (!Array.isArray(boostedTokens)) {
-        console.error('❌ Invalid response format from DexScreener boosts API');
-        return res.status(500).json({ error: 'Invalid API response', tokens: [] });
-      }
-      
-      // Filter for Solana tokens and enhance with metadata
-      const boostedSolanaTokens = boostedTokens
-        .filter((item: any) => item.chainId === 'solana' && item.tokenAddress)
-        .slice(0, 50); // Top 50
-      
-      // Fetch metadata for each token in parallel
-      const trendingTokens = await Promise.all(
-        boostedSolanaTokens.map(async (item: any) => {
-          const metadata = await fetchTokenMetadata(item.tokenAddress);
+      const allTrendingTokens: any[] = [];
+      const seenAddresses = new Set<string>();
+
+      // 1. Fetch from Birdeye trending API
+      try {
+        console.log(`🔍 Fetching trending tokens from Birdeye...`);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        
+        const birdeyeResponse = await fetch(
+          'https://public-api.birdeye.so/defi/token_trending?sort_by=rank&sort_type=asc&offset=0&limit=30&ui_amount_mode=scaled',
+          {
+            headers: {
+              'accept': 'application/json',
+              'x-chain': 'solana',
+            },
+            signal: controller.signal,
+          }
+        );
+        
+        clearTimeout(timeout);
+        console.log(`📊 Birdeye trending API response status: ${birdeyeResponse.status}`);
+
+        if (birdeyeResponse.ok) {
+          const birdeyeData = await birdeyeResponse.json();
+          console.log(`📊 Birdeye data structure: success=${birdeyeData.success}, has items=${!!birdeyeData.data?.items}`);
           
-          return {
-            tokenAddress: item.tokenAddress,
-            name: metadata?.name || item.description?.split('\n')[0]?.trim() || 'Unknown',
-            symbol: metadata?.symbol || item.tokenAddress.slice(0, 4).toUpperCase(),
-            price: 0, // Price not available in boosts endpoint
-            marketCap: 0,
-            volume24h: 0,
-            priceChange24h: 0,
-            creator: undefined,
-            timestamp: new Date().toISOString(),
-            icon: metadata?.icon || item.icon, // Try metadata first, fallback to boost icon
-          };
-        })
-      );
+          if (birdeyeData.success && Array.isArray(birdeyeData.data?.items)) {
+            for (const item of birdeyeData.data.items) {
+              const address = item.address;
+              if (!address || seenAddresses.has(address)) continue;
+              
+              seenAddresses.add(address);
+              allTrendingTokens.push({
+                tokenAddress: address,
+                name: item.name || 'Unknown',
+                symbol: item.symbol || address.slice(0, 4).toUpperCase(),
+                price: 0, // Will be fetched from DexScreener if needed
+                marketCap: item.mc || 0,
+                volume24h: item.v24hUSD || 0,
+                priceChange24h: item.priceChange24hPercent || 0,
+                creator: undefined,
+                timestamp: new Date().toISOString(),
+                icon: item.logoURI || item.icon,
+                source: 'birdeye',
+              });
+            }
+            console.log(`✅ Fetched ${birdeyeData.data.items.length} trending tokens from Birdeye`);
+          } else {
+            console.log(`⚠️ Birdeye response format unexpected or no items`);
+          }
+        } else {
+          console.warn(`⚠️ Birdeye API returned non-OK status: ${birdeyeResponse.status}`);
+        }
+      } catch (error: any) {
+        console.warn(`⚠️ Birdeye trending fetch failed: ${error.message || error}`);
+      }
+
+      // 2. Fetch from DexScreener boosted tokens
+      try {
+        const dexResponse = await fetchWithTimeout('https://api.dexscreener.com/token-boosts/top/v1', 5000);
+        
+        if (dexResponse.ok) {
+          const boostedTokens = await dexResponse.json();
+          
+          if (Array.isArray(boostedTokens)) {
+            const boostedSolanaTokens = boostedTokens
+              .filter((item: any) => item.chainId === 'solana' && item.tokenAddress)
+              .slice(0, 30);
+            
+            for (const item of boostedSolanaTokens) {
+              const address = item.tokenAddress;
+              if (seenAddresses.has(address)) continue; // Skip duplicates
+              
+              seenAddresses.add(address);
+              allTrendingTokens.push({
+                tokenAddress: address,
+                name: item.description?.split('\n')[0]?.trim() || 'Unknown',
+                symbol: address.slice(0, 4).toUpperCase(),
+                price: 0,
+                marketCap: 0,
+                volume24h: 0,
+                priceChange24h: 0,
+                creator: undefined,
+                timestamp: new Date().toISOString(),
+                icon: item.icon,
+                source: 'dexscreener',
+              });
+            }
+            console.log(`📈 Fetched ${boostedSolanaTokens.length} boosted tokens from DexScreener`);
+          }
+        }
+      } catch (error: any) {
+        console.warn(`⚠️ DexScreener trending fetch failed: ${error.message}`);
+      }
+
+      // 3. Enhance tokens that don't have icons with metadata fetch
+      const tokensNeedingMetadata = allTrendingTokens.filter(t => !t.icon).slice(0, 10); // Only enhance first 10 without icons
       
-      console.log(`📈 Fetched ${trendingTokens.length} boosted tokens with metadata from DexScreener`);
-      res.json({ tokens: trendingTokens });
+      if (tokensNeedingMetadata.length > 0) {
+        console.log(`🔍 Fetching metadata for ${tokensNeedingMetadata.length} tokens without icons...`);
+        await Promise.all(
+          tokensNeedingMetadata.map(async (token) => {
+            const metadata = await fetchTokenMetadata(token.tokenAddress);
+            if (metadata?.icon) {
+              token.icon = metadata.icon;
+            }
+            if (metadata?.name && token.name === 'Unknown') {
+              token.name = metadata.name;
+            }
+            if (metadata?.symbol) {
+              token.symbol = metadata.symbol;
+            }
+          })
+        );
+      }
+
+      // Return top 50 trending tokens
+      const finalTokens = allTrendingTokens.slice(0, 50);
+      console.log(`✅ Returning ${finalTokens.length} trending tokens from multiple sources`);
+      res.json({ tokens: finalTokens });
     } catch (error: any) {
       console.error('Get trending tokens error:', error);
       res.status(500).json({ error: 'Could not fetch trending tokens', tokens: [] });
