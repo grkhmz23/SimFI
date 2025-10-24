@@ -14,7 +14,6 @@ import {
 } from '@/components/ui/table';
 import { TradeModal } from '@/components/TradeModal';
 import { useAuth } from '@/lib/auth-context';
-import { useTokens } from '@/lib/websocket';
 import { formatSol, lamportsToSol } from '@/lib/lamports';
 import { TrendingUp, TrendingDown, Package, LogIn } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -68,8 +67,6 @@ export default function Portfolio() {
 
   const positions = (positionsData?.positions || []);
 
-  const { getPrice } = useTokens();
-
   // Group positions by tokenAddress
   const groupedPositions = positions.reduce((acc: Map<string, Position[]>, position: Position) => {
     const existing = acc.get(position.tokenAddress) || [];
@@ -105,11 +102,8 @@ export default function Portfolio() {
     }
   };
 
-  // Get current price from WebSocket feed or use entry price as fallback
-  const getPositionWithPrice = (position: Position) => ({
-    ...position,
-    currentPrice: getPrice(position.tokenAddress) || position.entryPrice,
-  });
+  // Positions now include currentPrice from API
+  const getPositionWithPrice = (position: any) => position;
 
   const calculateCurrentValue = (position: Position, currentPrice: number) => {
     // position.amount is in integer tokens (1B = 1 token), currentPrice is in Lamports per token

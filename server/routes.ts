@@ -406,7 +406,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/trades/positions', authenticateToken, async (req, res) => {
     try {
       const positions = await storage.getUserPositions(req.userId!);
-      res.json(serializeBigInts({ positions }));
+      
+      // Fetch current prices for all unique tokens
+      const uniqueTokens = [...new Set(positions.map(p => p.tokenAddress))];
+      const priceMap = new Map<string, number>();
+      
+      if (uniqueTokens.length > 0) {
+        try {
+          // Fetch prices from DexScreener in batches of 30
+          const profiles = await fetchDexScreenerProfiles(uniqueTokens);
+          for (const [address, profile] of Object.entries(profiles)) {
+            if (profile.priceNative) {
+              priceMap.set(address, Math.floor(profile.priceNative * 1_000_000_000));
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️  Failed to fetch current prices for positions:', error);
+        }
+      }
+      
+      // Enrich positions with current prices
+      const enrichedPositions = positions.map(p => ({
+        ...p,
+        currentPrice: priceMap.get(p.tokenAddress) || p.entryPrice, // Fallback to entry price
+      }));
+      
+      res.json(serializeBigInts({ positions: enrichedPositions }));
     } catch (error: any) {
       console.error('Get positions error:', error);
       res.status(500).json({ error: 'Could not fetch positions' });
