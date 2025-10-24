@@ -921,7 +921,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // 2. Fetch DexScreener boosted tokens
+      // 2. Enrich Birdeye tokens with price data from DexScreener
+      if (allTrendingTokens.length > 0) {
+        const birdeyeAddresses = allTrendingTokens.map(t => t.tokenAddress);
+        const chunkSize = 20;
+        
+        for (let i = 0; i < birdeyeAddresses.length; i += chunkSize) {
+          const chunk = birdeyeAddresses.slice(i, i + chunkSize);
+          const addressesParam = chunk.join(',');
+          
+          try {
+            const dexResponse = await fetchWithTimeout(
+              `https://api.dexscreener.com/latest/dex/tokens/${addressesParam}`,
+              8000
+            );
+            
+            if (dexResponse.ok) {
+              const dexData = await dexResponse.json();
+              const pairs = dexData.pairs || [];
+              
+              // Build lookup map of best pair per token
+              const tokenPriceMap = new Map<string, number>();
+              for (const pair of pairs) {
+                const tokenAddr = pair.baseToken?.address;
+                if (!tokenAddr || pair.chainId !== 'solana') continue;
+                
+                // Keep pair with highest liquidity
+                const existing = tokenPriceMap.get(tokenAddr);
+                const priceNative = pair.priceNative ? parseFloat(pair.priceNative) : 0;
+                
+                if (priceNative > 0 && (!existing || existing === 0)) {
+                  const priceLamports = Math.floor(priceNative * 1_000_000_000);
+                  tokenPriceMap.set(tokenAddr, priceLamports);
+                }
+              }
+              
+              // Update prices in allTrendingTokens
+              for (const token of allTrendingTokens) {
+                if (tokenPriceMap.has(token.tokenAddress)) {
+                  token.price = tokenPriceMap.get(token.tokenAddress)!;
+                }
+              }
+            }
+          } catch (error: any) {
+            console.warn(`⚠️ DexScreener price fetch failed for Birdeye chunk ${i}: ${error.message}`);
+          }
+        }
+        console.log(`✅ Enriched Birdeye tokens with DexScreener prices`);
+      }
+
+      // 3. Fetch DexScreener boosted tokens
       try {
         const dexResponse = await fetchWithTimeout('https://api.dexscreener.com/token-boosts/top/v1', 5000);
         
@@ -987,11 +1036,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     const boostInfo = addressToBoostInfo.get(address);
                     
                     if (pairData) {
+                      // Convert SOL price to lamports (priceNative is in SOL, we need lamports)
+                      const priceNative = pairData.priceNative ? parseFloat(pairData.priceNative) : 0;
+                      const priceLamports = Math.floor(priceNative * 1_000_000_000);
+                      
                       allTrendingTokens.push({
                         tokenAddress: address,
                         name: pairData.baseToken?.name || boostInfo?.description?.split('\n')[0]?.trim() || 'Unknown',
                         symbol: pairData.baseToken?.symbol || address.slice(0, 4).toUpperCase(),
-                        price: pairData.priceNative ? parseFloat(pairData.priceNative) : 0,
+                        price: priceLamports, // Now in lamports
                         marketCap: pairData.fdv || pairData.marketCap || 0,
                         volume24h: pairData.volume?.h24 || 0,
                         priceChange24h: pairData.priceChange?.h24 || 0,

@@ -2,7 +2,7 @@ import { useLocation } from 'wouter';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp } from 'lucide-react';
-import { formatUSD } from '@/lib/lamports';
+import { formatSol } from '@/lib/lamports';
 import type { Token } from '@shared/schema';
 
 interface TokenCardProps {
@@ -55,9 +55,9 @@ export function TokenCard({ token }: TokenCardProps) {
 
         <div className="space-y-3">
           <div>
-            <p className="text-xs text-muted-foreground mb-1">Price</p>
+            <p className="text-xs text-muted-foreground mb-1">Price (SOL)</p>
             <p className="text-2xl font-bold font-mono text-primary" data-testid="text-price">
-              {formatUSD(token.price, 6)}
+              {formatSol(token.price, 8)}
             </p>
           </div>
 

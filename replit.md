@@ -10,6 +10,27 @@ SimFi is a full-stack web and Telegram bot application for paper trading Solana 
 
 ## Recent Changes (October 24, 2025)
 
+**Fixed Trending Tokens Price Display (October 24, 2025 - Evening)**:
+- Fixed trending tokens showing incorrect prices and market caps
+- Issue: Prices were in SOL but not converted to lamports, causing wrong display
+- Fix: All token prices now converted to lamports (SOL * 1B) for consistency
+- Birdeye tokens now enriched with DexScreener price data (Birdeye trending API doesn't provide prices)
+- TokenCard now displays "Price (SOL)" instead of USD conversion
+- Status: ✅ Completed - prices now show correctly in SOL
+
+**Fixed Portfolio BigInt Precision (October 24, 2025 - Evening)**:
+- Fixed critical precision bugs in portfolio P/L calculations
+- All calculations now use BigInt end-to-end (no Number conversion until display)
+- Token amounts now use correct decimals (6 for pump.fun tokens)
+- Eliminated hardcoded 9 decimals that was causing wrong profit/loss values
+- Status: ✅ Architect-reviewed and verified
+
+**Token Page Layout Improvement (October 24, 2025 - Evening)**:
+- Reorganized token trading page: chart on left (2/3 width), trading panel on right (1/3 width)
+- Buy/sell controls no longer overlap the chart
+- Cleaner, more professional trading interface
+- Status: ✅ Completed
+
 **Removed PumpPortal WebSocket (October 24, 2025)**:
 - Removed PumpPortal WebSocket integration (no longer needed for data)
 - Removed internal WebSocket server and TokenProvider from frontend
