@@ -28,6 +28,22 @@ export default function Leaderboard() {
   const currentPeriod = (periodData?.leaders || []);
   const pastWinners = (winnersData?.winners || []);
 
+  // Group past winners by period
+  const groupedWinners = pastWinners.reduce((acc: any, winner: any) => {
+    const key = `${winner.periodStart}-${winner.periodEnd}`;
+    if (!acc[key]) {
+      acc[key] = {
+        periodStart: winner.periodStart,
+        periodEnd: winner.periodEnd,
+        winners: []
+      };
+    }
+    acc[key].winners.push(winner);
+    return acc;
+  }, {});
+  
+  const periodGroups = Object.values(groupedWinners);
+
   const copyWalletAddress = async (address: string) => {
     try {
       await navigator.clipboard.writeText(address);
@@ -57,6 +73,36 @@ export default function Leaderboard() {
       case 2: return '🥉';
       default: return `#${index + 1}`;
     }
+  };
+
+  const renderPeriodGroups = (groups: any[]) => {
+    if (groups.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <Trophy className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+          <p className="text-xl text-muted-foreground">No past winners yet</p>
+          <p className="text-sm text-muted-foreground mt-2">Trade to become a winner in the next period</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {groups.map((group: any, groupIndex: number) => (
+          <div key={groupIndex} className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-foreground">
+                Period {groups.length - groupIndex}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {new Date(group.periodStart).toLocaleDateString()} {new Date(group.periodStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(group.periodEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </p>
+            </div>
+            {renderLeaderboardList(group.winners, 'periodProfit', false)}
+          </div>
+        ))}
+      </div>
+    );
   };
 
   const renderLeaderboardList = (leaders: LeaderboardEntry[], profitKey: 'totalProfit' | 'periodProfit' = 'totalProfit', showPeriodDates = false) => {
@@ -185,9 +231,9 @@ export default function Leaderboard() {
           <Card className="p-6">
             <h2 className="text-2xl font-bold text-foreground mb-6">Past Period Winners</h2>
             <p className="text-sm text-muted-foreground mb-4">
-              Historical winners from past 6-hour trading periods
+              Top 3 traders from each 6-hour trading period
             </p>
-            {renderLeaderboardList(pastWinners, 'periodProfit', true)}
+            {renderPeriodGroups(periodGroups)}
           </Card>
         </TabsContent>
       </Tabs>
