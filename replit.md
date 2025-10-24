@@ -2,11 +2,21 @@
 
 ## Overview
 
-SimFi is a full-stack web and Telegram bot application for paper trading Solana memecoins from pump.fun. Users can practice trading with virtual SOL, track real-time token launches via WebSocket, and compete on leaderboards. The application provides a crypto-native trading interface inspired by pump.fun, Uniswap, Jupiter Exchange, and Raydium.
+SimFi is a full-stack web and Telegram bot application for paper trading Solana memecoins. Users can practice trading with virtual SOL, discover trending tokens from Birdeye and DexScreener, and compete on leaderboards. The application provides a crypto-native trading interface inspired by pump.fun, Uniswap, Jupiter Exchange, and Raydium.
 
 **Brand**: "SimFi - Your Gateway to Risk-Free DeFi"
 
-**Core Purpose**: Enable users to simulate trading of Solana memecoins without financial risk, using real-time market data from pump.fun's WebSocket API.
+**Core Purpose**: Enable users to simulate trading of Solana memecoins without financial risk, using real-time market data from Birdeye and DexScreener APIs.
+
+## Recent Changes (October 24, 2025)
+
+**Removed PumpPortal WebSocket (October 24, 2025)**:
+- Removed PumpPortal WebSocket integration (no longer needed for data)
+- Removed internal WebSocket server and TokenProvider from frontend
+- Updated Portfolio to fetch current prices from DexScreener API via backend
+- All data now sourced from REST APIs: Birdeye (trending), DexScreener (metadata/prices), GeckoTerminal (charts)
+- Simplified architecture: No WebSocket connections, all data via HTTP/REST
+- Status: ✅ Completed and verified
 
 ## Recent Changes (October 23, 2025)
 
@@ -144,15 +154,15 @@ Preferred communication style: Simple, everyday language.
 
 **Framework**: Express.js with TypeScript
 - **API Style**: RESTful endpoints with JSON responses
-- **Real-time Data**: WebSocket server for live token price updates
+- **Data Sources**: Birdeye API for trending tokens, DexScreener API for token prices/metadata, GeckoTerminal for OHLCV charts
 - **Database ORM**: Drizzle ORM with PostgreSQL schema
 - **Authentication**: JWT-based auth with HttpOnly cookies
 - **Build System**: Vite for frontend bundling, esbuild for backend compilation
 
 **Key Services**:
-- **PumpPortal Service**: WebSocket client that connects to pump.fun's API and redistributes token data to frontend clients
 - **Leaderboard Service**: Background service that manages 6-hour trading periods and determines winners
 - **Storage Layer**: Abstracted database operations through IStorage interface
+- **Price Enrichment**: Backend fetches current prices from DexScreener when returning user positions
 
 ### Data Storage
 
@@ -192,10 +202,17 @@ Preferred communication style: Simple, everyday language.
 
 ### External Dependencies
 
-**Third-Party Services**:
-- **PumpPortal WebSocket API** (`wss://pumpportal.fun/api/data`): Real-time token launch and migration events
-  - Subscriptions: `subscribeNewToken`, `subscribeMigration`
-  - Data format: JSON messages with token metadata and market caps
+**Third-Party APIs**:
+- **Birdeye API** (`https://public-api.birdeye.so`): Trending tokens with liquidity and volume data
+  - Authentication: X-API-KEY header
+  - Rate limit: 60 requests/minute
+  - Endpoint: `/defi/token_trending`
+- **DexScreener API** (`https://api.dexscreener.com`): Token metadata, prices, and boosted tokens
+  - No authentication required
+  - Endpoints: `/latest/dex/tokens/{addresses}`, `/token-boosts/top/v1`
+- **GeckoTerminal API** (`https://api.geckoterminal.com`): OHLCV chart data for trading charts
+  - No authentication required
+  - Endpoint: `/api/v2/networks/solana/pools/{poolAddress}/ohlcv/{timeframe}`
   
 **Database Provider**:
 - **Neon Serverless PostgreSQL**: Cloud-hosted database accessed via `@neondatabase/serverless` with WebSocket support
@@ -219,6 +236,3 @@ Preferred communication style: Simple, everyday language.
 - **bcryptjs**: Password hashing
 - **jsonwebtoken**: JWT generation and verification
 - **cookie-parser**: HTTP cookie parsing middleware
-
-**Real-time Communication**:
-- **ws**: WebSocket library for both client (pump.fun) and server (frontend) connections
