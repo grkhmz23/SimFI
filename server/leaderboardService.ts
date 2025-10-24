@@ -24,14 +24,13 @@ class LeaderboardService {
       const currentPeriod = await storage.getCurrentLeaderboardPeriod();
       const now = new Date();
 
-      // If no current period or current period has ended, close it and create new one
-      if (!currentPeriod || new Date(currentPeriod.endTime) <= now) {
-        // Close the previous period and record winner if it exists
-        if (currentPeriod && !currentPeriod.winnerId) {
-          await this.closePeriod(currentPeriod.id, currentPeriod.startTime, currentPeriod.endTime);
-        }
+      // Close expired period if it hasn't been closed yet
+      if (currentPeriod && new Date(currentPeriod.endTime) <= now && !currentPeriod.winnerId) {
+        await this.closePeriod(currentPeriod.id, currentPeriod.startTime, currentPeriod.endTime);
+      }
 
-        // Create new period
+      // Create new period if no current period OR current period has ended
+      if (!currentPeriod || new Date(currentPeriod.endTime) <= now) {
         const startTime = now;
         const endTime = new Date(now.getTime() + PERIOD_DURATION_MS);
         await storage.createLeaderboardPeriod(startTime, endTime);
