@@ -30,7 +30,17 @@ export function TokenCard({ token }: TokenCardProps) {
         onClick={handleCardClick}
         data-testid={`card-token-${token.tokenAddress}`}
       >
-        <div className="flex items-start justify-between mb-4">
+        <div className="flex items-start gap-3 mb-4">
+          {token.icon && (
+            <img 
+              src={token.icon} 
+              alt={token.symbol}
+              className="w-12 h-12 rounded-full shrink-0"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          )}
           <div className="flex-1 min-w-0">
             <h3 className="text-lg font-bold text-foreground truncate" data-testid="text-token-symbol">
               {token.symbol}

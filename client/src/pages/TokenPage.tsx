@@ -231,13 +231,25 @@ export default function TokenPage() {
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2 flex-wrap">
-                <h1 className="text-3xl font-bold text-foreground" data-testid="text-token-name">
-                  {token.name}
-                </h1>
-                <Badge variant="outline" className="shrink-0">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  {token.symbol}
-                </Badge>
+                {token.icon && (
+                  <img 
+                    src={token.icon} 
+                    alt={token.symbol}
+                    className="w-16 h-16 rounded-full shrink-0"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                )}
+                <div className="flex flex-col gap-2">
+                  <h1 className="text-3xl font-bold text-foreground" data-testid="text-token-name">
+                    {token.name}
+                  </h1>
+                  <Badge variant="outline" className="shrink-0 w-fit">
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                    {token.symbol}
+                  </Badge>
+                </div>
                 {/* Live Indicator */}
                 <Badge 
                   variant="outline" 

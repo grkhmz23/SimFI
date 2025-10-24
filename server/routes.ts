@@ -875,6 +875,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 marketCap: solanaPair.marketCap || solanaPair.fdv || 0,
                 creator: undefined,
                 timestamp: new Date().toISOString(),
+                icon: solanaPair.info?.imageUrl,
               };
               
               console.log(`✅ Found token ${address} on DexScreener: ${token.name} (${token.symbol}) - Price: ${priceNative} SOL`);
