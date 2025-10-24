@@ -432,13 +432,13 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Your Position:</span>
                       <span className="font-mono">
-                        {Number(formatTokenAmount(position.amount, 2)).toLocaleString()} {symbol}
+                        {formatTokenAmount(position.amount, 2, positionDecimals)} {symbol}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Selling:</span>
                       <span className="font-mono font-semibold">
-                        {Number(formatTokenAmount(sellAmountBigInt, 2)).toLocaleString(undefined, { maximumFractionDigits: 2 })} {symbol}
+                        {formatTokenAmount(sellAmountBigInt, 2, positionDecimals)} {symbol}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
