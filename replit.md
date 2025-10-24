@@ -213,6 +213,10 @@ Preferred communication style: Simple, everyday language.
 - **GeckoTerminal API** (`https://api.geckoterminal.com`): OHLCV chart data for trading charts
   - No authentication required
   - Endpoint: `/api/v2/networks/solana/pools/{poolAddress}/ohlcv/{timeframe}`
+- **Jupiter API** (`https://quote-api.jup.ag`): Swap quotes for price impact estimation (display-only)
+  - No authentication required
+  - Endpoint: `/v6/quote` (SOL ↔ token quotes)
+  - Note: Quotes are for UI display only; actual trades use DexScreener prices for precision
   
 **Database Provider**:
 - **Neon Serverless PostgreSQL**: Cloud-hosted database accessed via `@neondatabase/serverless` with WebSocket support
