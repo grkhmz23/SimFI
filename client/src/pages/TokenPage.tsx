@@ -228,21 +228,21 @@ export default function TokenPage() {
             </Button>
           </Link>
 
-          <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-start gap-4 flex-wrap">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2 flex-wrap">
                 {token.icon && (
                   <img 
                     src={token.icon} 
                     alt={token.symbol}
-                    className="w-16 h-16 rounded-full shrink-0"
+                    className="w-12 h-12 rounded-full shrink-0"
                     onError={(e) => {
                       e.currentTarget.style.display = 'none';
                     }}
                   />
                 )}
-                <div className="flex flex-col gap-2">
-                  <h1 className="text-3xl font-bold text-foreground" data-testid="text-token-name">
+                <div className="flex flex-col gap-1">
+                  <h1 className="text-2xl font-bold text-foreground" data-testid="text-token-name">
                     {token.name}
                   </h1>
                   <Badge variant="outline" className="shrink-0 w-fit">
@@ -259,30 +259,8 @@ export default function TokenPage() {
                   🔴 LIVE
                 </Badge>
               </div>
-              
-              {/* Real-time Price Display */}
-              <div className="mb-2">
-                <div className="flex items-baseline gap-3 flex-wrap">
-                  <span className="text-4xl font-bold font-mono" data-testid="text-current-price">
-                    {formatUSD(token.price)}
-                  </span>
-                  {priceChange !== 0 && (
-                    <span 
-                      className={`text-lg font-semibold ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
-                      data-testid="text-price-change"
-                    >
-                      {priceChange >= 0 ? '▲' : '▼'} {Math.abs(priceChange).toFixed(2)}%
-                    </span>
-                  )}
-                </div>
-                {lastUpdate && (
-                  <div className="text-xs text-muted-foreground mt-1" data-testid="text-last-update">
-                    Last updated: {lastUpdate.toLocaleTimeString()}
-                  </div>
-                )}
-              </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mt-2">
                 <button
                   onClick={copyToClipboard}
                   className="text-sm font-mono text-muted-foreground hover:text-primary transition-colors cursor-pointer flex items-center gap-2 group"
@@ -301,92 +279,125 @@ export default function TokenPage() {
                 </a>
               </div>
             </div>
-
-            <div className="flex gap-3">
-              <Button
-                size="lg"
-                onClick={() => openTradeModal('buy')}
-                data-testid="button-buy"
-                className="min-w-[120px]"
-              >
-                Buy
-              </Button>
-              <Button
-                size="lg"
-                variant="destructive"
-                onClick={() => openTradeModal('sell')}
-                disabled={!userPosition}
-                data-testid="button-sell"
-                className="min-w-[120px]"
-              >
-                Sell
-              </Button>
-            </div>
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="mb-6">
-          <Card className="p-4">
-            <p className="text-xs text-muted-foreground uppercase mb-1">Market Cap</p>
-            <p className="text-2xl font-bold text-foreground" data-testid="text-marketcap">
-              {formatMarketCap(token.marketCap)}
-            </p>
-          </Card>
+        {/* Main Content: Chart on Left, Trading Panel on Right */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Chart Section - Takes 2/3 width on large screens */}
+          <div className="lg:col-span-2 space-y-4">
+            <TokenChart
+              tokenAddress={tokenAddress!}
+              tokenSymbol={token.symbol}
+              tokenName={token.name}
+              currentPrice={token.price}
+              priceChange24h={0}
+              volume24h={0}
+              liquidity={0}
+              height="500px"
+            />
+          </div>
+
+          {/* Trading Panel - Takes 1/3 width on large screens */}
+          <div className="space-y-4">
+            {/* Price Card */}
+            <Card className="p-6">
+              <div className="mb-4">
+                <p className="text-xs text-muted-foreground uppercase mb-1">Current Price</p>
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="text-3xl font-bold font-mono" data-testid="text-current-price">
+                    {formatUSD(token.price)}
+                  </span>
+                  {priceChange !== 0 && (
+                    <span 
+                      className={`text-sm font-semibold ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                      data-testid="text-price-change"
+                    >
+                      {priceChange >= 0 ? '▲' : '▼'} {Math.abs(priceChange).toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+                {lastUpdate && (
+                  <div className="text-xs text-muted-foreground mt-1" data-testid="text-last-update">
+                    Updated: {lastUpdate.toLocaleTimeString()}
+                  </div>
+                )}
+              </div>
+
+              <div className="mb-4">
+                <p className="text-xs text-muted-foreground uppercase mb-1">Market Cap</p>
+                <p className="text-xl font-bold text-foreground" data-testid="text-marketcap">
+                  {formatMarketCap(token.marketCap)}
+                </p>
+              </div>
+
+              {/* Trade Buttons */}
+              <div className="flex flex-col gap-3">
+                <Button
+                  size="lg"
+                  onClick={() => openTradeModal('buy')}
+                  data-testid="button-buy"
+                  className="w-full"
+                >
+                  Buy {token.symbol}
+                </Button>
+                <Button
+                  size="lg"
+                  variant="destructive"
+                  onClick={() => openTradeModal('sell')}
+                  disabled={!userPosition}
+                  data-testid="button-sell"
+                  className="w-full"
+                >
+                  Sell {token.symbol}
+                </Button>
+              </div>
+            </Card>
+
+            {/* Position Info (if user owns this token) */}
+            {userPosition && (
+              <Card className="p-6">
+                <h2 className="text-lg font-bold mb-4">Your Position</h2>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase mb-1">Amount Held</p>
+                    <p className="text-xl font-bold font-mono">
+                      {Number(formatTokenAmount(userPosition.amount, 2)).toLocaleString()} {token.symbol}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase mb-1">Entry Price</p>
+                    <p className="text-xl font-bold font-mono">
+                      {formatSol(userPosition.entryPrice, 8)} SOL
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase mb-1">Current Value</p>
+                    <p className="text-xl font-bold font-mono text-primary">
+                      {(() => {
+                        try {
+                          const amount = toBigInt(userPosition.amount);
+                          const price = Number(token.price);
+                          if (!isFinite(price) || price <= 0) {
+                            return '0.00 SOL';
+                          }
+                          const priceLamports = BigInt(Math.floor(price));
+                          const decimals = userPosition.decimals || 6;
+                          const decimalDivisor = BigInt(10 ** decimals);
+                          const valueLamports = (amount * priceLamports) / decimalDivisor;
+                          return formatSol(valueLamports) + ' SOL';
+                        } catch (error) {
+                          console.error('Error calculating position value:', error);
+                          return '0.00 SOL';
+                        }
+                      })()}
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            )}
+          </div>
         </div>
-
-        {/* Chart Container */}
-        <TokenChart
-          tokenAddress={tokenAddress!}
-          tokenSymbol={token.symbol}
-          tokenName={token.name}
-          currentPrice={token.price}
-          priceChange24h={0}
-          volume24h={0}
-          liquidity={0}
-          height="600px"
-        />
-
-        {/* Position Info (if user owns this token) */}
-        {userPosition && (
-          <Card className="p-6 bg-muted/50">
-            <h2 className="text-lg font-bold mb-4">Your Position</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase mb-1">Amount Held</p>
-                <p className="text-xl font-bold font-mono">
-                  {Number(formatTokenAmount(userPosition.amount, 2)).toLocaleString()} {token.symbol}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase mb-1">Entry Price</p>
-                <p className="text-xl font-bold font-mono">
-                  {formatSol(userPosition.entryPrice, 8)} SOL
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase mb-1">Current Value</p>
-                <p className="text-xl font-bold font-mono text-primary">
-                  {(() => {
-                    try {
-                      const amount = toBigInt(userPosition.amount);
-                      const price = Number(token.price);
-                      if (!isFinite(price) || price <= 0) {
-                        return '0.00 SOL';
-                      }
-                      const priceLamports = BigInt(Math.floor(price));
-                      const valueLamports = (amount * priceLamports) / BigInt(1_000_000_000);
-                      return formatSol(valueLamports) + ' SOL';
-                    } catch (error) {
-                      console.error('Error calculating position value:', error);
-                      return '0.00 SOL';
-                    }
-                  })()}
-                </p>
-              </div>
-            </div>
-          </Card>
-        )}
       </div>
 
       {/* Trade Modal */}
