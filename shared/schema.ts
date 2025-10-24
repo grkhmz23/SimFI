@@ -112,6 +112,7 @@ export interface Token {
   marketCap: number;
   creator?: string;
   timestamp?: string;
+  icon?: string; // Token image URL from DexScreener
 }
 
 // API Request/Response types
