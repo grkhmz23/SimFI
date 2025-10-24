@@ -145,8 +145,9 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   const sellAmountBigInt = !isBuying && position 
     ? (toBigInt(position.amount) * BigInt(percentage)) / BigInt(100)
     : BigInt(0);
-  // Use lamportsToTokens for precision-safe conversion to decimal string (no Number conversion!)
-  const sellTokenAmountStr = sellAmountBigInt > 0n ? lamportsToTokens(sellAmountBigInt) : '0';
+  // Use lamportsToTokens with correct decimals for precision-safe conversion to decimal string
+  const positionDecimals = position?.decimals || 6;
+  const sellTokenAmountStr = sellAmountBigInt > 0n ? lamportsToTokens(sellAmountBigInt, positionDecimals) : '0';
   const sellQuoteUrl = sellTokenAddress && sellTokenAmountStr !== '0'
     ? `/api/tokens/quote/sell?tokenAddress=${sellTokenAddress}&tokenAmount=${sellTokenAmountStr}`
     : null;
@@ -158,9 +159,10 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     staleTime: 10000, // 10 seconds
   });
 
-  // Use Jupiter quote for estimated tokens if available, fallback to simple calculation
+  // Use Jupiter quote for estimated tokens if available, fallback to calculation with correct decimals
+  const buyTokenDecimals = token?.decimals || 6;
   const estimatedTokens = isBuying 
-    ? (jupiterQuote?.tokenAmountDisplay || (solAmount * 1_000_000_000) / currentPrice)
+    ? (jupiterQuote?.tokenAmountDisplay || ((solAmount * 1_000_000_000) * (10 ** buyTokenDecimals)) / currentPrice / (10 ** buyTokenDecimals))
     : 0;
   
   const priceImpact = isBuying 
