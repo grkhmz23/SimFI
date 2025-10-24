@@ -51,6 +51,8 @@ function serializeBigInts(obj: any): any {
 
 // Helper to fetch token metadata from multiple APIs with fallbacks
 async function fetchTokenMetadata(tokenAddress: string): Promise<{ icon?: string; name?: string; symbol?: string } | null> {
+  let dexMetadata: { icon?: string; name?: string; symbol?: string } | null = null;
+  
   // Try DexScreener first (free, no API key needed)
   try {
     const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 3000);
@@ -61,37 +63,98 @@ async function fetchTokenMetadata(tokenAddress: string): Promise<{ icon?: string
       );
       
       if (solanaPair) {
-        return {
+        dexMetadata = {
           icon: solanaPair.info?.imageUrl,
           name: solanaPair.baseToken?.name,
           symbol: solanaPair.baseToken?.symbol,
         };
+        
+        // If DexScreener has icon, return immediately
+        if (dexMetadata.icon) {
+          console.log(`✅ DexScreener metadata for ${tokenAddress}: icon=Yes`);
+          return dexMetadata;
+        }
+        
+        console.log(`⚠️ DexScreener has metadata for ${tokenAddress} but NO icon, trying Birdeye...`);
       }
     }
   } catch (error) {
     console.log(`⚠️ DexScreener metadata fetch failed for ${tokenAddress}`);
   }
 
-  // Try Birdeye API (free tier available, no API key required for basic calls)
+  // Try Birdeye API v3 (free tier available, no API key required for basic calls)
   try {
-    const birdeyeResponse = await fetchWithTimeout(
-      `https://public-api.birdeye.so/defi/token_overview?address=${tokenAddress}`,
-      3000
+    console.log(`🔍 Trying Birdeye v3 for ${tokenAddress.slice(0, 8)}...`);
+    const birdeyeResponse = await fetch(
+      `https://public-api.birdeye.so/defi/v3/token/meta-data/single?address=${tokenAddress}`,
+      {
+        headers: {
+          'accept': 'application/json',
+          'x-chain': 'solana',
+        },
+        signal: AbortSignal.timeout(3000),
+      }
     );
+    
     if (birdeyeResponse.ok) {
       const birdeyeData = await birdeyeResponse.json();
-      if (birdeyeData.data) {
+      console.log(`📊 Birdeye v3 response for ${tokenAddress.slice(0, 8)}: success=${birdeyeData.success}`);
+      
+      if (birdeyeData.success && birdeyeData.data) {
+        const birdeyeIcon = birdeyeData.data.logoURI || birdeyeData.data.icon;
+        console.log(`✅ Birdeye v3 metadata for ${tokenAddress.slice(0, 8)}: icon=${birdeyeIcon ? 'Yes' : 'No'}`);
+        
         return {
-          icon: birdeyeData.data.logoURI,
-          name: birdeyeData.data.name,
-          symbol: birdeyeData.data.symbol,
+          icon: birdeyeIcon || dexMetadata?.icon,
+          name: birdeyeData.data.name || dexMetadata?.name,
+          symbol: birdeyeData.data.symbol || dexMetadata?.symbol,
         };
       }
     }
-  } catch (error) {
-    console.log(`⚠️ Birdeye metadata fetch failed for ${tokenAddress}`);
+  } catch (error: any) {
+    console.log(`⚠️ Birdeye v3 metadata fetch failed for ${tokenAddress.slice(0, 8)}: ${error.message}`);
   }
 
+  // Fallback to older Birdeye token_overview endpoint
+  try {
+    console.log(`🔍 Trying Birdeye token_overview for ${tokenAddress.slice(0, 8)}...`);
+    const birdeyeResponse = await fetch(
+      `https://public-api.birdeye.so/defi/token_overview?address=${tokenAddress}`,
+      {
+        headers: {
+          'accept': 'application/json',
+          'x-chain': 'solana',
+        },
+        signal: AbortSignal.timeout(3000),
+      }
+    );
+    
+    if (birdeyeResponse.ok) {
+      const birdeyeData = await birdeyeResponse.json();
+      console.log(`📊 Birdeye token_overview response for ${tokenAddress.slice(0, 8)}: has data=${!!birdeyeData.data}`);
+      
+      if (birdeyeData.data) {
+        const birdeyeIcon = birdeyeData.data.logoURI || birdeyeData.data.icon;
+        console.log(`✅ Birdeye token_overview metadata for ${tokenAddress.slice(0, 8)}: icon=${birdeyeIcon ? 'Yes' : 'No'}`);
+        
+        return {
+          icon: birdeyeIcon || dexMetadata?.icon,
+          name: birdeyeData.data.name || dexMetadata?.name,
+          symbol: birdeyeData.data.symbol || dexMetadata?.symbol,
+        };
+      }
+    }
+  } catch (error: any) {
+    console.log(`⚠️ Birdeye token_overview fetch failed for ${tokenAddress.slice(0, 8)}: ${error.message}`);
+  }
+
+  // Return DexScreener metadata if we got it (even without icon)
+  if (dexMetadata) {
+    console.log(`📌 Returning DexScreener metadata for ${tokenAddress.slice(0, 8)} (no Birdeye data available)`);
+    return dexMetadata;
+  }
+
+  console.log(`❌ No metadata found for ${tokenAddress.slice(0, 8)} from any source`);
   return null;
 }
 
