@@ -78,7 +78,7 @@ export default function Leaderboard() {
 
           return (
             <div
-              key={entry.id || index}
+              key={`${entry.id}-${index}`}
               className={`flex items-center gap-4 p-4 rounded-lg border transition-colors ${
                 isTopThree 
                   ? 'bg-primary/5 border-primary/20 hover-elevate' 
