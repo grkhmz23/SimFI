@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/table';
 import { TradeModal } from '@/components/TradeModal';
 import { useAuth } from '@/lib/auth-context';
-import { formatSol, lamportsToSol, toBigInt } from '@/lib/lamports';
+import { formatSol, lamportsToSol, toBigInt, formatTokenAmount } from '@/lib/lamports';
 import { TrendingUp, TrendingDown, Package, LogIn } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -105,7 +105,8 @@ export default function Portfolio() {
   // Positions now include currentPrice from API
   const getPositionWithPrice = (position: any) => position;
 
-  const calculateCurrentValue = (position: Position, currentPrice: number) => {
+  // Keep everything in BigInt until final display to prevent precision loss
+  const calculateCurrentValueBigInt = (position: Position, currentPrice: number): bigint => {
     // position.amount is in token base units (10^decimals = 1 token)
     // currentPrice is in Lamports per token
     const amountBigInt = toBigInt(position.amount);
@@ -114,20 +115,21 @@ export default function Portfolio() {
     const decimalDivisor = BigInt(10 ** decimals);
     
     // Use BigInt arithmetic: (amount * currentPrice) / 10^decimals
-    const valueBigInt = (amountBigInt * currentPriceBigInt) / decimalDivisor;
-    return Number(valueBigInt);
+    return (amountBigInt * currentPriceBigInt) / decimalDivisor;
   };
 
-  const calculateProfitLoss = (position: Position, currentPrice: number) => {
-    const currentValue = calculateCurrentValue(position, currentPrice);
-    const solSpentNum = Number(toBigInt(position.solSpent));
-    return currentValue - solSpentNum;
+  const calculateProfitLossBigInt = (position: Position, currentPrice: number): bigint => {
+    const currentValue = calculateCurrentValueBigInt(position, currentPrice);
+    const solSpent = toBigInt(position.solSpent);
+    return currentValue - solSpent;
   };
 
-  const calculateProfitLossPercent = (position: Position, currentPrice: number) => {
-    const pl = calculateProfitLoss(position, currentPrice);
-    const solSpentNum = Number(toBigInt(position.solSpent));
-    return (pl / solSpentNum) * 100;
+  const calculateProfitLossPercent = (position: Position, currentPrice: number): number => {
+    const pl = calculateProfitLossBigInt(position, currentPrice);
+    const solSpent = toBigInt(position.solSpent);
+    // Convert to Number only for percentage calculation (division)
+    // This is safe because percentages are small numbers
+    return (Number(pl) / Number(solSpent)) * 100;
   };
 
   // Use BigInt for totals to prevent precision loss
@@ -137,8 +139,7 @@ export default function Portfolio() {
   
   const totalCurrentValue = positions.reduce((sum: bigint, p: Position) => {
     const withPrice = getPositionWithPrice(p);
-    const currentValue = calculateCurrentValue(p, withPrice.currentPrice);
-    return sum + BigInt(Math.floor(currentValue));
+    return sum + calculateCurrentValueBigInt(p, withPrice.currentPrice);
   }, 0n);
   
   const totalPL = totalCurrentValue - totalInvested;
@@ -233,8 +234,8 @@ export default function Portfolio() {
                 <TableBody>
                   {positions.map((position: Position, index: number) => {
                     const positionWithPrice = getPositionWithPrice(position);
-                    const currentValue = calculateCurrentValue(position, positionWithPrice.currentPrice);
-                    const pl = calculateProfitLoss(position, positionWithPrice.currentPrice);
+                    const currentValueBigInt = calculateCurrentValueBigInt(position, positionWithPrice.currentPrice);
+                    const plBigInt = calculateProfitLossBigInt(position, positionWithPrice.currentPrice);
                     const plPercent = calculateProfitLossPercent(position, positionWithPrice.currentPrice);
 
                     // Check if this is the first position of a token with multiple positions
@@ -261,7 +262,7 @@ export default function Portfolio() {
                           </button>
                         </TableCell>
                         <TableCell className="text-right font-mono">
-                          {(position.amount / 1_000_000_000).toLocaleString()}
+                          {formatTokenAmount(position.amount, 2, position.decimals || 6)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm">
                           {formatSol(position.entryPrice, 8)}
@@ -273,18 +274,18 @@ export default function Portfolio() {
                           {formatSol(position.solSpent)}
                         </TableCell>
                         <TableCell className="text-right font-mono">
-                          {formatSol(currentValue)}
+                          {formatSol(currentValueBigInt)}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex flex-col items-end">
-                            <span className={`font-mono font-semibold ${pl >= 0 ? 'text-success' : 'text-destructive'}`}>
-                              {pl >= 0 ? '+' : ''}{formatSol(pl)}
+                            <span className={`font-mono font-semibold ${plBigInt >= 0n ? 'text-success' : 'text-destructive'}`}>
+                              {plBigInt >= 0n ? '+' : ''}{formatSol(plBigInt)}
                             </span>
                             <Badge 
-                              variant={pl >= 0 ? 'default' : 'destructive'}
+                              variant={plBigInt >= 0n ? 'default' : 'destructive'}
                               className="text-xs"
                             >
-                              {pl >= 0 ? '+' : ''}{plPercent.toFixed(2)}%
+                              {plBigInt >= 0n ? '+' : ''}{plPercent.toFixed(2)}%
                             </Badge>
                           </div>
                         </TableCell>
