@@ -49,6 +49,52 @@ function serializeBigInts(obj: any): any {
   );
 }
 
+// Helper to fetch token metadata from multiple APIs with fallbacks
+async function fetchTokenMetadata(tokenAddress: string): Promise<{ icon?: string; name?: string; symbol?: string } | null> {
+  // Try DexScreener first (free, no API key needed)
+  try {
+    const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 3000);
+    if (dexResponse.ok) {
+      const dexData = await dexResponse.json();
+      const solanaPair = dexData.pairs?.find((pair: any) => 
+        pair.chainId === 'solana' && pair.baseToken?.address === tokenAddress
+      );
+      
+      if (solanaPair) {
+        return {
+          icon: solanaPair.info?.imageUrl,
+          name: solanaPair.baseToken?.name,
+          symbol: solanaPair.baseToken?.symbol,
+        };
+      }
+    }
+  } catch (error) {
+    console.log(`⚠️ DexScreener metadata fetch failed for ${tokenAddress}`);
+  }
+
+  // Try Birdeye API (free tier available, no API key required for basic calls)
+  try {
+    const birdeyeResponse = await fetchWithTimeout(
+      `https://public-api.birdeye.so/defi/token_overview?address=${tokenAddress}`,
+      3000
+    );
+    if (birdeyeResponse.ok) {
+      const birdeyeData = await birdeyeResponse.json();
+      if (birdeyeData.data) {
+        return {
+          icon: birdeyeData.data.logoURI,
+          name: birdeyeData.data.name,
+          symbol: birdeyeData.data.symbol,
+        };
+      }
+    }
+  } catch (error) {
+    console.log(`⚠️ Birdeye metadata fetch failed for ${tokenAddress}`);
+  }
+
+  return null;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
   // Auth Routes
@@ -794,31 +840,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ error: 'Invalid API response', tokens: [] });
       }
       
-      // Filter for Solana tokens and map to our format
-      const trendingTokens = boostedTokens
+      // Filter for Solana tokens and enhance with metadata
+      const boostedSolanaTokens = boostedTokens
         .filter((item: any) => item.chainId === 'solana' && item.tokenAddress)
-        .slice(0, 50) // Top 50
-        .map((item: any) => {
-          // Boosted tokens have URL like dexscreener.com/solana/ADDRESS
-          const url = item.url || '';
-          const addressMatch = url.match(/solana\/([A-Za-z0-9]+)/);
-          const pairAddress = addressMatch ? addressMatch[1] : item.tokenAddress;
+        .slice(0, 50); // Top 50
+      
+      // Fetch metadata for each token in parallel
+      const trendingTokens = await Promise.all(
+        boostedSolanaTokens.map(async (item: any) => {
+          const metadata = await fetchTokenMetadata(item.tokenAddress);
           
           return {
             tokenAddress: item.tokenAddress,
-            name: item.description?.split('\n')[0]?.trim() || 'Unknown',
-            symbol: item.tokenAddress.slice(0, 4).toUpperCase(),
+            name: metadata?.name || item.description?.split('\n')[0]?.trim() || 'Unknown',
+            symbol: metadata?.symbol || item.tokenAddress.slice(0, 4).toUpperCase(),
             price: 0, // Price not available in boosts endpoint
             marketCap: 0,
             volume24h: 0,
             priceChange24h: 0,
             creator: undefined,
             timestamp: new Date().toISOString(),
-            icon: item.icon,
+            icon: metadata?.icon || item.icon, // Try metadata first, fallback to boost icon
           };
-        });
+        })
+      );
       
-      console.log(`📈 Fetched ${trendingTokens.length} boosted tokens as trending from DexScreener`);
+      console.log(`📈 Fetched ${trendingTokens.length} boosted tokens with metadata from DexScreener`);
       res.json({ tokens: trendingTokens });
     } catch (error: any) {
       console.error('Get trending tokens error:', error);
@@ -867,18 +914,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // Convert SOL to Lamports
               const priceLamports = Math.floor(priceNative * 1_000_000_000);
               
+              // Try to get enhanced metadata (icon, etc.)
+              const metadata = await fetchTokenMetadata(address);
+              
               token = {
                 tokenAddress: address,
-                name: solanaPair.baseToken?.name || 'Unknown Token',
-                symbol: solanaPair.baseToken?.symbol || '???',
+                name: metadata?.name || solanaPair.baseToken?.name || 'Unknown Token',
+                symbol: metadata?.symbol || solanaPair.baseToken?.symbol || '???',
                 price: priceLamports,
                 marketCap: solanaPair.marketCap || solanaPair.fdv || 0,
                 creator: undefined,
                 timestamp: new Date().toISOString(),
-                icon: solanaPair.info?.imageUrl,
+                icon: metadata?.icon || solanaPair.info?.imageUrl,
               };
               
-              console.log(`✅ Found token ${address} on DexScreener: ${token.name} (${token.symbol}) - Price: ${priceNative} SOL`);
+              console.log(`✅ Found token ${address} on DexScreener: ${token.name} (${token.symbol}) - Price: ${priceNative} SOL - Icon: ${token.icon ? 'Yes' : 'No'}`);
             }
           }
         } catch (dexError) {
