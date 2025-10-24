@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/table';
 import { TradeModal } from '@/components/TradeModal';
 import { useAuth } from '@/lib/auth-context';
-import { formatSol, lamportsToSol } from '@/lib/lamports';
+import { formatSol, lamportsToSol, toBigInt } from '@/lib/lamports';
 import { TrendingUp, TrendingDown, Package, LogIn } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -106,26 +106,41 @@ export default function Portfolio() {
   const getPositionWithPrice = (position: any) => position;
 
   const calculateCurrentValue = (position: Position, currentPrice: number) => {
-    // position.amount is in integer tokens (1B = 1 token), currentPrice is in Lamports per token
-    const tokenAmount = position.amount / 1_000_000_000;
-    return Math.floor(tokenAmount * currentPrice);
+    // position.amount is in token base units (10^decimals = 1 token)
+    // currentPrice is in Lamports per token
+    const amountBigInt = toBigInt(position.amount);
+    const currentPriceBigInt = BigInt(Math.floor(currentPrice));
+    const decimals = position.decimals || 6;
+    const decimalDivisor = BigInt(10 ** decimals);
+    
+    // Use BigInt arithmetic: (amount * currentPrice) / 10^decimals
+    const valueBigInt = (amountBigInt * currentPriceBigInt) / decimalDivisor;
+    return Number(valueBigInt);
   };
 
   const calculateProfitLoss = (position: Position, currentPrice: number) => {
     const currentValue = calculateCurrentValue(position, currentPrice);
-    return currentValue - position.solSpent;
+    const solSpentNum = Number(toBigInt(position.solSpent));
+    return currentValue - solSpentNum;
   };
 
   const calculateProfitLossPercent = (position: Position, currentPrice: number) => {
     const pl = calculateProfitLoss(position, currentPrice);
-    return (pl / position.solSpent) * 100;
+    const solSpentNum = Number(toBigInt(position.solSpent));
+    return (pl / solSpentNum) * 100;
   };
 
-  const totalInvested = positions.reduce((sum: number, p: Position) => sum + p.solSpent, 0);
-  const totalCurrentValue = positions.reduce((sum: number, p: Position) => {
+  // Use BigInt for totals to prevent precision loss
+  const totalInvested = positions.reduce((sum: bigint, p: Position) => {
+    return sum + toBigInt(p.solSpent);
+  }, 0n);
+  
+  const totalCurrentValue = positions.reduce((sum: bigint, p: Position) => {
     const withPrice = getPositionWithPrice(p);
-    return sum + calculateCurrentValue(p, withPrice.currentPrice);
-  }, 0);
+    const currentValue = calculateCurrentValue(p, withPrice.currentPrice);
+    return sum + BigInt(Math.floor(currentValue));
+  }, 0n);
+  
   const totalPL = totalCurrentValue - totalInvested;
 
   return (
