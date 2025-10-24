@@ -59,7 +59,7 @@ export default function Leaderboard() {
     }
   };
 
-  const renderLeaderboardList = (leaders: LeaderboardEntry[], profitKey: 'totalProfit' | 'periodProfit' = 'totalProfit') => {
+  const renderLeaderboardList = (leaders: LeaderboardEntry[], profitKey: 'totalProfit' | 'periodProfit' = 'totalProfit', showPeriodDates = false) => {
     if (leaders.length === 0) {
       return (
         <div className="text-center py-12">
@@ -72,7 +72,7 @@ export default function Leaderboard() {
 
     return (
       <div className="space-y-3">
-        {leaders.map((entry, index) => {
+        {leaders.map((entry: any, index) => {
           const profit = entry[profitKey] || 0;
           const isTopThree = index < 3;
 
@@ -92,6 +92,11 @@ export default function Leaderboard() {
 
               <div className="flex-1">
                 <p className="font-semibold text-foreground text-lg">{entry.username}</p>
+                {showPeriodDates && entry.periodStart && entry.periodEnd && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {new Date(entry.periodStart).toLocaleDateString()} {new Date(entry.periodStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(entry.periodEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                )}
                 {entry.walletAddress && (
                   <button
                     onClick={() => copyWalletAddress(entry.walletAddress!)}
@@ -179,7 +184,10 @@ export default function Leaderboard() {
         <TabsContent value="winners">
           <Card className="p-6">
             <h2 className="text-2xl font-bold text-foreground mb-6">Past Period Winners</h2>
-            {renderLeaderboardList(pastWinners, 'totalProfit')}
+            <p className="text-sm text-muted-foreground mb-4">
+              Historical winners from past 6-hour trading periods
+            </p>
+            {renderLeaderboardList(pastWinners, 'periodProfit', true)}
           </Card>
         </TabsContent>
       </Tabs>
