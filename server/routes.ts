@@ -6,7 +6,7 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { storage } from "./storage";
 import { authenticateToken } from "./middleware/auth";
-import { initializePumpPortal, getTokens, fetchDexScreenerProfiles } from "./pumpportal";
+import { fetchDexScreenerProfiles } from "./pumpportal";
 import { leaderboardService } from "./leaderboardService";
 import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest } from "@shared/schema";
 
@@ -675,30 +675,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
   // Token Routes
   // ============================================================================
-  
-  app.get('/api/tokens/pairs', (req, res) => {
-    try {
-      const { category = 'new' } = req.query;
-      const allTokens = getTokens();
-      
-      let responseData;
-      switch (category) {
-        case 'graduating':
-          responseData = allTokens.graduating;
-          break;
-        case 'graduated':
-          responseData = allTokens.graduated;
-          break;
-        default:
-          responseData = allTokens.new;
-      }
-      
-      res.json({ pairs: responseData.slice(0, 100) });
-    } catch (error: any) {
-      console.error('Get pairs error:', error);
-      res.status(500).json({ error: 'Could not fetch token pairs' });
-    }
-  });
 
   // IMPORTANT: Search route must come BEFORE :address route to avoid matching "search" as an address
   app.get('/api/tokens/search', async (req, res) => {
@@ -714,27 +690,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const results: any[] = [];
 
-      // Search through local tokens from WebSocket
-      const allTokens = getTokens();
-      const localTokens = [...allTokens.new, ...allTokens.graduating, ...allTokens.graduated];
-      
-      for (const token of localTokens) {
-        const address = token.tokenAddress.toLowerCase();
-        const name = token.name?.toLowerCase() || '';
-        const symbol = token.symbol?.toLowerCase() || '';
-        
-        if (address.includes(searchTerm) || name.includes(searchTerm) || symbol.includes(searchTerm)) {
-          results.push({
-            tokenAddress: token.tokenAddress,
-            name: token.name || `${token.tokenAddress.slice(0, 4)}...${token.tokenAddress.slice(-4)}`,
-            symbol: token.symbol || token.tokenAddress.slice(0, 4).toUpperCase(),
-            marketCap: token.marketCap,
-            price: token.price,
-          });
-        }
-      }
-
-      // Search DexScreener API for broader results (including historical tokens)
+      // Search DexScreener API for token results
       try {
         const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/search/?q=${encodeURIComponent(searchTerm)}`);
         if (dexResponse.ok) {
@@ -1061,21 +1017,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/tokens/:address', async (req, res) => {
     try {
       const { address } = req.params;
-      const allTokens = getTokens();
+      let token = null;
       
-      // Search for token in all categories (local WebSocket feed)
-      let token = allTokens.new.find(t => t.tokenAddress === address);
-      if (!token) {
-        token = allTokens.graduating.find(t => t.tokenAddress === address);
-      }
-      if (!token) {
-        token = allTokens.graduated.find(t => t.tokenAddress === address);
-      }
-      
-      // If not found locally, try DexScreener API for historical tokens
-      if (!token) {
-        console.log(`🔍 Token ${address} not in local feed, checking DexScreener...`);
-        try {
+      // Fetch token from DexScreener API
+      console.log(`🔍 Fetching token ${address} from DexScreener...`);
+      try {
           const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
           if (dexResponse.ok) {
             const dexData = await dexResponse.json();
@@ -1118,7 +1064,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (dexError) {
           console.error('DexScreener API error for token:', dexError);
         }
-      }
       
       if (!token) {
         return res.status(404).json({ error: 'Token not found' });
@@ -1314,9 +1259,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
-  
-  // Initialize WebSocket for pump.fun integration
-  initializePumpPortal(httpServer);
   
   // Initialize leaderboard service for period management
   leaderboardService.start();
