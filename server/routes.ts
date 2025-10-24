@@ -890,7 +890,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allTrendingTokens: any[] = [];
       const seenAddresses = new Set<string>();
 
-      // Fetch DexScreener boosted tokens
+      // 1. Fetch from Birdeye trending API (if API key is available)
+      if (process.env.BIRDEYE_API_KEY) {
+        try {
+          console.log(`🔍 Fetching trending tokens from Birdeye with API key...`);
+          const birdeyeResponse = await fetch(
+            'https://public-api.birdeye.so/defi/token_trending?sort_by=rank&sort_type=asc&offset=0&limit=20',
+            {
+              headers: {
+                'accept': 'application/json',
+                'x-chain': 'solana',
+                'X-API-KEY': process.env.BIRDEYE_API_KEY,
+              },
+              signal: AbortSignal.timeout(5000),
+            }
+          );
+          
+          if (birdeyeResponse.ok) {
+            const birdeyeData = await birdeyeResponse.json();
+            console.log(`📊 Birdeye response:`, JSON.stringify(birdeyeData).slice(0, 200));
+            
+            if (Array.isArray(birdeyeData.data?.tokens)) {
+              for (const item of birdeyeData.data.tokens) {
+                const address = item.address;
+                if (!address || seenAddresses.has(address)) continue;
+                
+                seenAddresses.add(address);
+                allTrendingTokens.push({
+                  tokenAddress: address,
+                  name: item.name || 'Unknown',
+                  symbol: item.symbol || address.slice(0, 4).toUpperCase(),
+                  price: 0, // Price not provided in trending API
+                  marketCap: item.liquidity || 0, // Use liquidity as proxy for market cap
+                  volume24h: item.volume24hUSD || 0,
+                  priceChange24h: 0, // Not provided in trending API
+                  creator: undefined,
+                  timestamp: new Date().toISOString(),
+                  icon: item.logoURI,
+                });
+              }
+              console.log(`✅ Fetched ${birdeyeData.data.tokens.length} trending tokens from Birdeye`);
+            }
+          } else {
+            const errorText = await birdeyeResponse.text();
+            console.warn(`⚠️ Birdeye API returned status: ${birdeyeResponse.status}, error:`, errorText.slice(0, 200));
+          }
+        } catch (error: any) {
+          console.warn(`⚠️ Birdeye trending fetch failed: ${error.message}`);
+        }
+      }
+
+      // 2. Fetch DexScreener boosted tokens
       try {
         const dexResponse = await fetchWithTimeout('https://api.dexscreener.com/token-boosts/top/v1', 5000);
         
@@ -999,7 +1049,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Return top 50 trending tokens
       const finalTokens = allTrendingTokens.slice(0, 50);
-      console.log(`✅ Returning ${finalTokens.length} trending tokens`);
+      console.log(`✅ Returning ${finalTokens.length} trending tokens from Birdeye + DexScreener`);
       res.json({ tokens: finalTokens });
     } catch (error: any) {
       console.error('Get trending tokens error:', error);
