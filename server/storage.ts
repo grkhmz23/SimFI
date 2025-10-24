@@ -228,22 +228,37 @@ class DbStorage implements IStorage {
       .where(eq(leaderboardPeriods.id, periodId));
   }
 
-  async getPastWinners(limit: number): Promise<any[]> {
-    const result = await db.select({
-      id: users.id,
-      username: users.username,
-      walletAddress: users.walletAddress,
-      periodProfit: leaderboardPeriods.winnerProfit,
-      periodStart: leaderboardPeriods.startTime,
-      periodEnd: leaderboardPeriods.endTime,
-    })
-    .from(leaderboardPeriods)
-    .leftJoin(users, eq(users.id, leaderboardPeriods.winnerId))
-    .where(sql`${leaderboardPeriods.winnerId} IS NOT NULL`)
-    .orderBy(desc(leaderboardPeriods.endTime))
-    .limit(limit);
+  async getPastWinners(limitPeriods: number): Promise<any[]> {
+    // Get all past closed periods (with winners)
+    const periods = await db.select()
+      .from(leaderboardPeriods)
+      .where(sql`${leaderboardPeriods.winnerId} IS NOT NULL`)
+      .orderBy(desc(leaderboardPeriods.endTime))
+      .limit(limitPeriods);
     
-    return result;
+    // For each period, get the top 3 traders
+    const allWinners = [];
+    for (const period of periods) {
+      const topTraders = await this.getTopUsersByPeriodProfit(
+        period.startTime,
+        period.endTime,
+        3  // Top 3 per period
+      );
+      
+      // Add period info to each trader
+      for (const trader of topTraders) {
+        allWinners.push({
+          id: trader.id,
+          username: trader.username,
+          walletAddress: trader.walletAddress,
+          periodProfit: trader.periodProfit,
+          periodStart: period.startTime,
+          periodEnd: period.endTime,
+        });
+      }
+    }
+    
+    return allWinners;
   }
 
   async saveTelegramSession(telegramUserId: string, userId: string, token: string, balance: bigint): Promise<TelegramSession> {
