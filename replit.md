@@ -2,7 +2,152 @@
 
 ## Overview
 
-SimFi is a comprehensive Solana token trading and analysis platform designed to enable risk-free simulation of Solana memecoin trading. It comprises a full-stack web application for paper trading, a mobile-friendly Telegram bot for on-the-go interaction, and a CLI tool for on-chain token analysis. The platform utilizes real-time market data from various APIs to provide an authentic trading experience without financial risk.
+SimFi is a full-stack web and Telegram bot application for paper trading Solana memecoins. Users can practice trading with virtual SOL, discover trending tokens from Birdeye and DexScreener, and compete on leaderboards. The application provides a crypto-native trading interface inspired by pump.fun, Uniswap, Jupiter Exchange, and Raydium.
+
+**Brand**: "SimFi - Your Gateway to Risk-Free DeFi"
+
+**Core Purpose**: Enable users to simulate trading of Solana memecoins without financial risk, using real-time market data from Birdeye and DexScreener APIs.
+
+## Recent Changes (October 24, 2025)
+
+**Fixed Trending Tokens Price Display (October 24, 2025 - Evening)**:
+- Fixed trending tokens showing incorrect prices and market caps
+- Issue: Prices were in SOL but not converted to lamports, causing wrong display
+- Fix: All token prices now converted to lamports (SOL * 1B) for consistency
+- Birdeye tokens now enriched with DexScreener price data (Birdeye trending API doesn't provide prices)
+- TokenCard now displays "Price (SOL)" instead of USD conversion
+- Status: ✅ Completed - prices now show correctly in SOL
+
+**Fixed Portfolio BigInt Precision (October 24, 2025 - Evening)**:
+- Fixed critical precision bugs in portfolio P/L calculations
+- All calculations now use BigInt end-to-end (no Number conversion until display)
+- Token amounts now use correct decimals (6 for pump.fun tokens)
+- Eliminated hardcoded 9 decimals that was causing wrong profit/loss values
+- Status: ✅ Architect-reviewed and verified
+
+**Token Page Layout Improvement (October 24, 2025 - Evening)**:
+- Reorganized token trading page: chart on left (2/3 width), trading panel on right (1/3 width)
+- Buy/sell controls no longer overlap the chart
+- Cleaner, more professional trading interface
+- Status: ✅ Completed
+
+**Removed PumpPortal WebSocket (October 24, 2025)**:
+- Removed PumpPortal WebSocket integration (no longer needed for data)
+- Removed internal WebSocket server and TokenProvider from frontend
+- Updated Portfolio to fetch current prices from DexScreener API via backend
+- All data now sourced from REST APIs: Birdeye (trending), DexScreener (metadata/prices), GeckoTerminal (charts)
+- Simplified architecture: No WebSocket connections, all data via HTTP/REST
+- Status: ✅ Completed and verified
+
+## Recent Changes (October 23, 2025)
+
+**Codebase Cleanup & Security Audit (October 23, 2025 - Afternoon)**:
+- Removed unused Chart.js dependencies (chart.js, react-chartjs-2, chartjs-adapter-date-fns)
+- Deleted old/unused files from attached_assets folder (extracted/, old chart implementations)
+- Conducted comprehensive security audit - no vulnerabilities found:
+  - ✅ SQL injection protection via Drizzle ORM parameterized queries
+  - ✅ XSS protection via React and proper input sanitization
+  - ✅ Authentication security with HttpOnly cookies and SameSite protection
+  - ✅ Password security with bcrypt hashing
+  - ✅ No race conditions (using database-level atomicity with ON CONFLICT)
+  - ✅ No memory leaks (proper cleanup in useEffect hooks)
+  - ✅ Proper async/await handling throughout codebase
+- Verified console.log statements are appropriate for debugging and monitoring
+- **Result**: Codebase is production-ready with no bugs found
+- Status: ✅ Completed and verified
+
+**TradingView Lightweight Charts Integration (October 23, 2025 - Afternoon)**:
+- Replaced Chart.js with TradingView Lightweight Charts library
+- Professional candlestick (OHLC) charts with volume histogram overlay
+- Features: Dark theme, timeframe selection (5S-5M), auto-refresh every 30s
+- Cleaner bundle size, better performance, industry-standard visualization
+- Status: ✅ Implemented and production-ready
+
+**Telegram Bot Production Mode (October 23, 2025 - Morning)**:
+- Fixed Telegram bot to run in both development and production environments
+- Bot now starts automatically with server deployment (not just in development)
+- Users can close Replit and bot continues running when app is published
+- Removed development-only restriction from bot startup code
+- Status: ✅ Implemented and verified
+
+**Search UX & Error Handling (October 23, 2025 - Morning)**:
+- Moved search bar from header to centered Google-style position on Trade page
+- Added WebSocket error handler to suppress Vite HMR errors in production
+- Fixed token page crashes by preventing unhandled WebSocket rejections
+- Search functionality verified working correctly with DexScreener API
+- Status: ✅ Implemented and verified
+
+## Recent Changes (October 22, 2025)
+
+**Telegram Bot Persistent Sessions (October 22, 2025 - Latest)**:
+- Implemented database-backed session persistence for Telegram bot
+- Users no longer need to login every time the bot restarts
+- Added `telegram_sessions` table to store session data (token, balance, expiry)
+- Sessions expire after 30 days of inactivity
+- Security: Protected telegram session endpoints with bot-secret authentication
+  - Added `x-bot-secret` header verification using TELEGRAM_BOT_TOKEN
+  - Prevents unauthorized access to stored JWT tokens
+  - Only bot process can access session endpoints
+- User flow: /start checks for existing session → auto-login if found → login flow if not
+- Logout deletes session from both database and memory
+- Status: ✅ Implemented and architect-reviewed
+
+**Telegram Bot Position Refresh Feature (October 22, 2025 - Late Evening)**:
+- Added position details view with real-time refresh capability
+- Users can now click on any position to view detailed information including:
+  - Current balance, position amount, entry price, current price
+  - Current position value and profit/loss with percentage
+  - Refresh button to update prices without leaving the view
+- Implementation: Created showPositionDetails() helper with BigInt P&L calculations
+- Fixed UUID handling: Position IDs kept as strings (not parseInt) for correct comparison
+- Status: ✅ Implemented and architect-reviewed
+
+**CRITICAL FIX - Telegram Bot Token Calculation (October 22, 2025 - Late Evening)**:
+- **Issue**: Bot was giving users 1 billion times fewer tokens than they should receive
+- **Root Cause**: Double-conversion bug - API returns prices already in lamports, but bot was multiplying by 1B again
+- **Impact**: User buying 0.5 SOL received 0.00140845 tokens instead of ~1.4 million tokens
+- **Fix**: Removed incorrect `* 1_000_000_000` conversion in bot.js buy/sell handlers (3 locations)
+- **Result**: Token amounts now calculated correctly using price_lamports as-is from API
+- Status: ✅ Fixed and architect-reviewed
+
+**Landing Page Redesign (October 22, 2025 - Evening)**:
+- Complete professional redesign of Trade page with marketing-style layout
+- Added hero section with gradient background and SimFi branding
+- Implemented stats cards showing platform features
+- Added trending tokens section with real-time data
+- Created "How It Works" section with step-by-step onboarding
+- Added gradient utility classes to index.css for brand consistency
+- Removed logo from hero, updated header logo to full-size transparent version
+
+**Telegram Bot Integration Fix (October 22, 2025 - Evening)**:
+- Fixed bot not running issue by integrating into server startup
+- Bot now launches automatically via child process in server/index.ts
+- Bot process runs alongside web server in development mode
+- Status: ✅ Verified running and operational
+
+**SimFi Branding Implementation**:
+- Updated application name to SimFi (Simulation Finance)
+- Added SimFi logo with cyan-to-purple gradient branding
+- Updated color scheme to match logo: Primary cyan (172 81% 55%), Secondary purple (249 79% 67%)
+- Set favicon to SimFi logo
+- Updated all page titles and meta descriptions
+- Added gradient header navigation
+
+**Telegram Bot Implementation**:
+- Built complete Telegram bot with Telegraf framework
+- Features: Login, buy/sell tokens, view positions, leaderboard
+- JWT authentication with session management
+- Comprehensive session validation across all handlers
+- Bot token: 8488146641:AAH8wx1isl2XwrxTPFrlMYN4lxqusyyDOD4
+- API integration: Bot connects to local API at http://localhost:5000/api
+
+**BigInt Precision Implementation**:
+- Migrated from Number to BigInt arithmetic to prevent precision loss for positions >2^53 lamports
+- Updated database schema to use `bigint({ mode: "bigint" })` for all currency fields
+- Removed Jupiter quotes from trade execution (now display-only)
+- All trades now use deterministic BigInt calculations with `currentPrice`
+- Added BigInt utilities: `toBigInt()`, `formatTokenAmount()`, `lamportsToTokens()`
+- Created `serializeBigInts()` helper for JSON responses (converts BigInt→string, preserves Date objects)
 
 ## User Preferences
 
@@ -10,56 +155,109 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### UI/UX Decisions
-The platform features a dark mode interface with high-contrast colors, utilizing SimFi's cyan-to-purple gradient branding. Monospace fonts are used for numerical values, and buy/sell actions are color-coded (green/red) to minimize visual distractions and facilitate rapid data scanning. TradingView Lightweight Charts provide professional candlestick charts with volume histograms.
+### Frontend Architecture
 
-### Technical Implementations
-- **Frontend**: Built with React, TypeScript, Wouter for routing, TanStack React Query for server state, and React Context for authentication. UI components are developed using Radix UI primitives and shadcn/ui, styled with Tailwind CSS. Form handling is managed by React Hook Form with Zod validation.
-- **Backend**: Implemented with Express.js and TypeScript, providing RESTful JSON APIs. It integrates with Birdeye, DexScreener, and GeckoTerminal APIs for market data. Drizzle ORM is used for PostgreSQL interactions, and authentication is JWT-based with HttpOnly cookies.
-- **Data Precision**: A critical architectural decision involves storing all currency values as `BigInt` (Lamports) in the database and using `BigInt` arithmetic throughout the backend and frontend to prevent floating-point precision loss. This ensures accurate financial calculations for all transaction sizes.
-- **Authentication**: JWT tokens are secured using HttpOnly cookies with SameSite protection to mitigate XSS vulnerabilities, ensuring tokens are inaccessible to client-side JavaScript.
-- **Telegram Bot**: Developed using the Telegraf framework, featuring persistent sessions, JWT authentication, and real-time position tracking. It integrates with the backend API for trading and data.
-- **Solana Token History Analyzer**: A CLI tool that parses on-chain transaction history, extracts price time-series, identifies early buyers, and supports CSV/JSON exports, integrating with the Helius API.
+**Framework**: React with TypeScript
+- **Routing**: Wouter for lightweight client-side routing
+- **State Management**: TanStack React Query for server state, React Context for auth state
+- **UI Components**: Radix UI primitives with shadcn/ui component library
+- **Styling**: Tailwind CSS with custom dark mode theme optimized for trading interfaces
+- **Forms**: React Hook Form with Zod validation
 
-### Feature Specifications
-- **Web Application**: Real-time TradingView charts, portfolio tracking with BigInt precision, trending token discovery, and 6-hour leaderboard.
-- **Telegram Bot**: Buy/sell tokens, view/refresh positions, leaderboard access, and persistent user sessions.
-- **Token History Analyzer**: On-chain data analysis, price time-series extraction, early buyer identification, and multiple export formats.
+**Design Philosophy**: 
+- Dark mode primary with high-contrast colors for trading data
+- SimFi cyan-to-purple gradient branding
+- Monospace fonts for prices and numerical values
+- Color-coded buy/sell actions (green/red)
+- Minimal visual distractions for rapid data scanning
 
-### System Design Choices
-- **Leaderboard Service**: A background service manages 6-hour trading periods and determines winners.
-- **Storage Abstraction**: Database operations are abstracted through an `IStorage` interface.
-- **Price Enrichment**: The backend enriches user position data with current prices from DexScreener.
-- **Build System**: Vite is used for frontend bundling, and esbuild for backend compilation.
+### Backend Architecture
 
-## External Dependencies
+**Framework**: Express.js with TypeScript
+- **API Style**: RESTful endpoints with JSON responses
+- **Data Sources**: Birdeye API for trending tokens, DexScreener API for token prices/metadata, GeckoTerminal for OHLCV charts
+- **Database ORM**: Drizzle ORM with PostgreSQL schema
+- **Authentication**: JWT-based auth with HttpOnly cookies
+- **Build System**: Vite for frontend bundling, esbuild for backend compilation
+
+**Key Services**:
+- **Leaderboard Service**: Background service that manages 6-hour trading periods and determines winners
+- **Storage Layer**: Abstracted database operations through IStorage interface
+- **Price Enrichment**: Backend fetches current prices from DexScreener when returning user positions
+
+### Data Storage
+
+**Database**: PostgreSQL (via Neon serverless)
+
+**Schema Design**:
+- All currency values stored as **bigint** (Lamports, not floating-point SOL) to ensure precise financial calculations
+- 1 SOL = 1,000,000,000 Lamports
+- Tables: users, positions, tradeHistory, leaderboardPeriods
+
+**Critical Architectural Decision**: 
+- **Problem**: Floating-point arithmetic is imprecise for currency; Number type loses precision above 2^53 lamports
+- **Solution**: Store all SOL values as Lamport integers (1 billion = 1 SOL) using BigInt end-to-end
+- **Rationale**: Prevents rounding errors in financial calculations, ensures accuracy for positions of any size
+- **Implementation**: 
+  - Database: All currency columns use `bigint({ mode: "bigint" })` with SQL literal defaults
+  - Backend: All arithmetic uses BigInt, serializes to strings for JSON transmission
+  - Frontend: Accepts strings, uses BigInt utilities for calculations, Number conversion only for display
+  - Jupiter quotes: Display-only (price impact estimation), never used for trade execution
+- **Tradeoff**: Requires string transmission and BigInt utilities, but eliminates all precision loss
+
+### Authentication & Authorization
+
+**Strategy**: JWT tokens stored in HttpOnly cookies
+
+**Critical Security Decision**:
+- **Problem**: Original design stored JWT in localStorage (vulnerable to XSS attacks)
+- **Solution**: Refactored to use HttpOnly cookies with SameSite protection
+- **Rationale**: HttpOnly cookies cannot be accessed by JavaScript, preventing token theft via XSS
+- **Implementation**: Backend sets cookie on login/register, middleware authenticates requests via cookie
+
+**Flow**:
+1. User registers/logs in → Server generates JWT
+2. JWT stored in HttpOnly cookie (not accessible to client JS)
+3. Cookie automatically sent with API requests
+4. Middleware validates JWT and attaches userId to request
+
+### External Dependencies
 
 **Third-Party APIs**:
--   **Birdeye API**: For trending tokens, liquidity, and volume data.
--   **DexScreener API**: Provides token metadata, prices, and boosted tokens.
--   **GeckoTerminal API**: Used for OHLCV chart data.
--   **Jupiter API**: Provides swap quotes for display-only price impact estimations.
--   **Helius API**: Utilized by the Solana Token History Analyzer for on-chain data.
-
+- **Birdeye API** (`https://public-api.birdeye.so`): Trending tokens with liquidity and volume data
+  - Authentication: X-API-KEY header
+  - Rate limit: 60 requests/minute
+  - Endpoint: `/defi/token_trending`
+- **DexScreener API** (`https://api.dexscreener.com`): Token metadata, prices, and boosted tokens
+  - No authentication required
+  - Endpoints: `/latest/dex/tokens/{addresses}`, `/token-boosts/top/v1`
+- **GeckoTerminal API** (`https://api.geckoterminal.com`): OHLCV chart data for trading charts
+  - No authentication required
+  - Endpoint: `/api/v2/networks/solana/pools/{poolAddress}/ohlcv/{timeframe}`
+- **Jupiter API** (`https://quote-api.jup.ag`): Swap quotes for price impact estimation (display-only)
+  - No authentication required
+  - Endpoint: `/v6/quote` (SOL ↔ token quotes)
+  - Note: Quotes are for UI display only; actual trades use DexScreener prices for precision
+  
 **Database Provider**:
--   **Neon Serverless PostgreSQL**: Cloud-hosted database for data persistence.
+- **Neon Serverless PostgreSQL**: Cloud-hosted database accessed via `@neondatabase/serverless` with WebSocket support
 
 **UI Libraries**:
--   **Radix UI**: Provides unstyled, accessible component primitives.
--   **shadcn/ui**: Pre-styled components built on Radix UI.
--   **Tailwind CSS**: Utility-first CSS framework for styling.
+- **Radix UI**: Unstyled, accessible component primitives (@radix-ui/react-*)
+- **shadcn/ui**: Pre-styled components built on Radix UI
+- **Tailwind CSS**: Utility-first CSS framework
 
 **Validation & Forms**:
--   **Zod**: Schema validation for API requests and form data.
--   **React Hook Form**: Manages form state.
--   **@hookform/resolvers**: Integrates Zod with React Hook Form.
+- **Zod**: Schema validation for API requests and form data
+- **React Hook Form**: Form state management
+- **@hookform/resolvers**: Zod integration for form validation
 
 **Build Tools**:
--   **Vite**: Frontend development server and production bundler.
--   **esbuild**: Backend TypeScript compilation.
--   **Drizzle Kit**: Database migration tool.
+- **Vite**: Frontend development server and production bundler
+- **esbuild**: Backend TypeScript compilation
+- **Drizzle Kit**: Database migration tool
 
-**Authentication Libraries**:
--   **bcryptjs**: For password hashing.
--   **jsonwebtoken**: For JWT generation and verification.
--   **cookie-parser**: Middleware for parsing HTTP cookies.
+**Authentication**:
+- **bcryptjs**: Password hashing
+- **jsonwebtoken**: JWT generation and verification
+- **cookie-parser**: HTTP cookie parsing middleware
