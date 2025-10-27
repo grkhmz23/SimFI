@@ -195,6 +195,7 @@ export default function TokenPage() {
 
   const formatMarketCap = (mc: number | undefined) => {
     if (!mc || isNaN(mc) || !isFinite(mc)) return '$0';
+    if (mc >= 1_000_000_000) return `$${(mc / 1_000_000_000).toFixed(2)}B`;
     if (mc >= 1_000_000) return `$${(mc / 1_000_000).toFixed(2)}M`;
     if (mc >= 1_000) return `$${(mc / 1_000).toFixed(1)}K`;
     return `$${mc.toFixed(0)}`;
