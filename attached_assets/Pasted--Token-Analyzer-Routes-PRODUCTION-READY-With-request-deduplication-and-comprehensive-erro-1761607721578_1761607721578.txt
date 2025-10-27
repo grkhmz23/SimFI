@@ -1,0 +1,161 @@
+/**
+ * Token Analyzer Routes - PRODUCTION READY
+ * With request deduplication and comprehensive error handling
+ */
+
+const express = require('express');
+const router = express.Router();
+const { validateMintAddress, validateDateInput } = require('../utils/validators');
+const heliusService = require('../services/heliusService');
+const tokenAnalysisService = require('../services/tokenAnalysisService');
+const cacheService = require('../services/cacheService');
+
+/**
+ * POST /api/analyze-token
+ */
+router.post('/analyze-token', async (req, res, next) => {
+  const startTime = Date.now();
+  
+  try {
+    const { mintAddress, startDate } = req.body;
+
+    // Validate mint address
+    if (!validateMintAddress(mintAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid Solana mint address format. Please check the address and try again.'
+      });
+    }
+
+    // Validate and parse date
+    let startTimestamp = null;
+    if (startDate) {
+      startTimestamp = validateDateInput(startDate);
+      if (!startTimestamp) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid date format. Use YYYY-MM-DD HH:MM or YYYY-MM-DD'
+        });
+      }
+    }
+
+    // ✅ FIX: Use request deduplication
+    const cacheKey = `analysis_${mintAddress}_${startTimestamp || 'full'}`;
+    
+    const analysis = await cacheService.getOrCompute(
+      cacheKey,
+      async () => {
+        // Perform analysis
+        console.log(`📊 Analyzing token: ${mintAddress.slice(0, 8)}...`);
+        
+        // Fetch data
+        const [tokenMetadata, transactions] = await Promise.all([
+          heliusService.fetchTokenMetadata(mintAddress),
+          heliusService.fetchAllTokenTransactions(mintAddress, 1000)
+        ]);
+
+        // Parse transactions
+        const events = tokenAnalysisService.parseTransactions(
+          transactions,
+          mintAddress,
+          startTimestamp
+        );
+
+        if (events.length === 0) {
+          throw new Error('No transactions found for this token. It may be newly created or have no activity.');
+        }
+
+        // Perform analysis
+        return {
+          tokenInfo: {
+            name: tokenMetadata.name,
+            symbol: tokenMetadata.symbol,
+            totalSupply: tokenMetadata.supply,
+            decimals: tokenMetadata.decimals,
+            mintAddress: mintAddress,
+            logoUri: tokenMetadata.logoUri
+          },
+          priceAnalysis: tokenAnalysisService.analyzePrices(events),
+          buyerAnalysis: tokenAnalysisService.analyzeEarlyBuyers(events, mintAddress),
+          priceSeries: tokenAnalysisService.buildPriceSeries(events),
+          earlyBuyers: tokenAnalysisService.getTopEarlyBuyers(events, mintAddress, 20),
+          transfers: tokenAnalysisService.getRecentTransfers(events, 50),
+          stats: {
+            totalEvents: events.length,
+            totalTransactions: transactions.length,
+            analyzedFrom: startDate || 'Token creation',
+            analyzedAt: new Date().toISOString(),
+            processingTime: `${Date.now() - startTime}ms`
+          }
+        };
+      },
+      1800 // 30 minute cache
+    );
+
+    const elapsed = Date.now() - startTime;
+    console.log(`✅ Analysis completed in ${elapsed}ms`);
+
+    res.json({
+      success: true,
+      data: analysis,
+      cached: elapsed < 1000, // If < 1s, likely from cache
+      processingTime: elapsed
+    });
+
+  } catch (error) {
+    console.error('Token analysis error:', error);
+    next(error);
+  }
+});
+
+/**
+ * GET /api/analyze-token/status/:mintAddress
+ */
+router.get('/status/:mintAddress', async (req, res, next) => {
+  try {
+    const { mintAddress } = req.params;
+
+    if (!validateMintAddress(mintAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid Solana mint address'
+      });
+    }
+
+    const metadata = await heliusService.fetchTokenMetadata(mintAddress);
+    
+    res.json({
+      success: true,
+      exists: true,
+      tokenName: metadata.name,
+      tokenSymbol: metadata.symbol,
+      decimals: metadata.decimals,
+      supply: metadata.supply
+    });
+
+  } catch (error) {
+    if (error.message.includes('not found')) {
+      return res.status(404).json({
+        success: false,
+        exists: false,
+        error: 'Token not found'
+      });
+    }
+    next(error);
+  }
+});
+
+/**
+ * GET /api/cache/stats (for debugging)
+ */
+router.get('/cache/stats', (req, res) => {
+  const stats = cacheService.getStats();
+  const rateLimitInfo = heliusService.getRateLimitInfo();
+  
+  res.json({
+    cache: stats,
+    heliusRateLimit: rateLimitInfo
+  });
+});
+
+module.exports = router;
