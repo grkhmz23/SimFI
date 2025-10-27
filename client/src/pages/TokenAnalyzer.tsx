@@ -53,7 +53,7 @@ export default function TokenAnalyzer() {
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
 
   const { data: analysis, isLoading, error } = useQuery<TokenAnalysis>({
-    queryKey: ['/api/analyze', searchAddress],
+    queryKey: [`/api/analyze/${searchAddress}`],
     enabled: searchAddress.length > 0,
     staleTime: 30000,
     retry: 1,
