@@ -1,0 +1,120 @@
+/**
+ * DEX Detector - PRODUCTION READY
+ * Comprehensive DEX identification
+ */
+
+const KNOWN_DEX_PROGRAMS = {
+  // Raydium
+  'RVKd61ztZW9GUwhRbbLoYVRE5Xf1B2tVscKqwZqXgEr': 'Raydium AMM',
+  '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8': 'Raydium AMM V4',
+  'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK': 'Raydium CLMM',
+  '27haf8L6oxUeXrHrgEgsexjSY5hbVUWEmvv9Nyxg8vQv': 'Raydium Stable',
+  
+  // Orca
+  '9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP': 'Orca',
+  'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc': 'Orca Whirlpool',
+  'DjVE6JNiYqPL2QXyCUUh8rNjHrbz9hXHNYt99MQ59qw1': 'Orca Whirlpool V2',
+  
+  // Jupiter
+  'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4': 'Jupiter V6',
+  'JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB': 'Jupiter V4',
+  'JUP3c2Uh3WA4Ng34oMaqJLqUg62mU6bQNSwvfnRfWxds': 'Jupiter V3',
+  
+  // Pump.fun
+  '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P': 'Pump.fun',
+  'PumpFuNDJtVZYN5r8ZHs4Fp8Kq6RMWmA1F3WUGjDN9BW': 'Pump.fun V2',
+  
+  // Meteora
+  'LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo': 'Meteora',
+  'Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB': 'Meteora DLMM',
+  
+  // Phoenix
+  'PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY': 'Phoenix',
+  
+  // Openbook
+  'srmqPvymJeFKQ4zGQed1GFppgkRHL9kaELCbyksJtPX': 'OpenBook V1',
+  'opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb': 'OpenBook V2',
+  
+  // Lifinity
+  'EewxydAPCCVuNEyrVN68PuSYdQ7wKn27V9Gjeoi8dy3S': 'Lifinity',
+  
+  // Saber
+  'SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ': 'Saber',
+  
+  // Crema
+  'CLMM9tUoggJu2wagPkkqs9eFG4BWhVBZWkP1qv3Sp7tR': 'Crema'
+};
+
+class DexDetector {
+  /**
+   * Identify DEX from instructions
+   */
+  identifyDex(instructions) {
+    if (!instructions || !Array.isArray(instructions) || instructions.length === 0) {
+      return 'Unknown';
+    }
+
+    // Check each instruction for known DEX programs
+    for (const instruction of instructions) {
+      if (!instruction || !instruction.programId) continue;
+      
+      const programId = instruction.programId;
+      
+      if (KNOWN_DEX_PROGRAMS[programId]) {
+        return KNOWN_DEX_PROGRAMS[programId];
+      }
+    }
+
+    return 'Unknown DEX';
+  }
+
+  /**
+   * Check if any instruction uses a DEX program
+   */
+  hasDexProgram(instructions) {
+    if (!instructions || !Array.isArray(instructions)) {
+      return false;
+    }
+
+    return instructions.some(instruction => {
+      if (!instruction || !instruction.programId) return false;
+      return !!KNOWN_DEX_PROGRAMS[instruction.programId];
+    });
+  }
+
+  /**
+   * Check if specific program is a known DEX
+   */
+  isDexProgram(programId) {
+    return !!KNOWN_DEX_PROGRAMS[programId];
+  }
+
+  /**
+   * Get DEX name by program ID
+   */
+  getDexName(programId) {
+    return KNOWN_DEX_PROGRAMS[programId] || 'Unknown';
+  }
+
+  /**
+   * Get all known DEX programs
+   */
+  getAllKnownDexes() {
+    return { ...KNOWN_DEX_PROGRAMS };
+  }
+
+  /**
+   * Get DEX count in transaction
+   */
+  countDexInteractions(instructions) {
+    if (!instructions || !Array.isArray(instructions)) {
+      return 0;
+    }
+
+    return instructions.filter(i => 
+      i && i.programId && this.isDexProgram(i.programId)
+    ).length;
+  }
+}
+
+module.exports = new DexDetector();
