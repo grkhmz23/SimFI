@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Search, Loader2, ExternalLink, TrendingUp, Clock, Copy, CheckCircle2 } from 'lucide-react';
+import { Search, Loader2, ExternalLink, TrendingUp, Clock, Copy, CheckCircle2, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface TokenMetadata {
@@ -233,6 +233,79 @@ export default function TokenAnalyzer() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Top Holders */}
+              {analysis.topHolders && analysis.topHolders.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <Users className="h-5 w-5" />
+                      <CardTitle>Top Token Holders</CardTitle>
+                    </div>
+                    <CardDescription>
+                      Top {analysis.topHolders.length} holders by balance
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {analysis.topHolders.map((holder, index) => (
+                        <div
+                          key={holder.address}
+                          className="flex items-center justify-between gap-4 p-3 rounded-lg bg-muted/50 hover-elevate"
+                          data-testid={`holder-${index}`}
+                        >
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <Badge variant="secondary" className="shrink-0">
+                              #{index + 1}
+                            </Badge>
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <code className="text-xs bg-background px-2 py-1 rounded font-mono truncate">
+                                {formatAddress(holder.address)}
+                              </code>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 shrink-0"
+                                onClick={() => copyToClipboard(holder.address, 'Holder address')}
+                                data-testid={`button-copy-holder-${index}`}
+                              >
+                                {copiedAddress === holder.address ? (
+                                  <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                ) : (
+                                  <Copy className="h-3 w-3" />
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 shrink-0"
+                                asChild
+                                data-testid={`link-solscan-holder-${index}`}
+                              >
+                                <a
+                                  href={`https://solscan.io/account/${holder.address}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-mono font-semibold">
+                              {holder.percentage.toFixed(2)}%
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {holder.balance.toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Transaction History */}
               <Card>
