@@ -8,6 +8,7 @@ import { storage } from "./storage";
 import { authenticateToken } from "./middleware/auth";
 import { fetchDexScreenerProfiles } from "./pumpportal";
 import { leaderboardService } from "./leaderboardService";
+import { heliusService } from "./helius";
 import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest } from "@shared/schema";
 
 // Require JWT_SECRET or SESSION_SECRET environment variable
@@ -1288,6 +1289,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Jupiter sell quote error:', error);
       res.status(500).json({ error: 'Could not fetch quote' });
+    }
+  });
+
+  // ============================================================================
+  // Token Analysis Routes (Helius)
+  // ============================================================================
+  
+  app.get('/api/analyze/:mintAddress', async (req, res) => {
+    try {
+      const { mintAddress } = req.params;
+      
+      if (!mintAddress || mintAddress.length < 32) {
+        return res.status(400).json({ error: 'Invalid mint address' });
+      }
+      
+      const analysis = await heliusService.analyzeToken(mintAddress);
+      res.json(analysis);
+    } catch (error: any) {
+      console.error('Token analysis error:', error);
+      res.status(500).json({ error: error.message || 'Could not analyze token' });
     }
   });
 

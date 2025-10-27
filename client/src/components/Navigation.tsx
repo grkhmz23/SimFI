@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { TrendingUp, History, Trophy, User, LogOut, Wallet, Flame, Info, Search, Loader2 } from 'lucide-react';
+import { TrendingUp, History, Trophy, User, LogOut, Wallet, Flame, Info, Search, Loader2, Microscope } from 'lucide-react';
 import { formatSol } from '@/lib/lamports';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
@@ -78,6 +78,7 @@ export function Navigation() {
   const navItems = [
     { path: '/', label: 'Trade', icon: TrendingUp },
     { path: '/trending', label: 'Trending', icon: Flame },
+    { path: '/study', label: 'Study', icon: Microscope },
     { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
     { path: '/about', label: 'About', icon: Info },
   ];
