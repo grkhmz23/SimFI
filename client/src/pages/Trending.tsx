@@ -12,12 +12,19 @@ interface ExtendedToken extends Token {
   priceChange24h?: number;
 }
 
-function formatPrice(lamports: number): string {
-  const solPrice = lamports / 1_000_000_000;
-  if (solPrice < 0.00001) {
-    return solPrice.toExponential(2) + ' SOL';
+function formatPriceUSD(priceUsd: number | undefined): string {
+  if (!priceUsd || priceUsd === 0) return 'N/A';
+  
+  if (priceUsd < 0.000001) {
+    return '$' + priceUsd.toExponential(2);
   }
-  return solPrice.toFixed(8) + ' SOL';
+  if (priceUsd < 0.01) {
+    return '$' + priceUsd.toFixed(6);
+  }
+  if (priceUsd < 1) {
+    return '$' + priceUsd.toFixed(4);
+  }
+  return '$' + priceUsd.toFixed(2);
 }
 
 function formatNumber(num: number): string {
@@ -121,7 +128,7 @@ function TokenRow({ token, index }: { token: ExtendedToken; index: number }) {
           <div className="text-right min-w-[100px]">
             <div className="text-xs text-muted-foreground mb-1">Price</div>
             <div className="font-semibold text-foreground text-sm" data-testid={`text-price-${token.tokenAddress}`}>
-              {token.price > 0 ? formatPrice(token.price) : 'N/A'}
+              {formatPriceUSD(token.priceUsd)}
             </div>
           </div>
 
@@ -169,7 +176,7 @@ function TokenRow({ token, index }: { token: ExtendedToken; index: number }) {
           <div className="text-right">
             <div className="text-xs text-muted-foreground">Price</div>
             <div className="font-semibold text-foreground text-sm" data-testid={`text-price-mobile-${token.tokenAddress}`}>
-              {token.price > 0 ? formatPrice(token.price) : 'N/A'}
+              {formatPriceUSD(token.priceUsd)}
             </div>
           </div>
           <div className="text-right">

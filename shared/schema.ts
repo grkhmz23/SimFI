@@ -108,8 +108,11 @@ export interface Token {
   name: string;
   symbol: string;
   decimals?: number; // Token decimals (6 for most pump.fun tokens, 9 for SOL)
-  price: number; // Price in Lamports per token
-  marketCap: number;
+  price: number; // Price in Lamports per token (for trading calculations)
+  priceUsd?: number; // Price in USD (for display)
+  marketCap: number; // Market cap in USD
+  volume24h?: number; // 24h volume in USD
+  priceChange24h?: number; // 24h price change percentage
   creator?: string;
   timestamp?: string;
   icon?: string; // Token image URL from DexScreener
