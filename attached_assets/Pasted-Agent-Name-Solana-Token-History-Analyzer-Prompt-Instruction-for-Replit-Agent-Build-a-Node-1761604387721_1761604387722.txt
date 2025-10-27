@@ -1,0 +1,115 @@
+Agent Name:
+Solana Token History Analyzer
+
+💬 Prompt / Instruction (for Replit Agent):
+
+Build a Node.js CLI tool that analyzes the on-chain history of a single Solana SPL token mint address.
+
+🧩 Functional requirements
+
+Ask user to input:
+
+Token mint address (string)
+
+Optional start date/time (e.g., 2025-10-27 17:00) to filter events only after that moment.
+
+Use Helius APIs (free plan) or fallback RPC (https://api.mainnet-beta.solana.com) to fetch:
+
+Token transactions, transfers, swaps, minting events, and liquidity events.
+
+Token metadata and supply.
+
+Filter all events to include only those with block time ≥ user-given start timestamp.
+
+Parse and reconstruct:
+
+Initial liquidity pool and implied price (SOL/token).
+
+Price time-series (SOL/token) from swaps.
+
+Earliest buyers, how much SOL/token they bought, % of supply, and time-to-first-sell.
+
+Output the following files in project root:
+
+summary.json — overview (supply, first price, initial mcap, etc.)
+
+price_series.csv — price & volume over time
+
+buyers.csv — early buyers metrics
+
+transfers.csv — transfers/swaps for inspection
+
+raw_events.json — full parsed events
+
+Print console summary (initial price, supply, marketcap, early buyer stats, output paths).
+
+Handle errors gracefully if API returns no data or Helius key missing.
+
+Code should be commented, Replit-ready, and use:
+
+node-fetch@2
+
+@solana/web3.js
+
+csv-writer
+
+prompt-sync
+
+Store secrets via Replit environment variables:
+
+HELIUS_API_KEY
+
+RPC_URL (optional)
+
+Convert start date/time into a UNIX timestamp using system timezone (Europe/Paris by default).
+
+⚙️ Implementation details
+
+Create run.js as the main entry file.
+
+Include helper functions:
+
+fetchTokenTransactionsViaHelius(mint)
+
+parseHeliusTxsToEvents(rawTxs, mint)
+
+basicComputeInitialPool(events, mint)
+
+extractBuyersFromEvents(events, mint, limit)
+
+computeCirculatingSupplyFromEvents(events, mint)
+
+Filter events if user provided startTimestamp.
+
+Use CSV writer to export results.
+
+Ensure timestamps are human-readable (ISO date) in outputs.
+
+✅ Deliverables
+
+Fully working run.js file ready to execute with node run.js in Replit.
+
+README section in comments explaining usage.
+
+Example console output.
+
+🧠 Helius endpoints to use (free tier, best coverage):
+
+Token metadata:
+https://api.helius.xyz/v0/tokens/{mint}?api-key=YOUR_KEY
+
+Token transactions:
+https://api.helius.xyz/v0/mints/{mint}/transactions?limit=50&api-key=YOUR_KEY
+
+Enhanced transactions (swap/liquidity detection):
+https://api.helius.xyz/v0/addresses/{wallet}/transactions?type=swap&limit=100&api-key=YOUR_KEY
+
+NFTs/tokens by owner (for tracking buyers):
+https://api.helius.xyz/v0/addresses/{wallet}/assets?api-key=YOUR_KEY
+
+Token transfers (direct transfer logs):
+https://api.helius.xyz/v0/token-metadata?mint={mint}&api-key=YOUR_KEY
+
+These endpoints cover mint info, transfers, swaps, and pool creation data on Solana’s mainnet and are sufficient for detailed analysis of Pump.fun-launched tokens.
+
+💾 Example usage (CLI)
