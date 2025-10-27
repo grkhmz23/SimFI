@@ -895,7 +895,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           res.json({ tokens: result.tokens, source: result.source });
         } else {
           console.warn(`⚠️ Axiom.trade returned no tokens or error: ${result.error || 'Unknown'}`);
-          res.json({ tokens: [], error: result.error });
+          // Forward needsAuth flag from Python script
+          res.json({ 
+            tokens: [], 
+            error: result.error,
+            needsAuth: result.needsAuth || false
+          });
         }
         
       } catch (pythonError: any) {

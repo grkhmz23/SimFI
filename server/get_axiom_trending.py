@@ -31,29 +31,34 @@ def get_trending_tokens(timeframe='1h'):
             return {
                 "success": False,
                 "error": "Not authenticated. Run: python3 server/axiom_auth.py",
-                "tokens": []
+                "tokens": [],
+                "needsAuth": True
             }
         
-        # Initialize client
-        client = AxiomTradeClient()
-        
-        # Note: We're using the stored tokens, but axiomtradeapi might need
-        # the client to be authenticated differently. For now, try to get trending
+        # Initialize client with stored tokens
         try:
+            client = AxiomTradeClient(
+                auth_token=stored_tokens['auth_token'],
+                refresh_token=stored_tokens.get('refresh_token', '')
+            )
+            
+            # Fetch trending tokens
             response = client.get_trending_tokens(timeframe)
             tokens = response.get('tokens', [])
-        except:
-            # If the API call fails, try re-authenticating with stored credentials
-            if stored_tokens.get('email') and stored_tokens.get('password'):
-                # This would require OTP again, so we'll just return error
+            
+        except Exception as e:
+            # If the API call fails (likely expired tokens)
+            error_msg = str(e)
+            if 'auth' in error_msg.lower() or 'token' in error_msg.lower() or 'unauthorized' in error_msg.lower():
                 return {
                     "success": False,
                     "error": "Authentication expired. Run: python3 server/axiom_auth.py",
-                    "tokens": []
+                    "tokens": [],
+                    "needsAuth": True
                 }
             return {
                 "success": False,
-                "error": "Failed to fetch trending tokens",
+                "error": f"Failed to fetch trending tokens: {error_msg}",
                 "tokens": []
             }
         
