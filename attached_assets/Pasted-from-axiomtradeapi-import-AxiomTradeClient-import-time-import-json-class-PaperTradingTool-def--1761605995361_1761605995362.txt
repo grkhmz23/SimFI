@@ -1,0 +1,76 @@
+from axiomtradeapi import AxiomTradeClient
+import time
+import json
+
+class PaperTradingTool:
+    def __init__(self, email, password):
+        self.client = AxiomTradeClient()
+        
+        # Login once
+        tokens = self.client.login(
+            email=email,
+            b64_password=password,  # Base64 encoded
+            otp_code=input("Enter OTP from email: ")
+        )
+        
+        print("✅ Logged in successfully!")
+        self.virtual_balance = 1000  # Start with $1000 virtual
+        self.positions = {}
+        
+    def get_trending_tokens(self, timeframe='1h'):
+        """Get trending tokens"""
+        trending = self.client.get_trending_tokens(timeframe)
+        return trending.get('tokens', [])
+    
+    def simulate_buy(self, token_address, amount_usd):
+        """Simulate buying a token"""
+        print(f"📈 Buying ${amount_usd} of {token_address}")
+        
+        if token_address in self.positions:
+            self.positions[token_address] += amount_usd
+        else:
+            self.positions[token_address] = amount_usd
+            
+        self.virtual_balance -= amount_usd
+        print(f"💰 Virtual balance: ${self.virtual_balance:.2f}")
+        
+    def simulate_sell(self, token_address):
+        """Simulate selling a token"""
+        if token_address in self.positions:
+            amount = self.positions[token_address]
+            print(f"📉 Selling {token_address} for ${amount}")
+            self.virtual_balance += amount
+            del self.positions[token_address]
+            print(f"💰 Virtual balance: ${self.virtual_balance:.2f}")
+    
+    def monitor_trending(self):
+        """Monitor trending tokens continuously"""
+        while True:
+            try:
+                print("\n🔍 Fetching trending tokens...")
+                tokens = self.get_trending_tokens('5m')
+                
+                for token in tokens[:5]:  # Top 5
+                    print(f"""
+                    Token: {token['tokenName']} ({token['tokenTicker']})
+                    Address: {token['tokenAddress']}
+                    Volume: {token['volumeSol']} SOL
+                    Price Change 24h: {token['priceChange24h']}%
+                    Market Cap: {token['marketCapSol']} SOL
+                    """)
+                
+                # Wait 60 seconds before next check
+                time.sleep(60)
+                
+            except Exception as e:
+                print(f"❌ Error: {e}")
+                time.sleep(60)
+
+# Usage
+tool = PaperTradingTool(
+    email="your_email@example.com",
+    password="your_base64_password"
+)
+
+# Start monitoring
+tool.monitor_trending()
