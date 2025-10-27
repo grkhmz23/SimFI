@@ -290,9 +290,9 @@ export default function TokenPage() {
               tokenAddress={tokenAddress!}
               tokenSymbol={token.symbol}
               tokenName={token.name}
-              currentPrice={token.price}
-              priceChange24h={0}
-              volume24h={0}
+              currentPrice={token.priceUsd || 0}
+              priceChange24h={token.priceChange24h || 0}
+              volume24h={token.volume24h || 0}
               liquidity={0}
               height="500px"
             />
@@ -306,9 +306,16 @@ export default function TokenPage() {
                 <p className="text-xs text-muted-foreground uppercase mb-1">Current Price</p>
                 <div className="flex items-baseline gap-2 flex-wrap">
                   <span className="text-3xl font-bold font-mono" data-testid="text-current-price">
-                    {formatUSD(token.price)}
+                    {token.priceUsd !== undefined ? `$${token.priceUsd < 0.01 ? token.priceUsd.toFixed(6) : token.priceUsd.toFixed(4)}` : formatUSD(token.price)}
                   </span>
-                  {priceChange !== 0 && (
+                  {(token.priceChange24h !== undefined && token.priceChange24h !== 0) ? (
+                    <span 
+                      className={`text-sm font-semibold ${token.priceChange24h >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                      data-testid="text-price-change"
+                    >
+                      {token.priceChange24h >= 0 ? '▲' : '▼'} {Math.abs(token.priceChange24h).toFixed(2)}%
+                    </span>
+                  ) : priceChange !== 0 && (
                     <span 
                       className={`text-sm font-semibold ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
                       data-testid="text-price-change"

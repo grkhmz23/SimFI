@@ -1036,15 +1036,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     const boostInfo = addressToBoostInfo.get(address);
                     
                     if (pairData) {
-                      // Convert SOL price to lamports (priceNative is in SOL, we need lamports)
+                      // Get both native (SOL) and USD prices
                       const priceNative = pairData.priceNative ? parseFloat(pairData.priceNative) : 0;
+                      const priceUsd = pairData.priceUsd ? parseFloat(pairData.priceUsd) : 0;
                       const priceLamports = Math.floor(priceNative * 1_000_000_000);
                       
                       allTrendingTokens.push({
                         tokenAddress: address,
                         name: pairData.baseToken?.name || boostInfo?.description?.split('\n')[0]?.trim() || 'Unknown',
                         symbol: pairData.baseToken?.symbol || address.slice(0, 4).toUpperCase(),
-                        price: priceLamports, // Now in lamports
+                        price: priceLamports,
+                        priceUsd: priceUsd,
                         marketCap: pairData.fdv || pairData.marketCap || 0,
                         volume24h: pairData.volume?.h24 || 0,
                         priceChange24h: pairData.priceChange?.h24 || 0,
@@ -1110,16 +1112,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             );
             
             if (solanaPair) {
-              // Use native price (already in SOL) instead of USD price
+              // Get both native (SOL) and USD prices
               const priceNative = solanaPair.priceNative ? parseFloat(solanaPair.priceNative) : 0;
+              const priceUsd = solanaPair.priceUsd ? parseFloat(solanaPair.priceUsd) : 0;
               
               // Validate price exists
-              if (priceNative === 0) {
+              if (priceNative === 0 && priceUsd === 0) {
                 console.warn(`⚠️ Token ${address} has no price data on DexScreener`);
                 return res.status(404).json({ error: 'Token price data unavailable' });
               }
               
-              // Convert SOL to Lamports
+              // Convert SOL to Lamports (for trading calculations)
               const priceLamports = Math.floor(priceNative * 1_000_000_000);
               
               // Try to get enhanced metadata (icon, etc.)
@@ -1130,13 +1133,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 name: metadata?.name || solanaPair.baseToken?.name || 'Unknown Token',
                 symbol: metadata?.symbol || solanaPair.baseToken?.symbol || '???',
                 price: priceLamports,
-                marketCap: solanaPair.marketCap || solanaPair.fdv || 0,
+                priceUsd: priceUsd,
+                marketCap: solanaPair.fdv || solanaPair.marketCap || 0,
+                volume24h: solanaPair.volume?.h24 || 0,
+                priceChange24h: solanaPair.priceChange?.h24 || 0,
                 creator: undefined,
                 timestamp: new Date().toISOString(),
                 icon: metadata?.icon || solanaPair.info?.imageUrl,
               };
               
-              console.log(`✅ Found token ${address} on DexScreener: ${token.name} (${token.symbol}) - Price: ${priceNative} SOL - Icon: ${token.icon ? 'Yes' : 'No'}`);
+              console.log(`✅ Found token ${address} on DexScreener: ${token.name} (${token.symbol}) - Price: $${priceUsd} (${priceNative} SOL) - MCap: $${token.marketCap} - Icon: ${token.icon ? 'Yes' : 'No'}`);
             }
           }
         } catch (dexError) {

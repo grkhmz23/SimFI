@@ -1,0 +1,399 @@
+/**
+ * Event Parser - PRODUCTION READY
+ * Robust parsing with all edge cases handled
+ */
+
+const dexDetector = require('./dexDetector');
+
+class EventParser {
+  /**
+   * Parse transaction with comprehensive error handling
+   */
+  parseTransaction(tx, mintAddress) {
+    // ✅ FIX: Extensive validation
+    if (!tx || typeof tx !== 'object') {
+      return null;
+    }
+
+    if (!tx.signature || !mintAddress) {
+      return null;
+    }
+
+    try {
+      const event = {
+        signature: tx.signature,
+        timestamp: this.extractTimestamp(tx), // ✅ FIX: Dedicated timestamp extraction
+        blockTime: tx.blockTime || 0,
+        slot: tx.slot || 0,
+        type: null,
+        from: null,
+        to: null,
+        amount: 0,
+        price: null,
+        direction: null,
+        dexProgram: null
+      };
+
+      // ✅ FIX: Skip if no timestamp
+      if (!event.timestamp || event.timestamp === 0) {
+        return null;
+      }
+
+      // Determine event type and parse
+      if (this.isSwapTransaction(tx)) {
+        return this.parseSwapEvent(tx, mintAddress, event);
+      } else if (this.isTransferTransaction(tx, mintAddress)) {
+        return this.parseTransferEvent(tx, mintAddress, event);
+      } else if (this.isMintTransaction(tx)) {
+        return this.parseMintEvent(tx, mintAddress, event);
+      }
+
+      // Try generic parsing
+      return this.parseGenericEvent(tx, mintAddress, event);
+
+    } catch (error) {
+      console.error(`Parse error for tx ${tx.signature?.slice(0, 8)}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Extract timestamp with fallbacks - NEW
+   */
+  extractTimestamp(tx) {
+    // Try blockTime first (most reliable)
+    if (tx.blockTime && typeof tx.blockTime === 'number') {
+      return tx.blockTime;
+    }
+
+    // Try timestamp field
+    if (tx.timestamp && typeof tx.timestamp === 'number') {
+      return tx.timestamp;
+    }
+
+    // Try parsing from slot (less accurate)
+    if (tx.slot && typeof tx.slot === 'number') {
+      // Approximate: Solana genesis + (slot * 0.4 seconds)
+      const SOLANA_GENESIS = 1588000000; // May 2020
+      return SOLANA_GENESIS + Math.floor(tx.slot * 0.4);
+    }
+
+    return 0;
+  }
+
+  /**
+   * Check if transaction is a swap
+   */
+  isSwapTransaction(tx) {
+    // Check type field
+    if (tx.type) {
+      const typeUpper = tx.type.toUpperCase();
+      if (typeUpper.includes('SWAP') || typeUpper === 'SWAP') {
+        return true;
+      }
+    }
+
+    // Check for DEX program + token + native transfers
+    if (tx.instructions && tx.tokenTransfers && tx.nativeTransfers) {
+      const hasDex = dexDetector.hasDexProgram(tx.instructions);
+      const hasTokenTransfer = tx.tokenTransfers.length > 0;
+      const hasNativeTransfer = tx.nativeTransfers.length > 0;
+      
+      return hasDex && hasTokenTransfer && hasNativeTransfer;
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if transaction is a transfer
+   */
+  isTransferTransaction(tx, mintAddress) {
+    if (tx.type === 'TRANSFER') return true;
+    
+    // Check token transfers for this mint
+    if (tx.tokenTransfers && Array.isArray(tx.tokenTransfers)) {
+      return tx.tokenTransfers.some(t => t.mint === mintAddress);
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if transaction is a mint
+   */
+  isMintTransaction(tx) {
+    if (!tx.type) return false;
+    const typeUpper = tx.type.toUpperCase();
+    return typeUpper === 'MINT_NFT' || typeUpper === 'CREATE_TOKEN' || typeUpper === 'MINT';
+  }
+
+  /**
+   * Parse swap event - FIXED
+   */
+  parseSwapEvent(tx, mintAddress, event) {
+    event.type = 'swap';
+
+    // Identify DEX
+    if (tx.instructions && Array.isArray(tx.instructions)) {
+      event.dexProgram = dexDetector.identifyDex(tx.instructions);
+    }
+
+    // Method 1: Use Helius enhanced data
+    if (tx.tokenTransfers && tx.nativeTransfers && 
+        Array.isArray(tx.tokenTransfers) && Array.isArray(tx.nativeTransfers)) {
+      
+      const tokenTransfer = tx.tokenTransfers.find(t => t.mint === mintAddress);
+      const solTransfer = tx.nativeTransfers[0];
+
+      if (tokenTransfer && solTransfer) {
+        event.from = tokenTransfer.fromUserAccount || tokenTransfer.fromAccount;
+        event.to = tokenTransfer.toUserAccount || tokenTransfer.toAccount;
+        event.amount = this.parseAmount(tokenTransfer.tokenAmount);
+
+        // ✅ FIX: Safe price calculation with division by zero check
+        const solAmount = Math.abs(this.parseAmount(solTransfer.amount)) / 1e9;
+        const tokenAmount = event.amount;
+        
+        if (tokenAmount > 0 && solAmount > 0) { // ✅ FIX: Check both values
+          event.price = solAmount / tokenAmount;
+        } else {
+          event.price = null;
+        }
+
+        // Determine direction
+        if (solTransfer.fromUserAccount === event.from) {
+          event.direction = 'sell';
+        } else {
+          event.direction = 'buy';
+        }
+        
+        return event;
+      }
+    }
+
+    // Method 2: Parse from meta
+    if (tx.meta && tx.transaction) {
+      const parsed = this.parseSwapFromMeta(tx, mintAddress);
+      if (parsed) {
+        return { ...event, ...parsed };
+      }
+    }
+
+    return event;
+  }
+
+  /**
+   * Parse amount safely - NEW
+   */
+  parseAmount(amount) {
+    if (typeof amount === 'number') return amount;
+    if (typeof amount === 'string') {
+      const parsed = parseFloat(amount);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    return 0;
+  }
+
+  /**
+   * Parse swap from meta - FIXED
+   */
+  parseSwapFromMeta(tx, mintAddress) {
+    try {
+      const { meta } = tx;
+      
+      if (!meta || !meta.preTokenBalances || !meta.postTokenBalances) {
+        return null;
+      }
+
+      // ✅ FIX: Ensure arrays exist
+      if (!Array.isArray(meta.preTokenBalances) || !Array.isArray(meta.postTokenBalances)) {
+        return null;
+      }
+
+      const tokenChanges = this.calculateBalanceChanges(
+        meta.preTokenBalances,
+        meta.postTokenBalances,
+        mintAddress
+      );
+
+      if (tokenChanges.length === 0) return null;
+
+      // ✅ FIX: Safe array access
+      const solChanges = this.calculateSolBalanceChanges(
+        meta.preBalances || [],
+        meta.postBalances || []
+      );
+
+      if (tokenChanges.length > 0 && solChanges.length > 0) {
+        const tokenChange = tokenChanges[0];
+        const solChange = solChanges[0];
+
+        // ✅ FIX: Division by zero check
+        const price = tokenChange.amount !== 0 
+          ? Math.abs(solChange.amount) / Math.abs(tokenChange.amount)
+          : null;
+
+        return {
+          from: tokenChange.amount < 0 ? tokenChange.owner : solChange.owner,
+          to: tokenChange.amount > 0 ? tokenChange.owner : solChange.owner,
+          amount: Math.abs(tokenChange.amount),
+          price: price,
+          direction: tokenChange.amount > 0 ? 'buy' : 'sell'
+        };
+      }
+
+      return null;
+
+    } catch (error) {
+      console.error('Error parsing swap from meta:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate balance changes - FIXED
+   */
+  calculateBalanceChanges(preBalances, postBalances, mintAddress) {
+    const changes = [];
+
+    // ✅ FIX: Validate inputs
+    if (!Array.isArray(preBalances) || !Array.isArray(postBalances)) {
+      return changes;
+    }
+
+    const balanceMap = new Map();
+
+    // Build map of pre-balances
+    preBalances.forEach(pre => {
+      if (pre && pre.mint === mintAddress && pre.uiTokenAmount) {
+        balanceMap.set(pre.accountIndex, {
+          pre: parseInt(pre.uiTokenAmount.amount || 0),
+          owner: pre.owner
+        });
+      }
+    });
+
+    // Calculate changes
+    postBalances.forEach(post => {
+      if (post && post.mint === mintAddress && post.uiTokenAmount) {
+        const existing = balanceMap.get(post.accountIndex);
+        if (existing) {
+          const postAmount = parseInt(post.uiTokenAmount.amount || 0);
+          const change = postAmount - existing.pre;
+          
+          if (change !== 0) {
+            changes.push({
+              owner: post.owner,
+              amount: change,
+              decimals: post.uiTokenAmount.decimals || 9
+            });
+          }
+        }
+      }
+    });
+
+    return changes;
+  }
+
+  /**
+   * Calculate SOL balance changes - FIXED
+   */
+  calculateSolBalanceChanges(preBalances, postBalances) {
+    const changes = [];
+
+    // ✅ FIX: Validate inputs
+    if (!Array.isArray(preBalances) || !Array.isArray(postBalances)) {
+      return changes;
+    }
+
+    const minLength = Math.min(preBalances.length, postBalances.length);
+
+    for (let i = 0; i < minLength; i++) {
+      const pre = preBalances[i];
+      const post = postBalances[i];
+      
+      // ✅ FIX: Type validation
+      if (typeof pre !== 'number' || typeof post !== 'number') {
+        continue;
+      }
+
+      const change = (post - pre) / 1e9;
+
+      // ✅ FIX: Filter dust and validate
+      if (Math.abs(change) > 0.001 && isFinite(change)) {
+        changes.push({
+          accountIndex: i,
+          amount: change,
+          owner: null // We don't have owner info here
+        });
+      }
+    }
+
+    return changes;
+  }
+
+  /**
+   * Parse transfer event - FIXED
+   */
+  parseTransferEvent(tx, mintAddress, event) {
+    event.type = 'transfer';
+
+    if (!tx.tokenTransfers || !Array.isArray(tx.tokenTransfers)) {
+      return event;
+    }
+
+    const transfer = tx.tokenTransfers.find(t => t && t.mint === mintAddress);
+    
+    if (transfer) {
+      event.from = transfer.fromUserAccount || transfer.fromAccount;
+      event.to = transfer.toUserAccount || transfer.toAccount;
+      event.amount = this.parseAmount(transfer.tokenAmount);
+    }
+
+    return event;
+  }
+
+  /**
+   * Parse mint event - FIXED
+   */
+  parseMintEvent(tx, mintAddress, event) {
+    event.type = 'mint';
+
+    if (!tx.tokenTransfers || !Array.isArray(tx.tokenTransfers)) {
+      return event;
+    }
+
+    const transfer = tx.tokenTransfers.find(t => t && t.mint === mintAddress);
+    
+    if (transfer) {
+      event.to = transfer.toUserAccount || transfer.toAccount;
+      event.amount = this.parseAmount(transfer.tokenAmount);
+    }
+
+    return event;
+  }
+
+  /**
+   * Generic event parsing - FIXED
+   */
+  parseGenericEvent(tx, mintAddress, event) {
+    if (!tx.tokenTransfers || !Array.isArray(tx.tokenTransfers)) {
+      return null;
+    }
+
+    const transfer = tx.tokenTransfers.find(t => t && t.mint === mintAddress);
+    
+    if (transfer) {
+      event.type = 'transfer';
+      event.from = transfer.fromUserAccount || transfer.fromAccount;
+      event.to = transfer.toUserAccount || transfer.toAccount;
+      event.amount = this.parseAmount(transfer.tokenAmount);
+      return event;
+    }
+
+    return null;
+  }
+}
+
+module.exports = new EventParser();
