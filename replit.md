@@ -2,7 +2,7 @@
 
 ## Overview
 
-SimFi is a full-stack web and Telegram bot application designed for paper trading Solana memecoins. It allows users to simulate trading with virtual SOL, discover trending tokens using real-time market data, and compete on leaderboards. The application aims to provide a crypto-native trading interface inspired by popular DeFi platforms, serving as a risk-free gateway to decentralized finance.
+SimFi is a comprehensive Solana token trading and analysis platform designed to enable risk-free simulation of Solana memecoin trading. It comprises a full-stack web application for paper trading, a mobile-friendly Telegram bot for on-the-go interaction, and a CLI tool for on-chain token analysis. The platform utilizes real-time market data from various APIs to provide an authentic trading experience without financial risk.
 
 ## User Preferences
 
@@ -10,62 +10,56 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
+### UI/UX Decisions
+The platform features a dark mode interface with high-contrast colors, utilizing SimFi's cyan-to-purple gradient branding. Monospace fonts are used for numerical values, and buy/sell actions are color-coded (green/red) to minimize visual distractions and facilitate rapid data scanning. TradingView Lightweight Charts provide professional candlestick charts with volume histograms.
 
-**Framework**: React with TypeScript, using Wouter for routing, TanStack React Query for server state, and React Context for authentication.
-**UI Components**: Radix UI primitives with shadcn/ui, styled using Tailwind CSS with a custom dark mode theme.
-**Design Philosophy**: Dark mode with high-contrast, SimFi's cyan-to-purple gradient branding, monospace fonts for numerical values, and color-coded buy/sell actions for a focused trading experience.
-**Charts**: TradingView Lightweight Charts for professional candlestick (OHLC) charts with volume.
+### Technical Implementations
+- **Frontend**: Built with React, TypeScript, Wouter for routing, TanStack React Query for server state, and React Context for authentication. UI components are developed using Radix UI primitives and shadcn/ui, styled with Tailwind CSS. Form handling is managed by React Hook Form with Zod validation.
+- **Backend**: Implemented with Express.js and TypeScript, providing RESTful JSON APIs. It integrates with Birdeye, DexScreener, and GeckoTerminal APIs for market data. Drizzle ORM is used for PostgreSQL interactions, and authentication is JWT-based with HttpOnly cookies.
+- **Data Precision**: A critical architectural decision involves storing all currency values as `BigInt` (Lamports) in the database and using `BigInt` arithmetic throughout the backend and frontend to prevent floating-point precision loss. This ensures accurate financial calculations for all transaction sizes.
+- **Authentication**: JWT tokens are secured using HttpOnly cookies with SameSite protection to mitigate XSS vulnerabilities, ensuring tokens are inaccessible to client-side JavaScript.
+- **Telegram Bot**: Developed using the Telegraf framework, featuring persistent sessions, JWT authentication, and real-time position tracking. It integrates with the backend API for trading and data.
+- **Solana Token History Analyzer**: A CLI tool that parses on-chain transaction history, extracts price time-series, identifies early buyers, and supports CSV/JSON exports, integrating with the Helius API.
 
-### Backend Architecture
+### Feature Specifications
+- **Web Application**: Real-time TradingView charts, portfolio tracking with BigInt precision, trending token discovery, and 6-hour leaderboard.
+- **Telegram Bot**: Buy/sell tokens, view/refresh positions, leaderboard access, and persistent user sessions.
+- **Token History Analyzer**: On-chain data analysis, price time-series extraction, early buyer identification, and multiple export formats.
 
-**Framework**: Express.js with TypeScript, providing RESTful API endpoints.
-**Data Sources**: Birdeye API, DexScreener API, GeckoTerminal API, and Jupiter API (for display-only quotes).
-**Database ORM**: Drizzle ORM with PostgreSQL.
-**Authentication**: JWT-based authentication using HttpOnly cookies.
-**Key Services**: A Leaderboard Service manages trading periods and determines winners.
-**Build System**: Vite for frontend, esbuild for backend.
-
-### Data Storage
-
-**Database**: PostgreSQL (Neon serverless).
-**Schema Design**: All currency values are stored as **bigint** (Lamports) to ensure precise financial calculations, preventing floating-point errors. This involves storing values as strings in JSON transmission and using BigInt utilities in both backend and frontend.
-
-### Authentication & Authorization
-
-**Strategy**: JWT tokens stored in HttpOnly cookies to prevent XSS attacks. The backend sets the cookie, and middleware validates the JWT for authenticated requests.
-
-### Telegram Bot
-
-The application includes a Telegram bot built with the Telegraf framework, offering features like login, token trading, position viewing, and leaderboard access. It uses JWT authentication with database-backed session persistence.
+### System Design Choices
+- **Leaderboard Service**: A background service manages 6-hour trading periods and determines winners.
+- **Storage Abstraction**: Database operations are abstracted through an `IStorage` interface.
+- **Price Enrichment**: The backend enriches user position data with current prices from DexScreener.
+- **Build System**: Vite is used for frontend bundling, and esbuild for backend compilation.
 
 ## External Dependencies
 
 **Third-Party APIs**:
-- **Birdeye API**: For trending tokens.
-- **DexScreener API**: For token metadata, prices, and boosted tokens.
-- **GeckoTerminal API**: For OHLCV chart data.
-- **Jupiter API**: For swap quotes (display-only price impact estimation).
-- **Axiom.trade Trending API**: For fetching trending tokens.
+-   **Birdeye API**: For trending tokens, liquidity, and volume data.
+-   **DexScreener API**: Provides token metadata, prices, and boosted tokens.
+-   **GeckoTerminal API**: Used for OHLCV chart data.
+-   **Jupiter API**: Provides swap quotes for display-only price impact estimations.
+-   **Helius API**: Utilized by the Solana Token History Analyzer for on-chain data.
 
 **Database Provider**:
-- **Neon Serverless PostgreSQL**: Cloud-hosted database.
+-   **Neon Serverless PostgreSQL**: Cloud-hosted database for data persistence.
 
 **UI Libraries**:
-- **Radix UI**: Accessible component primitives.
-- **shadcn/ui**: Pre-styled components.
-- **Tailwind CSS**: Utility-first CSS framework.
+-   **Radix UI**: Provides unstyled, accessible component primitives.
+-   **shadcn/ui**: Pre-styled components built on Radix UI.
+-   **Tailwind CSS**: Utility-first CSS framework for styling.
 
 **Validation & Forms**:
-- **Zod**: Schema validation.
-- **React Hook Form**: Form state management.
+-   **Zod**: Schema validation for API requests and form data.
+-   **React Hook Form**: Manages form state.
+-   **@hookform/resolvers**: Integrates Zod with React Hook Form.
 
 **Build Tools**:
-- **Vite**: Frontend bundling.
-- **esbuild**: Backend compilation.
-- **Drizzle Kit**: Database migration tool.
+-   **Vite**: Frontend development server and production bundler.
+-   **esbuild**: Backend TypeScript compilation.
+-   **Drizzle Kit**: Database migration tool.
 
-**Authentication**:
-- **bcryptjs**: Password hashing.
-- **jsonwebtoken**: JWT generation and verification.
-- **cookie-parser**: HTTP cookie parsing middleware.
+**Authentication Libraries**:
+-   **bcryptjs**: For password hashing.
+-   **jsonwebtoken**: For JWT generation and verification.
+-   **cookie-parser**: Middleware for parsing HTTP cookies.
