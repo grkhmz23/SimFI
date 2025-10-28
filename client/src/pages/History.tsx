@@ -93,7 +93,9 @@ export default function History() {
                   </TableHeader>
                   <TableBody>
                     {trades.map((trade: Trade) => {
-                      const plPercent = ((trade.profitLoss / trade.solSpent) * 100);
+                      const plPercent = trade.solSpent > 0 
+                        ? ((trade.profitLoss / trade.solSpent) * 100)
+                        : 0;
                       
                       return (
                         <TableRow key={trade.id} data-testid={`row-trade-${trade.id}`}>

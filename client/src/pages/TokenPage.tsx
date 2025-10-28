@@ -52,7 +52,7 @@ export default function TokenPage() {
       const newToken = tokenData.token;
       if (newToken.tokenAddress && newToken.name && newToken.symbol) {
         // Calculate price change if we have a previous price
-        if (previousPrice !== null && newToken.price && previousPrice !== newToken.price) {
+        if (previousPrice !== null && newToken.price && previousPrice !== newToken.price && previousPrice > 0) {
           const change = ((newToken.price - previousPrice) / previousPrice) * 100;
           setPriceChange(change);
         }

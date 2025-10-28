@@ -203,7 +203,7 @@ const TokenChart = ({
       // Calculate price change
       const oldestPrice = candles[0]?.[4] || currentPrice;
       const latest = candles[candles.length - 1]?.[4] || currentPrice;
-      const change = ((latest - oldestPrice) / oldestPrice) * 100;
+      const change = oldestPrice > 0 ? ((latest - oldestPrice) / oldestPrice) * 100 : 0;
       setPriceChange(change);
       setLatestPrice(latest);
       setLastUpdate(new Date());
