@@ -12,6 +12,7 @@ import Trade from "@/pages/Trade";
 import TokenPage from "@/pages/TokenPage";
 import Dashboard from "@/pages/Dashboard";
 import Portfolio from "@/pages/Portfolio";
+import Positions from "@/pages/Positions";
 import History from "@/pages/History";
 import Leaderboard from "@/pages/Leaderboard";
 import Trending from "@/pages/Trending";
@@ -48,6 +49,9 @@ function Router() {
       </Route>
       <Route path="/portfolio">
         <PageLayout component={Portfolio} />
+      </Route>
+      <Route path="/positions">
+        <PageLayout component={Positions} />
       </Route>
       <Route path="/history">
         <PageLayout component={History} />
