@@ -43,11 +43,13 @@ export default function Positions() {
     setSelectedPosition(null);
   };
 
-  // Calculate total portfolio value and P&L
-  const totalValue = positions.reduce((sum, p) => sum + Number(p.currentValue), 0);
-  const totalInvested = positions.reduce((sum, p) => sum + Number(p.solSpent), 0);
-  const totalPnL = totalValue - totalInvested;
-  const totalPnLPercent = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
+  // Calculate total portfolio value and P&L (keep all math in BigInt)
+  const totalValueLamports = positions.reduce((sum, p) => sum + p.currentValue, 0n);
+  const totalInvestedLamports = positions.reduce((sum, p) => sum + p.solSpent, 0n);
+  const totalPnLLamports = totalValueLamports - totalInvestedLamports;
+  const totalPnLPercent = totalInvestedLamports > 0n 
+    ? (Number(totalPnLLamports) / Number(totalInvestedLamports)) * 100 
+    : 0;
 
   if (!isAuthenticated) {
     return (
@@ -96,26 +98,26 @@ export default function Positions() {
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Total Invested</p>
                     <p className="text-2xl font-bold font-mono" data-testid="text-total-invested">
-                      {formatSol(BigInt(Math.floor(totalInvested)))} SOL
+                      {formatSol(totalInvestedLamports)} SOL
                     </p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Current Value</p>
                     <p className="text-2xl font-bold font-mono" data-testid="text-total-value">
-                      {formatSol(BigInt(Math.floor(totalValue)))} SOL
+                      {formatSol(totalValueLamports)} SOL
                     </p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Total P/L</p>
                     <div className="flex items-baseline gap-2">
                       <p 
-                        className={`text-2xl font-bold font-mono ${totalPnL >= 0 ? 'text-success' : 'text-destructive'}`}
+                        className={`text-2xl font-bold font-mono ${totalPnLLamports >= 0n ? 'text-success' : 'text-destructive'}`}
                         data-testid="text-total-pnl"
                       >
-                        {totalPnL >= 0 ? '+' : ''}{formatSol(BigInt(Math.floor(totalPnL)))}
+                        {totalPnLLamports >= 0n ? '+' : ''}{formatSol(totalPnLLamports)}
                       </p>
-                      <Badge variant={totalPnL >= 0 ? 'default' : 'destructive'}>
-                        {totalPnL >= 0 ? '+' : ''}{totalPnLPercent.toFixed(2)}%
+                      <Badge variant={totalPnLLamports >= 0n ? 'default' : 'destructive'}>
+                        {totalPnLLamports >= 0n ? '+' : ''}{totalPnLPercent.toFixed(2)}%
                       </Badge>
                     </div>
                   </div>
@@ -205,7 +207,7 @@ export default function Positions() {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Current Price</span>
                         <span className="font-mono" data-testid={`text-current-price-${position.id}`}>
-                          {formatSol(position.currentPrice, 8)}
+                          {formatSol(BigInt(Math.floor(position.currentPrice)), 8)}
                         </span>
                       </div>
                     </div>
