@@ -291,7 +291,7 @@ export default function TokenPage() {
               tokenAddress={tokenAddress!}
               tokenSymbol={token.symbol}
               tokenName={token.name}
-              currentPrice={token.priceUsd || 0}
+              currentPrice={token.priceUsd !== undefined ? token.priceUsd : (token.price ? token.price / 1_000_000_000 : 0)}
               priceChange24h={token.priceChange24h || 0}
               volume24h={token.volume24h || 0}
               liquidity={0}

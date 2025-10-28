@@ -243,14 +243,25 @@ const TokenChart = ({
 
   // Fetch data on mount and timeframe change
   useEffect(() => {
-    if (tokenAddress && currentPrice && !isNaN(currentPrice) && isFinite(currentPrice) && currentPrice > 0) {
-      fetchTokenData(selectedTimeframe);
+    if (tokenAddress) {
+      // Only check that currentPrice is a valid number, allow 0 or very small prices
+      const isValidPrice = currentPrice !== null && 
+                          currentPrice !== undefined && 
+                          !isNaN(currentPrice) && 
+                          isFinite(currentPrice);
+      if (isValidPrice) {
+        fetchTokenData(selectedTimeframe);
+      }
     }
   }, [tokenAddress, selectedTimeframe, currentPrice]);
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
-    if (!tokenAddress || !currentPrice || isNaN(currentPrice) || !isFinite(currentPrice) || currentPrice <= 0) return;
+    const isValidPrice = currentPrice !== null && 
+                        currentPrice !== undefined && 
+                        !isNaN(currentPrice) && 
+                        isFinite(currentPrice);
+    if (!tokenAddress || !isValidPrice) return;
     
     const interval = setInterval(() => {
       fetchTokenData(selectedTimeframe, true);

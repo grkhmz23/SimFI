@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ interface EnrichedPosition extends Position {
 
 export default function Positions() {
   const { isAuthenticated } = useAuth();
+  const [, setLocation] = useLocation();
   const [selectedPosition, setSelectedPosition] = useState<EnrichedPosition | null>(null);
   const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
   const [showTradeModal, setShowTradeModal] = useState(false);
@@ -30,7 +31,32 @@ export default function Positions() {
     refetchIntervalInBackground: true,
   });
 
-  const positions = positionsData?.positions || [];
+  // Enrich positions with calculated P/L values
+  const positions: EnrichedPosition[] = (positionsData?.positions || []).map(p => {
+    const amountBigInt = toBigInt(p.amount);
+    const currentPriceBigInt = toBigInt(p.currentPrice);
+    const solSpentBigInt = toBigInt(p.solSpent);
+    const decimals = p.decimals || 6;
+    const divisor = BigInt(10 ** decimals);
+    
+    // Calculate current value: (amount * currentPrice) / 10^decimals
+    const currentValue = (amountBigInt * currentPriceBigInt) / divisor;
+    
+    // Calculate profit/loss
+    const profitLoss = currentValue - solSpentBigInt;
+    
+    // Calculate profit/loss percentage
+    const profitLossPercent = solSpentBigInt > BigInt(0) 
+      ? (Number(profitLoss) / Number(solSpentBigInt)) * 100 
+      : 0;
+    
+    return {
+      ...p,
+      currentValue,
+      profitLoss,
+      profitLossPercent,
+    };
+  });
 
   const openTradeModal = (position: EnrichedPosition, mode: 'buy' | 'sell') => {
     setSelectedPosition(position);
@@ -183,11 +209,14 @@ export default function Positions() {
                           {position.tokenName}
                         </p>
                       </div>
-                      <Link href={`/token/${position.tokenAddress}`}>
-                        <Button variant="ghost" size="icon" data-testid={`button-view-token-${position.id}`}>
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                      </Link>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => setLocation(`/token/${position.tokenAddress}`)}
+                        data-testid={`button-view-token-${position.id}`}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
                     </div>
                   </CardHeader>
 
