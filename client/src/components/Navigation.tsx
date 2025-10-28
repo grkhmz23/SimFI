@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { TrendingUp, History, Trophy, User, LogOut, Wallet, Flame, Info, Search, Loader2, Microscope } from 'lucide-react';
+import { TrendingUp, History, Trophy, User, LogOut, Wallet, Flame, Info, Search, Loader2, Microscope, BarChart3 } from 'lucide-react';
 import { formatSol } from '@/lib/lamports';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
@@ -201,6 +201,10 @@ export function Navigation() {
                   <DropdownMenuItem onClick={() => setLocation('/portfolio')} data-testid="menu-portfolio">
                     <Wallet className="mr-2 h-4 w-4" />
                     Portfolio
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setLocation('/positions')} data-testid="menu-positions">
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    Positions
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setLocation('/history')} data-testid="menu-history">
                     <History className="mr-2 h-4 w-4" />
