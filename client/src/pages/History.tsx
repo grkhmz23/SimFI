@@ -93,8 +93,8 @@ export default function History() {
                   </TableHeader>
                   <TableBody>
                     {trades.map((trade: Trade) => {
-                      const plPercent = trade.solSpent > 0 
-                        ? ((trade.profitLoss / trade.solSpent) * 100)
+                      const plPercent = trade.solSpent > 0n
+                        ? (Number(trade.profitLoss) / Number(trade.solSpent)) * 100
                         : 0;
                       
                       return (
@@ -108,7 +108,7 @@ export default function History() {
                             </div>
                           </TableCell>
                           <TableCell className="text-right font-mono">
-                            {(trade.amount / 1_000_000_000).toLocaleString()}
+                            {(Number(trade.amount) / 1_000_000_000).toLocaleString()}
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm">
                             {formatSol(trade.entryPrice, 8)}
