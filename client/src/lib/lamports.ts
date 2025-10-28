@@ -6,10 +6,23 @@ export const LAMPORTS_PER_SOL_BIGINT = BigInt(LAMPORTS_PER_SOL);
 export const DEFAULT_TOKEN_DECIMALS = 6;
 
 // Convert any input to BigInt (handles strings from API)
-export function toBigInt(value: number | bigint | string): bigint {
+export function toBigInt(value: number | bigint | string | null | undefined): bigint {
+  if (value === null || value === undefined) return BigInt(0);
   if (typeof value === 'bigint') return value;
-  if (typeof value === 'string') return BigInt(value);
-  return BigInt(Math.floor(value));
+  if (typeof value === 'string') {
+    if (value === '' || value === 'null' || value === 'undefined') return BigInt(0);
+    try {
+      return BigInt(value);
+    } catch {
+      // Invalid string format, return 0
+      return BigInt(0);
+    }
+  }
+  if (typeof value === 'number') {
+    if (isNaN(value) || !isFinite(value)) return BigInt(0);
+    return BigInt(Math.floor(value));
+  }
+  return BigInt(0);
 }
 
 // Convert token smallest units to decimal amount (BigInt → string, no precision loss)

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TradeModal } from '@/components/TradeModal';
 import { useAuth } from '@/lib/auth-context';
-import { formatSol, formatTokenAmount, lamportsToTokens } from '@/lib/lamports';
+import { formatSol, formatTokenAmount, lamportsToTokens, toBigInt } from '@/lib/lamports';
 import { TrendingUp, TrendingDown, Wallet, ShoppingCart, DollarSign, ExternalLink, BarChart3 } from 'lucide-react';
 import type { Position } from '@shared/schema';
 
@@ -44,10 +44,11 @@ export default function Positions() {
   };
 
   // Calculate total portfolio value and P&L (keep all math in BigInt)
-  const totalValueLamports = positions.reduce((sum, p) => sum + p.currentValue, 0n);
-  const totalInvestedLamports = positions.reduce((sum, p) => sum + p.solSpent, 0n);
+  // Note: Values come from JSON so we need to convert them to BigInt
+  const totalValueLamports = positions.reduce((sum, p) => sum + toBigInt(p.currentValue), BigInt(0));
+  const totalInvestedLamports = positions.reduce((sum, p) => sum + toBigInt(p.solSpent), BigInt(0));
   const totalPnLLamports = totalValueLamports - totalInvestedLamports;
-  const totalPnLPercent = totalInvestedLamports > 0n 
+  const totalPnLPercent = totalInvestedLamports > BigInt(0)
     ? (Number(totalPnLLamports) / Number(totalInvestedLamports)) * 100 
     : 0;
 
@@ -111,13 +112,13 @@ export default function Positions() {
                     <p className="text-sm text-muted-foreground mb-1">Total P/L</p>
                     <div className="flex items-baseline gap-2">
                       <p 
-                        className={`text-2xl font-bold font-mono ${totalPnLLamports >= 0n ? 'text-success' : 'text-destructive'}`}
+                        className={`text-2xl font-bold font-mono ${totalPnLLamports >= BigInt(0) ? 'text-success' : 'text-destructive'}`}
                         data-testid="text-total-pnl"
                       >
-                        {totalPnLLamports >= 0n ? '+' : ''}{formatSol(totalPnLLamports)}
+                        {totalPnLLamports >= BigInt(0) ? '+' : ''}{formatSol(totalPnLLamports)}
                       </p>
-                      <Badge variant={totalPnLLamports >= 0n ? 'default' : 'destructive'}>
-                        {totalPnLLamports >= 0n ? '+' : ''}{totalPnLPercent.toFixed(2)}%
+                      <Badge variant={totalPnLLamports >= BigInt(0) ? 'default' : 'destructive'}>
+                        {totalPnLLamports >= BigInt(0) ? '+' : ''}{totalPnLPercent.toFixed(2)}%
                       </Badge>
                     </div>
                   </div>
@@ -164,10 +165,11 @@ export default function Positions() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {positions.map((position) => {
-              const pnl = Number(position.profitLoss);
+              const pnlBigInt = toBigInt(position.profitLoss);
+              const pnl = Number(pnlBigInt);
               const pnlPercent = position.profitLossPercent;
               const isProfitable = pnl >= 0;
-              const tokenAmount = lamportsToTokens(position.amount, position.decimals);
+              const tokenAmount = lamportsToTokens(toBigInt(position.amount), position.decimals);
 
               return (
                 <Card key={position.id} className="hover-elevate" data-testid={`card-position-${position.id}`}>
@@ -201,13 +203,13 @@ export default function Positions() {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Entry Price</span>
                         <span className="font-mono" data-testid={`text-entry-price-${position.id}`}>
-                          {formatSol(position.entryPrice, 8)}
+                          {formatSol(toBigInt(position.entryPrice), 8)}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Current Price</span>
                         <span className="font-mono" data-testid={`text-current-price-${position.id}`}>
-                          {formatSol(BigInt(Math.floor(position.currentPrice)), 8)}
+                          {formatSol(toBigInt(position.currentPrice), 8)}
                         </span>
                       </div>
                     </div>
@@ -216,13 +218,13 @@ export default function Positions() {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Invested</span>
                         <span className="font-mono" data-testid={`text-invested-${position.id}`}>
-                          {formatSol(position.solSpent)}
+                          {formatSol(toBigInt(position.solSpent))}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Current Value</span>
                         <span className="font-mono font-semibold" data-testid={`text-value-${position.id}`}>
-                          {formatSol(position.currentValue)}
+                          {formatSol(toBigInt(position.currentValue))}
                         </span>
                       </div>
                     </div>
@@ -244,7 +246,7 @@ export default function Positions() {
                           className={`text-xl font-bold font-mono ${isProfitable ? 'text-success' : 'text-destructive'}`}
                           data-testid={`text-pnl-${position.id}`}
                         >
-                          {isProfitable ? '+' : ''}{formatSol(position.profitLoss)}
+                          {isProfitable ? '+' : ''}{formatSol(pnlBigInt)}
                         </span>
                         <Badge variant={isProfitable ? 'default' : 'destructive'} data-testid={`badge-pnl-percent-${position.id}`}>
                           {isProfitable ? '+' : ''}{pnlPercent.toFixed(2)}%
