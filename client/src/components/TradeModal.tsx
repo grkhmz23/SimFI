@@ -61,13 +61,13 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   if (!isAuthenticated) {
     return (
       <Dialog open onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-md" data-testid="dialog-login-required">
+        <DialogContent className="sm:max-w-md" data-testid="dialog-login-required" aria-describedby="login-required-description">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-2xl">
               <LogIn className="h-6 w-6 text-primary" />
               Login Required
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription id="login-required-description">
               You need to be logged in to trade tokens
             </DialogDescription>
           </DialogHeader>
@@ -277,7 +277,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md" data-testid="dialog-trade">
+      <DialogContent className="sm:max-w-md" data-testid="dialog-trade" aria-describedby="trade-modal-description">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-2xl">
             {isBuying ? (
@@ -286,6 +286,9 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
               <><TrendingDown className="h-6 w-6 text-destructive" /> Sell {symbol}</>
             )}
           </DialogTitle>
+          <DialogDescription id="trade-modal-description" className="sr-only">
+            {isBuying ? `Buy ${symbol} tokens with SOL` : `Sell ${symbol} tokens for SOL`}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
