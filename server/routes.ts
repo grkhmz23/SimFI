@@ -409,18 +409,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const positions = await storage.getUserPositions(req.userId!);
       
       // Fetch current prices for all unique tokens
-      const uniqueTokens = [...new Set(positions.map(p => p.tokenAddress))];
+      const uniqueTokenAddresses = positions.map(p => p.tokenAddress);
+      const uniqueTokens = Array.from(new Set(uniqueTokenAddresses));
       const priceMap = new Map<string, number>();
       
       if (uniqueTokens.length > 0) {
         try {
           // Fetch prices from DexScreener in batches of 30
-          const profiles = await fetchDexScreenerProfiles(uniqueTokens);
-          for (const [address, profile] of Object.entries(profiles)) {
-            if (profile.priceNative) {
-              priceMap.set(address, Math.floor(profile.priceNative * 1_000_000_000));
+          const batchSize = 30;
+          for (let i = 0; i < uniqueTokens.length; i += batchSize) {
+            const batch = uniqueTokens.slice(i, i + batchSize);
+            const addressesParam = batch.join(',');
+            
+            const dexResponse = await fetchWithTimeout(
+              `https://api.dexscreener.com/latest/dex/tokens/${addressesParam}`,
+              8000
+            );
+            
+            if (dexResponse.ok) {
+              const dexData = await dexResponse.json();
+              const pairs = dexData.pairs || [];
+              
+              // Build price map from pairs
+              for (const pair of pairs) {
+                const tokenAddr = pair.baseToken?.address;
+                if (tokenAddr && pair.chainId === 'solana' && pair.priceNative) {
+                  const priceLamports = Math.floor(parseFloat(pair.priceNative) * 1_000_000_000);
+                  priceMap.set(tokenAddr, priceLamports);
+                }
+              }
             }
           }
+          console.log(`📊 Fetched ${priceMap.size} token profiles from DexScreener`);
         } catch (error) {
           console.warn('⚠️  Failed to fetch current prices for positions:', error);
         }
@@ -1206,8 +1226,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Calculate effective price: SOL spent / tokens received = SOL per token
       // Both in their raw units (Lamports / token base units)
-      const effectivePriceLamports = tokenAmountOut > 0 
-        ? Math.floor(inputAmountLamports / (tokenAmountOut / 1_000_000_000))
+      const tokenAmountDecimal = tokenAmountOut / 1_000_000_000;
+      const effectivePriceLamports = tokenAmountDecimal > 0 
+        ? Math.floor(inputAmountLamports / tokenAmountDecimal)
         : 0;
       
       console.log(`✅ Jupiter quote: ${solAmountNum} SOL → ${tokenAmountOut / 1_000_000_000} tokens (impact: ${priceImpactPct}%)`);
