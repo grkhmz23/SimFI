@@ -9,6 +9,7 @@ import { authenticateToken } from "./middleware/auth";
 import { fetchDexScreenerProfiles } from "./pumpportal";
 import { leaderboardService } from "./leaderboardService";
 import { heliusService } from "./helius";
+import { heliusEnhancedService } from "./helius-enhanced";
 import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest } from "@shared/schema";
 
 // Require JWT_SECRET or SESSION_SECRET environment variable
@@ -1330,6 +1331,150 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Token analysis error:', error);
       res.status(500).json({ error: error.message || 'Could not analyze token' });
+    }
+  });
+
+  // ============================================================================
+  // Enhanced Study Section Routes
+  // ============================================================================
+
+  /**
+   * Token Analysis Endpoint
+   * GET /api/study/token/:mintAddress
+   */
+  app.get('/api/study/token/:mintAddress', async (req, res) => {
+    try {
+      const { mintAddress } = req.params;
+
+      if (!heliusEnhancedService.isValidSolanaAddress(mintAddress)) {
+        return res.status(400).json({ error: 'Invalid token address' });
+      }
+
+      const analysis = await heliusEnhancedService.getTokenAnalysis(mintAddress);
+      res.json(analysis);
+    } catch (error) {
+      console.error('Token analysis error:', error);
+      res.status(500).json({ error: 'Failed to fetch token analysis' });
+    }
+  });
+
+  /**
+   * Wallet Portfolio Endpoint
+   * GET /api/study/wallet/:walletAddress
+   */
+  app.get('/api/study/wallet/:walletAddress', async (req, res) => {
+    try {
+      const { walletAddress } = req.params;
+
+      if (!heliusEnhancedService.isValidSolanaAddress(walletAddress)) {
+        return res.status(400).json({ error: 'Invalid wallet address' });
+      }
+
+      const portfolio = await heliusEnhancedService.getWalletPortfolio(walletAddress);
+      res.json(portfolio);
+    } catch (error) {
+      console.error('Wallet portfolio error:', error);
+      res.status(500).json({ error: 'Failed to fetch wallet portfolio' });
+    }
+  });
+
+  /**
+   * Transaction History Endpoint
+   * GET /api/study/transactions/:address
+   */
+  app.get('/api/study/transactions/:address', async (req, res) => {
+    try {
+      const { address } = req.params;
+      const { limit, before, type } = req.query;
+
+      if (!heliusEnhancedService.isValidSolanaAddress(address)) {
+        return res.status(400).json({ error: 'Invalid address' });
+      }
+
+      const transactions = await heliusEnhancedService.getTransactionHistory(address, {
+        limit: limit ? parseInt(limit as string) : 50,
+        before: before as string,
+        type: type as string,
+      });
+
+      res.json(transactions);
+    } catch (error) {
+      console.error('Transaction history error:', error);
+      res.status(500).json({ error: 'Failed to fetch transaction history' });
+    }
+  });
+
+  /**
+   * Transaction Details Endpoint
+   * GET /api/study/transaction/:signature
+   */
+  app.get('/api/study/transaction/:signature', async (req, res) => {
+    try {
+      const { signature } = req.params;
+      const details = await heliusEnhancedService.getTransactionDetails(signature);
+      res.json(details);
+    } catch (error) {
+      console.error('Transaction details error:', error);
+      res.status(500).json({ error: 'Failed to fetch transaction details' });
+    }
+  });
+
+  /**
+   * Search Endpoint (Unified search for tokens/wallets)
+   * GET /api/study/search?q=<address>
+   */
+  app.get('/api/study/search', async (req, res) => {
+    try {
+      const { q } = req.query;
+
+      if (!q || typeof q !== 'string') {
+        return res.status(400).json({ error: 'Search query required' });
+      }
+
+      const result = await heliusEnhancedService.search(q.trim());
+      res.json(result);
+    } catch (error) {
+      console.error('Search error:', error);
+      res.status(500).json({ error: 'Search failed' });
+    }
+  });
+
+  /**
+   * Batch Token Metadata Endpoint
+   * POST /api/study/tokens/batch
+   * Body: { mintAddresses: string[] }
+   */
+  app.post('/api/study/tokens/batch', async (req, res) => {
+    try {
+      const { mintAddresses } = req.body;
+
+      if (!Array.isArray(mintAddresses) || mintAddresses.length === 0) {
+        return res.status(400).json({ error: 'Invalid mint addresses array' });
+      }
+
+      if (mintAddresses.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 addresses per request' });
+      }
+
+      const tokens = await heliusEnhancedService.getBatchTokenInfo(mintAddresses);
+      res.json(tokens);
+    } catch (error) {
+      console.error('Batch token info error:', error);
+      res.status(500).json({ error: 'Failed to fetch batch token info' });
+    }
+  });
+
+  /**
+   * API Usage Stats Endpoint (for monitoring)
+   * GET /api/study/stats
+   */
+  app.get('/api/study/stats', async (req, res) => {
+    try {
+      const stats = heliusEnhancedService.getUsageStats();
+      res.json(stats);
+    } catch (error) {
+      console.error('Stats error:', error);
+      res.status(500).json({ error: 'Failed to fetch stats' });
     }
   });
 

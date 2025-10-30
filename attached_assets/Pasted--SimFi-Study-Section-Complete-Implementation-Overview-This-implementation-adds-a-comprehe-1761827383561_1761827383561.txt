@@ -1,0 +1,314 @@
+# SimFi Study Section - Complete Implementation
+
+## 🎯 Overview
+
+This implementation adds a comprehensive **Study Section** to your SimFi platform with 4 powerful features:
+
+1. **Token Analysis** - Deep dive into any Solana token
+2. **Wallet Explorer** - View complete wallet portfolios
+3. **Transaction History** - Detailed transaction viewer
+4. **Real-time Data** - Live token monitoring (framework ready)
+
+## 📦 What's Included
+
+### Backend Files
+- `server/helius-enhanced.ts` - Enhanced Helius service with 5 API key rotation
+- API routes additions for `server/routes.ts`
+
+### Frontend Files
+- `client/src/pages/TokenAnalyzer.tsx` - Main Study page with tabs
+- `client/src/components/TokenAnalysis.tsx` - Token analysis component
+- `client/src/components/WalletExplorer.tsx` - Wallet explorer component
+- `client/src/components/TransactionHistory.tsx` - Transaction history component
+- `client/src/components/RealtimeData.tsx` - Real-time data component
+
+## 🚀 Installation Steps for Replit Agent
+
+### Step 1: Add Environment Variables
+
+1. Create or update your `.env` file:
+```bash
+# Add these 5 Helius API keys
+HELIUS_API_KEY_1=your_first_api_key
+HELIUS_API_KEY_2=your_second_api_key
+HELIUS_API_KEY_3=your_third_api_key
+HELIUS_API_KEY_4=your_fourth_api_key
+HELIUS_API_KEY_5=your_fifth_api_key
+```
+
+2. Get your Helius API keys from https://helius.dev (free tier)
+
+### Step 2: Backend Setup
+
+1. **Create the enhanced Helius service:**
+```bash
+# Copy the contents from server-helius-enhanced.ts
+# to server/helius-enhanced.ts
+```
+
+2. **Add routes to your existing `server/routes.ts`:**
+
+Add these imports at the top:
+```typescript
+import { heliusService } from './helius-enhanced';
+```
+
+Then add all the API endpoints from `server-routes-addition.ts` to your routes file.
+
+The new endpoints will be:
+- `GET /api/study/token/:mintAddress` - Token analysis
+- `GET /api/study/wallet/:walletAddress` - Wallet portfolio
+- `GET /api/study/transactions/:address` - Transaction history
+- `GET /api/study/transaction/:signature` - Transaction details
+- `GET /api/study/search?q=<address>` - Unified search
+- `POST /api/study/tokens/batch` - Batch token info
+- `GET /api/study/stats` - API usage stats
+
+### Step 3: Frontend Setup
+
+1. **Replace the existing TokenAnalyzer page:**
+```bash
+# Copy contents from client-TokenAnalyzer.tsx
+# to client/src/pages/TokenAnalyzer.tsx
+```
+
+2. **Create the component files:**
+```bash
+# Create these 4 new files in client/src/components/
+
+# 1. TokenAnalysis.tsx
+# Copy from client-TokenAnalysis.tsx
+
+# 2. WalletExplorer.tsx  
+# Copy from client-WalletExplorer.tsx
+
+# 3. TransactionHistory.tsx
+# Copy from client-TransactionHistory.tsx
+
+# 4. RealtimeData.tsx
+# Copy from client-RealtimeData.tsx
+```
+
+3. **Ensure the route is configured in `client/src/App.tsx`:**
+```typescript
+import TokenAnalyzer from './pages/TokenAnalyzer';
+
+// In your router:
+<Route path="/study" component={TokenAnalyzer} />
+```
+
+### Step 4: Install Dependencies (if needed)
+
+Most dependencies should already be in your project, but verify:
+```bash
+npm install
+# or
+pnpm install
+```
+
+### Step 5: Build and Test
+
+```bash
+# Development
+npm run dev
+
+# Production build
+npm run build
+```
+
+## 🧪 Testing the Implementation
+
+### Test Token Analysis
+1. Navigate to `/study`
+2. Click "Token Analysis" tab
+3. Try USDC: `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`
+4. You should see: token metadata, supply, holders
+
+### Test Wallet Explorer
+1. Click "Wallet Explorer" tab
+2. Enter any Solana wallet address
+3. You should see: SOL balance, token holdings, NFTs
+
+### Test Transaction History
+1. Click "Transactions" tab
+2. Enter a wallet address or token mint
+3. You should see: recent transactions, parsed details
+
+### Test Real-time Data
+1. Click "Real-time Data" tab
+2. Add tokens to watchlist
+3. See live updates (currently shows demo data)
+
+## 🔑 Features
+
+### Token Analysis
+- ✅ Complete token metadata
+- ✅ Total supply and decimals
+- ✅ Top token holders
+- ✅ On-chain metadata
+- ✅ Direct Solscan links
+- ✅ Copy addresses easily
+
+### Wallet Explorer
+- ✅ SOL balance
+- ✅ All token holdings
+- ✅ NFT collection viewer
+- ✅ Token logos and metadata
+- ✅ Portfolio overview
+
+### Transaction History
+- ✅ Parsed transaction data
+- ✅ Transaction type badges
+- ✅ Token transfer details
+- ✅ Success/failure status
+- ✅ Timestamps and fees
+- ✅ Load more pagination
+
+### Real-time Data
+- ✅ Token watchlist (up to 20)
+- ✅ Auto-refresh (30s interval)
+- ✅ Manual refresh
+- 🚧 Price data (ready for integration)
+- 🚧 Charts (ready for integration)
+
+## 🔌 API Usage
+
+The implementation uses **5 Helius API keys** with automatic rotation to maximize your free tier credits:
+
+- 5 keys × 1M credits/month = **5M total credits/month**
+- Automatic load balancing across keys
+- Usage stats available at `/api/study/stats`
+
+## 📊 API Endpoints
+
+```typescript
+// Token Analysis
+GET /api/study/token/:mintAddress
+
+// Wallet Portfolio  
+GET /api/study/wallet/:walletAddress
+
+// Transaction History
+GET /api/study/transactions/:address?limit=50&before=signature&type=SWAP
+
+// Transaction Details
+GET /api/study/transaction/:signature
+
+// Search (auto-detect token vs wallet)
+GET /api/study/search?q=<address>
+
+// Batch Token Info
+POST /api/study/tokens/batch
+Body: { mintAddresses: string[] }
+
+// Usage Statistics
+GET /api/study/stats
+```
+
+## 🎨 UI Components Used
+
+All components use your existing design system:
+- Radix UI + shadcn/ui components
+- Tailwind CSS styling
+- Consistent with your SimFi design
+- Responsive layouts
+- Dark mode compatible
+
+## 🔮 Future Enhancements
+
+### Phase 2: Real-time Price Data
+- [ ] DexScreener API integration
+- [ ] Birdeye API integration  
+- [ ] Jupiter API integration
+- [ ] Live price charts
+- [ ] Price alerts
+- [ ] Historical data
+
+### Phase 3: Advanced Features
+- [ ] Portfolio tracking
+- [ ] Watchlist persistence (save to database)
+- [ ] Token comparison
+- [ ] Advanced filters
+- [ ] Export data (CSV/JSON)
+- [ ] Custom dashboards
+
+## 🐛 Troubleshooting
+
+### API Keys Not Working
+```bash
+# Check your .env file
+echo $HELIUS_API_KEY_1
+
+# Verify keys are loaded
+GET /api/study/stats
+```
+
+### Components Not Rendering
+```bash
+# Check imports in TokenAnalyzer.tsx
+# Verify all component files exist
+# Check browser console for errors
+```
+
+### TypeScript Errors
+```bash
+# Install types if needed
+npm install -D @types/node
+
+# Restart TypeScript server
+```
+
+## 📝 File Checklist
+
+Backend:
+- [ ] `server/helius-enhanced.ts` created
+- [ ] `server/routes.ts` updated with new endpoints
+- [ ] `.env` configured with 5 API keys
+
+Frontend:
+- [ ] `client/src/pages/TokenAnalyzer.tsx` created/updated
+- [ ] `client/src/components/TokenAnalysis.tsx` created
+- [ ] `client/src/components/WalletExplorer.tsx` created
+- [ ] `client/src/components/TransactionHistory.tsx` created
+- [ ] `client/src/components/RealtimeData.tsx` created
+- [ ] Route configured in `client/src/App.tsx`
+
+## 🎯 Quick Start Commands for Replit Agent
+
+```bash
+# 1. Set up environment
+echo "HELIUS_API_KEY_1=your_key_here" >> .env
+# (repeat for all 5 keys)
+
+# 2. Copy backend files
+cp server-helius-enhanced.ts server/helius-enhanced.ts
+
+# 3. Copy frontend files
+cp client-TokenAnalyzer.tsx client/src/pages/TokenAnalyzer.tsx
+cp client-TokenAnalysis.tsx client/src/components/TokenAnalysis.tsx
+cp client-WalletExplorer.tsx client/src/components/WalletExplorer.tsx
+cp client-TransactionHistory.tsx client/src/components/TransactionHistory.tsx
+cp client-RealtimeData.tsx client/src/components/RealtimeData.tsx
+
+# 4. Update routes.ts (manually add the endpoints)
+
+# 5. Install and run
+npm install
+npm run dev
+```
+
+## 📞 Support
+
+If you encounter issues:
+1. Check browser console for errors
+2. Verify API keys are valid
+3. Check network tab for failed requests
+4. Ensure all files are in correct locations
+
+## 🎉 You're Done!
+
+Visit `https://simfi.fun/study` to see your new Study section in action!
+
+---
+
+**Powered by Helius API** - https://helius.dev
