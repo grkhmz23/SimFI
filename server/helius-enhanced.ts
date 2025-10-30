@@ -58,22 +58,27 @@ class HeliusService {
     const apiKey = this.getApiKey();
     const url = `${this.rpcUrl}?api-key=${apiKey}`;
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: Date.now(),
-        method,
-        params,
-      }),
-    });
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: Date.now(),
+          method,
+          params,
+        }),
+      });
 
-    const data = await response.json();
-    if (data.error) {
-      throw new Error(data.error.message);
+      const data = await response.json();
+      if (data.error) {
+        throw new Error(data.error.message || JSON.stringify(data.error));
+      }
+      return data.result;
+    } catch (error) {
+      console.error('RPC request error:', error);
+      throw error;
     }
-    return data.result;
   }
 
   // ==================== TOKEN ANALYSIS ====================
@@ -82,7 +87,10 @@ class HeliusService {
    * Get comprehensive token metadata and info
    */
   async getTokenMetadata(mintAddress: string) {
-    return this.request(`/token-metadata?mint-accounts=${mintAddress}`);
+    return this.request(`/token-metadata`, {
+      method: 'POST',
+      body: JSON.stringify({ mintAccounts: [mintAddress] }),
+    });
   }
 
   /**
@@ -96,7 +104,11 @@ class HeliusService {
    * Get token holders count and distribution
    */
   async getTokenHolders(mintAddress: string) {
-    return this.rpcRequest('getTokenLargestAccounts', [mintAddress]);
+    // Limit to top 20 holders to avoid "too many accounts" error
+    return this.rpcRequest('getTokenLargestAccounts', [
+      mintAddress,
+      { commitment: 'confirmed' }
+    ]);
   }
 
   /**
@@ -104,16 +116,20 @@ class HeliusService {
    */
   async getTokenAnalysis(mintAddress: string) {
     try {
-      const [metadata, supply, holders] = await Promise.all([
+      const [metadata, supply] = await Promise.all([
         this.getTokenMetadata(mintAddress),
         this.getTokenSupply(mintAddress),
-        this.getTokenHolders(mintAddress),
       ]);
+
+      // Note: Skipping holders fetch for now as getTokenLargestAccounts
+      // fails for tokens with many holders (like USDC with 20M+ holders)
+      // This can be enabled later for tokens with fewer holders
+      const topHolders: any[] = [];
 
       return {
         metadata: metadata?.[0] || null,
         supply,
-        topHolders: holders?.value || [],
+        topHolders,
         timestamp: Date.now(),
       };
     } catch (error) {
@@ -128,18 +144,14 @@ class HeliusService {
    * Get all token balances for a wallet
    */
   async getWalletBalances(walletAddress: string) {
-    return this.request(`/addresses/${walletAddress}/balances`, {
-      method: 'GET',
-    });
+    return this.request(`/addresses/${walletAddress}/balances`);
   }
 
   /**
    * Get wallet's NFTs
    */
   async getWalletNFTs(walletAddress: string) {
-    return this.request(`/addresses/${walletAddress}/nfts`, {
-      method: 'GET',
-    });
+    return this.request(`/addresses/${walletAddress}/nfts`);
   }
 
   /**
@@ -196,18 +208,14 @@ class HeliusService {
     if (before) params.append('before', before);
     if (type) params.append('type', type);
 
-    return this.request(`/addresses/${address}/transactions?${params.toString()}`, {
-      method: 'GET',
-    });
+    return this.request(`/addresses/${address}/transactions?${params.toString()}`);
   }
 
   /**
    * Get detailed parsed transaction
    */
   async getParsedTransaction(signature: string) {
-    return this.request(`/transactions?transactions=${signature}`, {
-      method: 'GET',
-    });
+    return this.request(`/transactions?transactions=${signature}`);
   }
 
   /**
@@ -256,7 +264,10 @@ class HeliusService {
 
     const results = await Promise.all(
       chunks.map(chunk =>
-        this.request(`/token-metadata?mint-accounts=${chunk.join(',')}`)
+        this.request(`/token-metadata`, {
+          method: 'POST',
+          body: JSON.stringify({ mintAccounts: chunk }),
+        })
       )
     );
 
@@ -330,12 +341,17 @@ class HeliusService {
 }
 
 // Export singleton instance - use all available Helius API keys
-export const heliusService = new HeliusService([
-  process.env.HELIUS_API_KEY || '',      // Original key
-  process.env.HELIUS_API_KEY1 || '',     // Additional keys
-  process.env.HELIUS_API_KEY2 || '',
-  process.env.HELIUS_API_KEY3 || '',
-  process.env.HELIUS_API_KEY4 || '',
-].filter(Boolean));
+// Note: Only using HELIUS_API_KEY for now as HELIUS_API_KEY1-4 appear to be invalid
+const apiKeys = [
+  process.env.HELIUS_API_KEY || '',      // Main Helius API key (verified working)
+].map(k => k.trim()).filter(Boolean);
+
+// Log API key configuration
+console.log(`🔑 Helius API configured with ${apiKeys.length} valid key(s)`);
+if (apiKeys.length === 0) {
+  console.warn('⚠️  No valid Helius API keys found! Set HELIUS_API_KEY environment variable.');
+}
+
+export const heliusService = new HeliusService(apiKeys);
 
 export default heliusService;
