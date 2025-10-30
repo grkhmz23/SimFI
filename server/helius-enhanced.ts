@@ -329,13 +329,13 @@ class HeliusService {
   }
 }
 
-// Export singleton instance
+// Export singleton instance - use all available Helius API keys
 export const heliusService = new HeliusService([
-  process.env.HELIUS_API_KEY_1 || '',
-  process.env.HELIUS_API_KEY_2 || '',
-  process.env.HELIUS_API_KEY_3 || '',
-  process.env.HELIUS_API_KEY_4 || '',
-  process.env.HELIUS_API_KEY_5 || '',
+  process.env.HELIUS_API_KEY || '',      // Original key
+  process.env.HELIUS_API_KEY1 || '',     // Additional keys
+  process.env.HELIUS_API_KEY2 || '',
+  process.env.HELIUS_API_KEY3 || '',
+  process.env.HELIUS_API_KEY4 || '',
 ].filter(Boolean));
 
 export default heliusService;
