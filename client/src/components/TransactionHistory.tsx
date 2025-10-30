@@ -1,4 +1,6 @@
 // client/src/components/TransactionHistory.tsx
+// Transaction History Component - View detailed transaction history
+
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
@@ -7,7 +9,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, ExternalLink, ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { 
+  Search, 
+  ExternalLink, 
+  ArrowUpRight, 
+  ArrowDownLeft, 
+  Clock,
+  CheckCircle,
+  XCircle 
+} from 'lucide-react';
 
 export default function TransactionHistory() {
   const [address, setAddress] = useState('');
@@ -18,7 +28,9 @@ export default function TransactionHistory() {
     queryKey: ['transaction-history', searchAddress, limit],
     queryFn: async () => {
       if (!searchAddress) return null;
-      const res = await fetch(`/api/study/transactions/${searchAddress}?limit=${limit}`);
+      const res = await fetch(
+        `/api/study/transactions/${searchAddress}?limit=${limit}`
+      );
       if (!res.ok) throw new Error('Failed to fetch transaction history');
       return res.json();
     },
@@ -61,9 +73,8 @@ export default function TransactionHistory() {
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             className="flex-1"
-            data-testid="input-transaction-address"
           />
-          <Button type="submit" disabled={isLoading} data-testid="button-search-transactions">
+          <Button type="submit" disabled={isLoading}>
             <Search className="w-4 h-4 mr-2" />
             Search
           </Button>
@@ -81,7 +92,6 @@ export default function TransactionHistory() {
                 setLimit(num);
                 if (searchAddress) refetch();
               }}
-              data-testid={`button-limit-${num}`}
             >
               {num}
             </Button>
@@ -91,7 +101,7 @@ export default function TransactionHistory() {
 
       {/* Error State */}
       {error && (
-        <Alert variant="destructive" data-testid="alert-error">
+        <Alert variant="destructive">
           <AlertDescription>
             Failed to fetch transaction history. Please check the address and try again.
           </AlertDescription>
@@ -114,7 +124,7 @@ export default function TransactionHistory() {
           <Card>
             <CardHeader>
               <CardTitle>Transaction History</CardTitle>
-              <CardDescription data-testid="text-transaction-count">
+              <CardDescription>
                 Showing {data.length || 0} recent transactions
               </CardDescription>
             </CardHeader>
@@ -128,7 +138,7 @@ export default function TransactionHistory() {
                 const isSuccess = tx.status === 'success' || !tx.status;
 
                 return (
-                  <Card key={idx} className="hover:border-primary/50 transition-colors" data-testid={`transaction-${idx}`}>
+                  <Card key={idx} className="hover:border-primary/50 transition-colors">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-4">
                         {/* Left Side - Type and Details */}
@@ -246,7 +256,6 @@ export default function TransactionHistory() {
                   setLimit(limit + 20);
                   refetch();
                 }}
-                data-testid="button-load-more"
               >
                 Load More Transactions
               </Button>

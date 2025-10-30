@@ -35,7 +35,6 @@ export default function TokenAnalyzer() {
             <TabsTrigger 
               value="token-analysis" 
               className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-              data-testid="tab-token-analysis"
             >
               <TrendingUp className="w-4 h-4" />
               <span className="hidden sm:inline">Token Analysis</span>
@@ -45,7 +44,6 @@ export default function TokenAnalyzer() {
             <TabsTrigger 
               value="wallet-explorer"
               className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-              data-testid="tab-wallet-explorer"
             >
               <Wallet className="w-4 h-4" />
               <span className="hidden sm:inline">Wallet Explorer</span>
@@ -55,7 +53,6 @@ export default function TokenAnalyzer() {
             <TabsTrigger 
               value="transaction-history"
               className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-              data-testid="tab-transaction-history"
             >
               <History className="w-4 h-4" />
               <span className="hidden sm:inline">Transactions</span>
@@ -65,7 +62,6 @@ export default function TokenAnalyzer() {
             <TabsTrigger 
               value="realtime-data"
               className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-              data-testid="tab-realtime-data"
             >
               <Activity className="w-4 h-4" />
               <span className="hidden sm:inline">Real-time Data</span>

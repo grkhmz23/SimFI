@@ -1,4 +1,6 @@
 // client/src/components/RealtimeData.tsx
+// Real-time Data Component - Live token prices and stats
+
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
@@ -7,7 +9,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, TrendingUp, TrendingDown, Activity, RefreshCw, Clock } from 'lucide-react';
+import { 
+  Search, 
+  TrendingUp, 
+  TrendingDown, 
+  Activity,
+  RefreshCw,
+  Clock
+} from 'lucide-react';
 
 export default function RealtimeData() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,7 +43,7 @@ export default function RealtimeData() {
       return res.json();
     },
     enabled: watchlist.length > 0,
-    refetchInterval: autoRefresh ? 30000 : false,
+    refetchInterval: autoRefresh ? 30000 : false, // Refresh every 30 seconds
   });
 
   // Update last refresh time
@@ -62,6 +71,13 @@ export default function RealtimeData() {
     }
   };
 
+  const formatNumber = (num: number) => {
+    if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(2)}B`;
+    if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M`;
+    if (num >= 1_000) return `${(num / 1_000).toFixed(2)}K`;
+    return num.toFixed(2);
+  };
+
   const getTimeSinceUpdate = () => {
     const seconds = Math.floor((Date.now() - lastUpdate) / 1000);
     if (seconds < 60) return `${seconds}s ago`;
@@ -80,9 +96,8 @@ export default function RealtimeData() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="flex-1"
-            data-testid="input-watchlist-address"
           />
-          <Button type="submit" data-testid="button-add-to-watchlist">
+          <Button type="submit">
             <Search className="w-4 h-4 mr-2" />
             Add
           </Button>
@@ -95,7 +110,6 @@ export default function RealtimeData() {
             size="sm"
             onClick={() => refetch()}
             disabled={isLoading}
-            data-testid="button-refresh"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
@@ -103,7 +117,6 @@ export default function RealtimeData() {
             variant={autoRefresh ? 'default' : 'outline'}
             size="sm"
             onClick={() => setAutoRefresh(!autoRefresh)}
-            data-testid="button-auto-refresh"
           >
             <Activity className="w-4 h-4 mr-2" />
             Auto
@@ -115,9 +128,9 @@ export default function RealtimeData() {
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4" />
-          <span data-testid="text-last-update">Last updated: {getTimeSinceUpdate()}</span>
+          <span>Last updated: {getTimeSinceUpdate()}</span>
         </div>
-        <div data-testid="text-watchlist-count">
+        <div>
           {watchlist.length}/20 tokens in watchlist
         </div>
       </div>
@@ -150,14 +163,13 @@ export default function RealtimeData() {
             const isPositive = mockChange > 0;
 
             return (
-              <Card key={idx} className="relative overflow-hidden hover:border-primary/50 transition-colors" data-testid={`watchlist-token-${idx}`}>
+              <Card key={idx} className="relative overflow-hidden hover:border-primary/50 transition-colors">
                 {/* Remove Button */}
                 <Button
                   variant="ghost"
                   size="sm"
                   className="absolute top-2 right-2 h-6 w-6 p-0 hover:bg-destructive hover:text-destructive-foreground"
                   onClick={() => removeFromWatchlist(token.account || watchlist[idx])}
-                  data-testid={`button-remove-${idx}`}
                 >
                   ×
                 </Button>
@@ -244,7 +256,6 @@ export default function RealtimeData() {
                 variant="outline"
                 size="sm"
                 onClick={() => addToWatchlist('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')}
-                data-testid="button-add-usdc"
               >
                 Add USDC
               </Button>
@@ -252,7 +263,6 @@ export default function RealtimeData() {
                 variant="outline"
                 size="sm"
                 onClick={() => addToWatchlist('So11111111111111111111111111111111111111112')}
-                data-testid="button-add-sol"
               >
                 Add SOL
               </Button>

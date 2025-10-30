@@ -82,10 +82,7 @@ class HeliusService {
    * Get comprehensive token metadata and info
    */
   async getTokenMetadata(mintAddress: string) {
-    return this.request(`/token-metadata`, {
-      method: 'POST',
-      body: JSON.stringify({ mintAccounts: [mintAddress] }),
-    });
+    return this.request(`/token-metadata?mint-accounts=${mintAddress}`);
   }
 
   /**
@@ -233,6 +230,22 @@ class HeliusService {
   // ==================== REAL-TIME DATA ====================
 
   /**
+   * Get current token price from multiple sources
+   */
+  async getTokenPrice(mintAddress: string) {
+    // This would integrate with DexScreener/Birdeye/Jupiter
+    // For now, we'll prepare the structure
+    return {
+      mint: mintAddress,
+      price: null,
+      priceChange24h: null,
+      volume24h: null,
+      marketCap: null,
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
    * Get multiple tokens info in batch
    */
   async getBatchTokenInfo(mintAddresses: string[]) {
@@ -243,10 +256,7 @@ class HeliusService {
 
     const results = await Promise.all(
       chunks.map(chunk =>
-        this.request(`/token-metadata`, {
-          method: 'POST',
-          body: JSON.stringify({ mintAccounts: chunk }),
-        })
+        this.request(`/token-metadata?mint-accounts=${chunk.join(',')}`)
       )
     );
 
@@ -319,9 +329,8 @@ class HeliusService {
   }
 }
 
-// Export singleton instance - use existing HELIUS_API_KEY, fallback to empty array
-export const heliusEnhancedService = new HeliusService([
-  process.env.HELIUS_API_KEY || '',
+// Export singleton instance
+export const heliusService = new HeliusService([
   process.env.HELIUS_API_KEY_1 || '',
   process.env.HELIUS_API_KEY_2 || '',
   process.env.HELIUS_API_KEY_3 || '',
@@ -329,4 +338,4 @@ export const heliusEnhancedService = new HeliusService([
   process.env.HELIUS_API_KEY_5 || '',
 ].filter(Boolean));
 
-export default heliusEnhancedService;
+export default heliusService;
