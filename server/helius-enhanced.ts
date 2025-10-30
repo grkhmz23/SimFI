@@ -340,16 +340,43 @@ class HeliusService {
   }
 }
 
+/**
+ * Extract API key from either:
+ * - Full URL: https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
+ * - Just the key: YOUR_KEY
+ */
+function extractApiKey(envValue: string): string {
+  if (!envValue) return '';
+  
+  const trimmed = envValue.trim();
+  
+  // Check if it's a URL format
+  if (trimmed.includes('api-key=')) {
+    const match = trimmed.match(/api-key=([^&\s]+)/);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  // Otherwise return as-is (assuming it's just the key)
+  return trimmed;
+}
+
 // Export singleton instance - use all available Helius API keys
-// Note: Only using HELIUS_API_KEY for now as HELIUS_API_KEY1-4 appear to be invalid
 const apiKeys = [
-  process.env.HELIUS_API_KEY || '',      // Main Helius API key (verified working)
-].map(k => k.trim()).filter(Boolean);
+  process.env.HELIUS_API_KEY || '',
+  process.env.HELIUS_API_KEY1 || '',
+  process.env.HELIUS_API_KEY2 || '',
+  process.env.HELIUS_API_KEY3 || '',
+  process.env.HELIUS_API_KEY4 || '',
+]
+  .map(extractApiKey)
+  .filter(Boolean);
 
 // Log API key configuration
 console.log(`🔑 Helius API configured with ${apiKeys.length} valid key(s)`);
 if (apiKeys.length === 0) {
-  console.warn('⚠️  No valid Helius API keys found! Set HELIUS_API_KEY environment variable.');
+  console.warn('⚠️  No valid Helius API keys found! Set HELIUS_API_KEY environment variables.');
 }
 
 export const heliusService = new HeliusService(apiKeys);

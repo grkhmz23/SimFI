@@ -1398,8 +1398,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json(transactions);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Transaction history error:', error);
+      
+      // Check if this is a 401 Unauthorized (premium feature)
+      if (error.message?.includes('401')) {
+        return res.status(403).json({ 
+          error: 'Premium feature',
+          message: 'Transaction history requires a Helius premium API plan. Please upgrade your API key at https://helius.dev'
+        });
+      }
+      
       res.status(500).json({ error: 'Failed to fetch transaction history' });
     }
   });
