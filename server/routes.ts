@@ -1346,11 +1346,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { mintAddress } = req.params;
 
-      if (!heliusEnhancedService.isValidSolanaAddress(mintAddress)) {
+      if (!heliusService.isValidSolanaAddress(mintAddress)) {
         return res.status(400).json({ error: 'Invalid token address' });
       }
 
-      const analysis = await heliusEnhancedService.getTokenAnalysis(mintAddress);
+      const analysis = await heliusService.getTokenAnalysis(mintAddress);
       res.json(analysis);
     } catch (error) {
       console.error('Token analysis error:', error);
@@ -1366,11 +1366,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { walletAddress } = req.params;
 
-      if (!heliusEnhancedService.isValidSolanaAddress(walletAddress)) {
+      if (!heliusService.isValidSolanaAddress(walletAddress)) {
         return res.status(400).json({ error: 'Invalid wallet address' });
       }
 
-      const portfolio = await heliusEnhancedService.getWalletPortfolio(walletAddress);
+      const portfolio = await heliusService.getWalletPortfolio(walletAddress);
       res.json(portfolio);
     } catch (error) {
       console.error('Wallet portfolio error:', error);
@@ -1387,11 +1387,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { address } = req.params;
       const { limit, before, type } = req.query;
 
-      if (!heliusEnhancedService.isValidSolanaAddress(address)) {
+      if (!heliusService.isValidSolanaAddress(address)) {
         return res.status(400).json({ error: 'Invalid address' });
       }
 
-      const transactions = await heliusEnhancedService.getTransactionHistory(address, {
+      const transactions = await heliusService.getTransactionHistory(address, {
         limit: limit ? parseInt(limit as string) : 50,
         before: before as string,
         type: type as string,
@@ -1411,7 +1411,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/study/transaction/:signature', async (req, res) => {
     try {
       const { signature } = req.params;
-      const details = await heliusEnhancedService.getTransactionDetails(signature);
+      const details = await heliusService.getTransactionDetails(signature);
       res.json(details);
     } catch (error) {
       console.error('Transaction details error:', error);
@@ -1431,7 +1431,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Search query required' });
       }
 
-      const result = await heliusEnhancedService.search(q.trim());
+      const result = await heliusService.search(q.trim());
       res.json(result);
     } catch (error) {
       console.error('Search error:', error);
@@ -1456,7 +1456,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Maximum 100 addresses per request' });
       }
 
-      const tokens = await heliusEnhancedService.getBatchTokenInfo(mintAddresses);
+      const tokens = await heliusService.getBatchTokenInfo(mintAddresses);
       res.json(tokens);
     } catch (error) {
       console.error('Batch token info error:', error);
@@ -1470,7 +1470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   app.get('/api/study/stats', async (req, res) => {
     try {
-      const stats = heliusEnhancedService.getUsageStats();
+      const stats = heliusService.getUsageStats();
       res.json(stats);
     } catch (error) {
       console.error('Stats error:', error);
