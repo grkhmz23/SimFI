@@ -24,15 +24,22 @@ export default function TransactionHistory() {
   const [searchAddress, setSearchAddress] = useState('');
   const [limit, setLimit] = useState(20);
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['transaction-history', searchAddress, limit],
     queryFn: async () => {
       if (!searchAddress) return null;
       const res = await fetch(
         `/api/study/transactions/${searchAddress}?limit=${limit}`
       );
+      const json = await res.json();
+      
+      // Check if this is a premium feature error response
+      if (json.error === 'Premium feature') {
+        return { isPremium: true, message: json.message };
+      }
+      
       if (!res.ok) throw new Error('Failed to fetch transaction history');
-      return res.json();
+      return { isPremium: false, transactions: json };
     },
     enabled: !!searchAddress,
   });
@@ -88,10 +95,8 @@ export default function TransactionHistory() {
               key={num}
               variant={limit === num ? 'default' : 'outline'}
               size="sm"
-              onClick={() => {
-                setLimit(num);
-                if (searchAddress) refetch();
-              }}
+              onClick={() => setLimit(num)}
+              data-testid={`button-limit-${num}`}
             >
               {num}
             </Button>
@@ -117,23 +122,33 @@ export default function TransactionHistory() {
         </div>
       )}
 
+      {/* Premium Feature Notice */}
+      {data?.isPremium && (
+        <Alert className="border-yellow-500/50 bg-yellow-500/10">
+          <AlertDescription className="text-sm">
+            <div className="font-semibold mb-2">Premium Feature Required</div>
+            <div className="text-muted-foreground">{data.message}</div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Results */}
-      {data && !isLoading && (
+      {data && !isLoading && !data.isPremium && (
         <div className="space-y-4">
           {/* Header */}
           <Card>
             <CardHeader>
               <CardTitle>Transaction History</CardTitle>
               <CardDescription>
-                Showing {data.length || 0} recent transactions
+                Showing {data.transactions?.length || 0} recent transactions
               </CardDescription>
             </CardHeader>
           </Card>
 
           {/* Transaction List */}
-          {data.length > 0 ? (
+          {data.transactions && data.transactions.length > 0 ? (
             <div className="space-y-3">
-              {data.map((tx: any, idx: number) => {
+              {data.transactions.map((tx: any, idx: number) => {
                 const txType = getTransactionType(tx);
                 const isSuccess = tx.status === 'success' || !tx.status;
 
@@ -248,14 +263,12 @@ export default function TransactionHistory() {
           )}
 
           {/* Load More Button */}
-          {data.length >= limit && (
+          {data.transactions && data.transactions.length >= limit && (
             <div className="text-center">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setLimit(limit + 20);
-                  refetch();
-                }}
+                onClick={() => setLimit(limit + 20)}
+                data-testid="button-load-more"
               >
                 Load More Transactions
               </Button>
