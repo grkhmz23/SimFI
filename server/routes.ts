@@ -8,8 +8,8 @@ import { storage } from "./storage";
 import { authenticateToken } from "./middleware/auth";
 import { fetchDexScreenerProfiles } from "./pumpportal";
 import { leaderboardService } from "./leaderboardService";
-import { heliusService } from "./helius";
-import { heliusEnhancedService } from "./helius-enhanced";
+import { heliusService as oldHeliusService } from "./helius";
+import { heliusService } from "./helius-enhanced";
 import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest } from "@shared/schema";
 
 // Require JWT_SECRET or SESSION_SECRET environment variable
@@ -1326,7 +1326,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Invalid mint address' });
       }
       
-      const analysis = await heliusService.analyzeToken(mintAddress);
+      const analysis = await oldHeliusService.analyzeToken(mintAddress);
       res.json(analysis);
     } catch (error: any) {
       console.error('Token analysis error:', error);

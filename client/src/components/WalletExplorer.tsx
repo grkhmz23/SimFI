@@ -1,4 +1,6 @@
 // client/src/components/WalletExplorer.tsx
+// Wallet Explorer Component - View any wallet's complete portfolio
+
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
@@ -54,9 +56,8 @@ export default function WalletExplorer() {
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           className="flex-1"
-          data-testid="input-wallet-address"
         />
-        <Button type="submit" disabled={isLoading} data-testid="button-explore-wallet">
+        <Button type="submit" disabled={isLoading}>
           <Search className="w-4 h-4 mr-2" />
           Explore
         </Button>
@@ -64,7 +65,7 @@ export default function WalletExplorer() {
 
       {/* Error State */}
       {error && (
-        <Alert variant="destructive" data-testid="alert-error">
+        <Alert variant="destructive">
           <AlertDescription>
             Failed to fetch wallet data. Please check the address and try again.
           </AlertDescription>
@@ -95,7 +96,7 @@ export default function WalletExplorer() {
                       Wallet Portfolio
                     </CardTitle>
                     <CardDescription className="flex items-center gap-2 mt-1">
-                      <span className="font-mono text-xs" data-testid="text-wallet-address">
+                      <span className="font-mono text-xs">
                         {searchAddress.slice(0, 12)}...{searchAddress.slice(-12)}
                       </span>
                       <Button
@@ -103,7 +104,6 @@ export default function WalletExplorer() {
                         size="sm"
                         onClick={() => copyToClipboard(searchAddress)}
                         className="h-6 w-6 p-0"
-                        data-testid="button-copy-wallet-address"
                       >
                         {copied ? (
                           <Check className="w-3 h-3 text-green-500" />
@@ -116,7 +116,6 @@ export default function WalletExplorer() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary hover:underline flex items-center gap-1"
-                        data-testid="link-solscan-wallet"
                       >
                         <ExternalLink className="w-3 h-3" />
                         View on Solscan
@@ -130,19 +129,19 @@ export default function WalletExplorer() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">SOL Balance</p>
-                  <p className="text-2xl font-bold" data-testid="text-sol-balance">
+                  <p className="text-2xl font-bold">
                     {data.solBalance?.sol?.toFixed(4) || '0'} SOL
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Token Holdings</p>
-                  <p className="text-2xl font-bold" data-testid="text-tokens-count">
+                  <p className="text-2xl font-bold">
                     {data.tokens?.length || 0} tokens
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">NFT Collection</p>
-                  <p className="text-2xl font-bold" data-testid="text-nfts-count">
+                  <p className="text-2xl font-bold">
                     {data.nfts?.length || 0} NFTs
                   </p>
                 </div>
@@ -153,10 +152,10 @@ export default function WalletExplorer() {
           {/* Tabs for Tokens and NFTs */}
           <Tabs defaultValue="tokens" className="w-full">
             <TabsList className="w-full">
-              <TabsTrigger value="tokens" className="flex-1" data-testid="tab-tokens">
+              <TabsTrigger value="tokens" className="flex-1">
                 Tokens ({data.tokens?.length || 0})
               </TabsTrigger>
-              <TabsTrigger value="nfts" className="flex-1" data-testid="tab-nfts">
+              <TabsTrigger value="nfts" className="flex-1">
                 NFTs ({data.nfts?.length || 0})
               </TabsTrigger>
             </TabsList>
@@ -171,7 +170,6 @@ export default function WalletExplorer() {
                         <div
                           key={idx}
                           className="p-4 hover:bg-muted/50 transition-colors"
-                          data-testid={`token-item-${idx}`}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -229,7 +227,7 @@ export default function WalletExplorer() {
               {data.nfts && data.nfts.length > 0 ? (
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                   {data.nfts.map((nft: any, idx: number) => (
-                    <Card key={idx} className="overflow-hidden" data-testid={`nft-item-${idx}`}>
+                    <Card key={idx} className="overflow-hidden">
                       <div className="aspect-square bg-muted relative group">
                         {nft.content?.links?.image ? (
                           <>

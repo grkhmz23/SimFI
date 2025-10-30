@@ -1,4 +1,6 @@
 // client/src/components/TokenAnalysis.tsx
+// Token Analysis Component - Comprehensive token details
+
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
@@ -55,9 +57,8 @@ export default function TokenAnalysis() {
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           className="flex-1"
-          data-testid="input-token-address"
         />
-        <Button type="submit" disabled={isLoading} data-testid="button-analyze-token">
+        <Button type="submit" disabled={isLoading}>
           <Search className="w-4 h-4 mr-2" />
           Analyze
         </Button>
@@ -74,7 +75,6 @@ export default function TokenAnalysis() {
               setAddress('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
               setSearchAddress('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
             }}
-            data-testid="button-try-usdc"
           >
             USDC
           </Button>
@@ -85,7 +85,6 @@ export default function TokenAnalysis() {
               setAddress('So11111111111111111111111111111111111111112');
               setSearchAddress('So11111111111111111111111111111111111111112');
             }}
-            data-testid="button-try-sol"
           >
             SOL
           </Button>
@@ -94,7 +93,7 @@ export default function TokenAnalysis() {
 
       {/* Error State */}
       {error && (
-        <Alert variant="destructive" data-testid="alert-error">
+        <Alert variant="destructive">
           <AlertDescription>
             Failed to fetch token data. Please check the address and try again.
           </AlertDescription>
@@ -129,16 +128,16 @@ export default function TokenAnalysis() {
                     />
                   )}
                   <div>
-                    <CardTitle className="text-2xl flex items-center gap-2" data-testid="text-token-name">
+                    <CardTitle className="text-2xl flex items-center gap-2">
                       {data.metadata?.offChainMetadata?.name || 'Unknown Token'}
                       {data.metadata?.offChainMetadata?.symbol && (
-                        <Badge variant="secondary" data-testid="badge-token-symbol">
+                        <Badge variant="secondary">
                           {data.metadata.offChainMetadata.symbol}
                         </Badge>
                       )}
                     </CardTitle>
                     <CardDescription className="flex items-center gap-2 mt-1">
-                      <span className="font-mono text-xs" data-testid="text-mint-address">
+                      <span className="font-mono text-xs">
                         {searchAddress.slice(0, 8)}...{searchAddress.slice(-8)}
                       </span>
                       <Button
@@ -146,7 +145,6 @@ export default function TokenAnalysis() {
                         size="sm"
                         onClick={() => copyToClipboard(searchAddress)}
                         className="h-6 w-6 p-0"
-                        data-testid="button-copy-address"
                       >
                         {copied ? (
                           <Check className="w-3 h-3 text-green-500" />
@@ -159,7 +157,6 @@ export default function TokenAnalysis() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary hover:underline flex items-center gap-1"
-                        data-testid="link-solscan"
                       >
                         <ExternalLink className="w-3 h-3" />
                         View on Solscan
@@ -171,7 +168,7 @@ export default function TokenAnalysis() {
             </CardHeader>
             <CardContent>
               {data.metadata?.offChainMetadata?.description && (
-                <p className="text-sm text-muted-foreground" data-testid="text-token-description">
+                <p className="text-sm text-muted-foreground">
                   {data.metadata.offChainMetadata.description}
                 </p>
               )}
@@ -189,12 +186,12 @@ export default function TokenAnalysis() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold" data-testid="text-total-supply">
+                <div className="text-2xl font-bold">
                   {data.supply?.value?.uiAmount
                     ? formatNumber(data.supply.value.uiAmount)
                     : 'N/A'}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1" data-testid="text-decimals">
+                <p className="text-xs text-muted-foreground mt-1">
                   Decimals: {data.supply?.value?.decimals || 0}
                 </p>
               </CardContent>
@@ -209,7 +206,7 @@ export default function TokenAnalysis() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold" data-testid="text-holders-count">
+                <div className="text-2xl font-bold">
                   {data.topHolders?.length || 0}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -218,7 +215,7 @@ export default function TokenAnalysis() {
               </CardContent>
             </Card>
 
-            {/* Market Data Placeholder */}
+            {/* Market Cap Placeholder */}
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -252,7 +249,6 @@ export default function TokenAnalysis() {
                     <div
                       key={idx}
                       className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-                      data-testid={`holder-${idx}`}
                     >
                       <div className="flex items-center gap-3">
                         <Badge variant="outline">#{idx + 1}</Badge>
@@ -265,13 +261,39 @@ export default function TokenAnalysis() {
                           {formatNumber(holder.uiAmount || 0)}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {holder.amount && data.supply?.value?.uiAmount
-                            ? `${((holder.uiAmount / data.supply.value.uiAmount) * 100).toFixed(2)}%`
-                            : 'N/A'}
+                          {holder.amount ? 
+                            `${((holder.uiAmount / data.supply?.value?.uiAmount) * 100).toFixed(2)}%` 
+                            : 'N/A'
+                          }
                         </div>
                       </div>
                     </div>
                   ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Metadata Details */}
+          {data.metadata?.onChainMetadata && (
+            <Card>
+              <CardHeader>
+                <CardTitle>On-Chain Metadata</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Mint Authority:</span>
+                    <p className="font-mono text-xs break-all">
+                      {data.metadata.onChainMetadata.mintAuthority || 'None'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Freeze Authority:</span>
+                    <p className="font-mono text-xs break-all">
+                      {data.metadata.onChainMetadata.freezeAuthority || 'None'}
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
