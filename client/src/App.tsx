@@ -15,7 +15,6 @@ import Portfolio from "@/pages/Portfolio";
 import Positions from "@/pages/Positions";
 import History from "@/pages/History";
 import Leaderboard from "@/pages/Leaderboard";
-import Trending from "@/pages/Trending";
 import About from "@/pages/About";
 import TokenAnalyzer from "@/pages/TokenAnalyzer";
 import NotFound from "@/pages/not-found";
@@ -58,9 +57,6 @@ function Router() {
       </Route>
       <Route path="/leaderboard">
         <PageLayout component={Leaderboard} />
-      </Route>
-      <Route path="/trending">
-        <PageLayout component={Trending} />
       </Route>
       <Route path="/study">
         <PageLayout component={TokenAnalyzer} />
