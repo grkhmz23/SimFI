@@ -20,13 +20,6 @@ interface SearchResult {
   price?: number;
 }
 
-interface Token {
-  tokenAddress: string;
-  name: string;
-  symbol: string;
-  marketCap: number;
-  priceChange24h?: number;
-}
 
 export default function Trade() {
   const [location, setLocation] = useLocation();
@@ -58,11 +51,6 @@ export default function Trade() {
     },
     enabled: debouncedQuery.length >= 3,
     staleTime: 30000,
-  });
-
-  const { data: trendingTokens } = useQuery<{ tokens: Token[] }>({
-    queryKey: ['/api/tokens/trending'],
-    staleTime: 60000,
   });
 
   const handleTokenClick = (address: string) => {
@@ -253,47 +241,6 @@ export default function Trade() {
         </div>
 
 
-        {/* Trending Tokens Section */}
-        {!showSearchResults && trendingTokens && trendingTokens.tokens && trendingTokens.tokens.length > 0 && (
-          <div className="mb-12">
-            <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-              <TrendingUp className="h-6 w-6 text-primary" />
-              Trending Tokens
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {trendingTokens.tokens.slice(0, 6).map((token) => (
-                <Card
-                  key={token.tokenAddress}
-                  className="p-4 hover-elevate active-elevate-2 cursor-pointer transition-all"
-                  onClick={() => handleTokenClick(token.tokenAddress)}
-                  data-testid={`trending-token-${token.tokenAddress}`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-bold truncate">{token.name}</h3>
-                    {token.priceChange24h !== undefined && (
-                      <Badge variant={token.priceChange24h >= 0 ? "default" : "destructive"} className="ml-2">
-                        {token.priceChange24h >= 0 ? '+' : ''}
-                        {token.priceChange24h.toFixed(1)}%
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-2">{token.symbol}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Market Cap</span>
-                    <span className="text-sm font-semibold">
-                      ${token.marketCap >= 1_000_000
-                        ? `${(token.marketCap / 1_000_000).toFixed(2)}M`
-                        : token.marketCap >= 1_000
-                        ? `${(token.marketCap / 1_000).toFixed(1)}K`
-                        : token.marketCap.toFixed(0)}
-                    </span>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* How It Works Section */}
         {!showSearchResults && (
           <div className="section-gradient-bottom rounded-lg p-8 md:p-12">
@@ -317,7 +264,7 @@ export default function Trade() {
                 </div>
                 <h3 className="text-xl font-semibold mb-2">Find Tokens</h3>
                 <p className="text-muted-foreground">
-                  Search or browse trending Solana memecoins with real-time data
+                  Search for Solana memecoins with real-time data
                 </p>
               </div>
               <div className="text-center">
