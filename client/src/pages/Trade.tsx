@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Search, Loader2, ArrowRight, TrendingUp, Zap, Shield, BarChart3, Users, Rocket, Star, Trophy, Send, ExternalLink, Copy, Check } from 'lucide-react';
+import { Search, Loader2, ArrowRight, TrendingUp, Zap, Shield, BarChart3, Users, Rocket, Star, Trophy, Send, ExternalLink } from 'lucide-react';
 import { SiX } from 'react-icons/si';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
@@ -34,7 +34,6 @@ export default function Trade() {
   const { isAuthenticated, user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -73,17 +72,6 @@ export default function Trade() {
   const hasSearchResults = searchResults && searchResults.results.length > 0;
   const showSearchResults = debouncedQuery.length >= 3;
 
-  const handleCopyContract = () => {
-    const contractAddress = 'GPXG3Zo2c9ERhpGvuApzkqGjr1JZ2FqRrQj8YSFfGpLy';
-    navigator.clipboard.writeText(contractAddress);
-    setCopied(true);
-    toast({
-      title: 'Copied!',
-      description: 'Contract address copied to clipboard',
-    });
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section with Gradient */}
@@ -102,32 +90,19 @@ export default function Trade() {
                 Practice trading Solana memecoins with virtual SOL. Master your strategy without financial risk.
               </p>
 
-              {/* $SimFi Token Contract Address */}
+              {/* $SimFi Token - Launching Soon */}
               <div className="max-w-2xl mx-auto mb-8">
-                <Card className="p-4 bg-card/95 backdrop-blur">
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-                    <div className="text-center sm:text-left flex-1 min-w-0">
-                      <h3 className="text-xs font-semibold mb-1">$SimFi Token Contract</h3>
-                      <code className="text-xs font-mono text-muted-foreground break-all">
-                        GPXG3Zo2c9ERhpGvuApzkqGjr1JZ2FqRrQj8YSFfGpLy
-                      </code>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-2 shrink-0"
-                      onClick={handleCopyContract}
-                      data-testid="button-copy-contract"
-                    >
-                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                      {copied ? 'Copied!' : 'Copy'}
-                    </Button>
-                  </div>
+                <Card className="p-6 bg-card/95 backdrop-blur text-center">
+                  <h3 className="text-lg font-bold mb-2 gradient-simfi-text">$SimFi Token</h3>
+                  <p className="text-sm text-muted-foreground">Launching Soon</p>
                 </Card>
               </div>
 
               {/* Google-style Search Bar */}
               <div className="max-w-2xl mx-auto mb-8">
+                <p className="text-sm text-muted-foreground text-center mb-3">
+                  Please add token contract address or name to trade
+                </p>
                 <div className="relative">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input

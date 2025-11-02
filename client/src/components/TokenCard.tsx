@@ -70,8 +70,8 @@ export function TokenCard({ token }: TokenCardProps) {
           </div>
 
           <div className="pt-3 border-t border-border">
-            <p className="text-xs font-mono text-center text-muted-foreground">
-              {token.tokenAddress.slice(0, 6)}...{token.tokenAddress.slice(-6)}
+            <p className="text-xs text-center text-muted-foreground italic">
+              Launching Soon
             </p>
           </div>
         </div>
