@@ -22,7 +22,10 @@ export default function WalletExplorer() {
     queryFn: async () => {
       if (!searchAddress) return null;
       const res = await fetch(`/api/study/wallet/${searchAddress}`);
-      if (!res.ok) throw new Error('Failed to fetch wallet data');
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || errorData.error || 'Failed to fetch wallet data');
+      }
       return res.json();
     },
     enabled: !!searchAddress,
@@ -67,7 +70,7 @@ export default function WalletExplorer() {
       {error && (
         <Alert variant="destructive">
           <AlertDescription>
-            Failed to fetch wallet data. Please check the address and try again.
+            {error.message || 'Failed to fetch wallet data. Please check the address and try again.'}
           </AlertDescription>
         </Alert>
       )}

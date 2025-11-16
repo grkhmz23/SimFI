@@ -1124,9 +1124,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const analysis = await heliusService.getTokenAnalysis(mintAddress);
       res.json(analysis);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Token analysis error:', error);
-      res.status(500).json({ error: 'Failed to fetch token analysis' });
+      
+      // Check if this is "not a Token mint" error (user entered a wallet address instead)
+      if (error.message?.includes('not a Token mint')) {
+        return res.status(400).json({ 
+          error: 'Not a token address',
+          message: 'This appears to be a wallet address, not a token mint address. Please use the Wallet Explorer tab instead.'
+        });
+      }
+      
+      res.status(500).json({ 
+        error: 'Failed to fetch token data',
+        message: error.message || 'Unknown error occurred'
+      });
     }
   });
 
@@ -1144,9 +1156,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const portfolio = await heliusService.getWalletPortfolio(walletAddress);
       res.json(portfolio);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Wallet portfolio error:', error);
-      res.status(500).json({ error: 'Failed to fetch wallet portfolio' });
+      
+      // Check if this is a Helius API error
+      if (error.message?.includes('500 Internal Server Error')) {
+        return res.status(503).json({ 
+          error: 'Service temporarily unavailable',
+          message: 'Helius API is having trouble fetching this wallet data. This could be due to API rate limits or the wallet being too large. Please try again in a moment.'
+        });
+      }
+      
+      res.status(500).json({ 
+        error: 'Failed to fetch wallet data',
+        message: error.message || 'Unknown error occurred'
+      });
     }
   });
 

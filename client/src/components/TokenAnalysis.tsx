@@ -21,7 +21,10 @@ export default function TokenAnalysis() {
     queryFn: async () => {
       if (!searchAddress) return null;
       const res = await fetch(`/api/study/token/${searchAddress}`);
-      if (!res.ok) throw new Error('Failed to fetch token data');
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || errorData.error || 'Failed to fetch token data');
+      }
       return res.json();
     },
     enabled: !!searchAddress,
@@ -95,7 +98,7 @@ export default function TokenAnalysis() {
       {error && (
         <Alert variant="destructive">
           <AlertDescription>
-            Failed to fetch token data. Please check the address and try again.
+            {error.message || 'Failed to fetch token data. Please check the address and try again.'}
           </AlertDescription>
         </Alert>
       )}
