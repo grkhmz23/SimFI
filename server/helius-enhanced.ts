@@ -158,10 +158,12 @@ class HeliusService {
    * Get SOL balance
    */
   async getSolBalance(walletAddress: string) {
-    const result = await this.rpcRequest('getBalance', [walletAddress]);
+    const result: any = await this.rpcRequest('getBalance', [walletAddress]);
+    // RPC returns { context: {...}, value: number }
+    const lamports = result.value || result;
     return {
       lamports: result,
-      sol: result / 1_000_000_000,
+      sol: lamports / 1_000_000_000,
     };
   }
 
@@ -179,8 +181,8 @@ class HeliusService {
       return {
         address: walletAddress,
         solBalance,
-        tokens: balances?.tokens || [],
-        nfts: nfts?.nfts || [],
+        tokens: (balances as any)?.tokens || [],
+        nfts: (nfts as any)?.nfts || [],
         timestamp: Date.now(),
       };
     } catch (error) {
