@@ -120,19 +120,19 @@ export default function TokenAnalysis() {
             <CardHeader>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-4">
-                  {data.metadata?.offChainMetadata?.image && (
+                  {data.metadata?.legacyMetadata?.logoURI && (
                     <img
-                      src={data.metadata.offChainMetadata.image}
-                      alt={data.metadata.offChainMetadata.name}
+                      src={data.metadata.legacyMetadata.logoURI}
+                      alt={data.metadata.legacyMetadata.name || data.metadata.onChainMetadata?.metadata?.data?.name}
                       className="w-16 h-16 rounded-full"
                     />
                   )}
                   <div>
                     <CardTitle className="text-2xl flex items-center gap-2">
-                      {data.metadata?.offChainMetadata?.name || 'Unknown Token'}
-                      {data.metadata?.offChainMetadata?.symbol && (
+                      {data.metadata?.legacyMetadata?.name || data.metadata?.onChainMetadata?.metadata?.data?.name || 'Unknown Token'}
+                      {(data.metadata?.legacyMetadata?.symbol || data.metadata?.onChainMetadata?.metadata?.data?.symbol) && (
                         <Badge variant="secondary">
-                          {data.metadata.offChainMetadata.symbol}
+                          {data.metadata?.legacyMetadata?.symbol || data.metadata?.onChainMetadata?.metadata?.data?.symbol}
                         </Badge>
                       )}
                     </CardTitle>
@@ -167,9 +167,9 @@ export default function TokenAnalysis() {
               </div>
             </CardHeader>
             <CardContent>
-              {data.metadata?.offChainMetadata?.description && (
+              {data.metadata?.legacyMetadata?.extensions?.description && (
                 <p className="text-sm text-muted-foreground">
-                  {data.metadata.offChainMetadata.description}
+                  {data.metadata.legacyMetadata.extensions.description}
                 </p>
               )}
             </CardContent>
@@ -275,7 +275,7 @@ export default function TokenAnalysis() {
           )}
 
           {/* Metadata Details */}
-          {data.metadata?.onChainMetadata && (
+          {data.metadata?.onChainAccountInfo?.accountInfo?.data?.parsed?.info && (
             <Card>
               <CardHeader>
                 <CardTitle>On-Chain Metadata</CardTitle>
@@ -285,13 +285,13 @@ export default function TokenAnalysis() {
                   <div>
                     <span className="text-muted-foreground">Mint Authority:</span>
                     <p className="font-mono text-xs break-all">
-                      {data.metadata.onChainMetadata.mintAuthority || 'None'}
+                      {data.metadata.onChainAccountInfo.accountInfo.data.parsed.info.mintAuthority || 'None'}
                     </p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Freeze Authority:</span>
                     <p className="font-mono text-xs break-all">
-                      {data.metadata.onChainMetadata.freezeAuthority || 'None'}
+                      {data.metadata.onChainAccountInfo.accountInfo.data.parsed.info.freezeAuthority || 'None'}
                     </p>
                   </div>
                 </div>
