@@ -176,21 +176,21 @@ export default function RealtimeData() {
 
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-3">
-                    {token.offChainMetadata?.image && (
+                    {token.metadata?.legacyMetadata?.logoURI && (
                       <img
-                        src={token.offChainMetadata.image}
-                        alt={token.offChainMetadata.name}
+                        src={token.metadata.legacyMetadata.logoURI}
+                        alt={token.metadata.legacyMetadata.name || token.metadata.onChainMetadata?.metadata?.data?.name}
                         className="w-12 h-12 rounded-full"
                       />
                     )}
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-lg truncate">
-                        {token.offChainMetadata?.name || 'Unknown Token'}
+                        {token.metadata?.legacyMetadata?.name || token.metadata?.onChainMetadata?.metadata?.data?.name || 'Unknown Token'}
                       </CardTitle>
                       <CardDescription className="flex items-center gap-2">
-                        {token.offChainMetadata?.symbol && (
+                        {(token.metadata?.legacyMetadata?.symbol || token.metadata?.onChainMetadata?.metadata?.data?.symbol) && (
                           <Badge variant="secondary" className="text-xs">
-                            {token.offChainMetadata.symbol}
+                            {token.metadata?.legacyMetadata?.symbol || token.metadata?.onChainMetadata?.metadata?.data?.symbol}
                           </Badge>
                         )}
                       </CardDescription>
