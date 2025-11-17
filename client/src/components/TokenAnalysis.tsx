@@ -178,60 +178,87 @@ export default function TokenAnalysis() {
             </CardContent>
           </Card>
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Supply */}
+          {/* Security Warnings */}
+          {data.securityFlags && data.securityFlags.length > 0 && (
+            <div className="space-y-2">
+              {data.securityFlags.map((flag: any, idx: number) => (
+                <Alert key={idx} variant={flag.type === 'warning' ? 'destructive' : 'default'}>
+                  <AlertDescription>{flag.message}</AlertDescription>
+                </Alert>
+              ))}
+            </div>
+          )}
+
+          {/* Market Stats Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Price */}
             <Card>
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-medium">Total Supply</CardTitle>
-                  <TrendingUp className="w-4 h-4 text-muted-foreground" />
-                </div>
+                <CardTitle className="text-sm font-medium">Price</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {data.supply?.value?.uiAmount
-                    ? formatNumber(data.supply.value.uiAmount)
+                  {data.priceData?.price 
+                    ? `$${data.priceData.price < 0.01 
+                        ? data.priceData.price.toExponential(2) 
+                        : data.priceData.price.toFixed(6)}`
+                    : 'N/A'}
+                </div>
+                {data.priceData?.priceChange24h !== undefined && (
+                  <p className={`text-xs mt-1 ${data.priceData.priceChange24h >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {data.priceData.priceChange24h >= 0 ? '+' : ''}{data.priceData.priceChange24h.toFixed(2)}% (24h)
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Market Cap */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Market Cap</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {data.priceData?.marketCap 
+                    ? `$${formatNumber(data.priceData.marketCap)}`
                     : 'N/A'}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Decimals: {data.supply?.value?.decimals || 0}
+                  Fully diluted
                 </p>
               </CardContent>
             </Card>
 
-            {/* Top Holders */}
+            {/* Liquidity */}
             <Card>
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-medium">Top Holders</CardTitle>
-                  <Users className="w-4 h-4 text-muted-foreground" />
-                </div>
+                <CardTitle className="text-sm font-medium">Liquidity</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {data.topHolders?.length || 0}
+                  {data.priceData?.liquidity 
+                    ? `$${formatNumber(data.priceData.liquidity)}`
+                    : 'N/A'}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Largest accounts tracked
+                  Total liquidity
                 </p>
               </CardContent>
             </Card>
 
-            {/* Market Cap Placeholder */}
+            {/* Volume */}
             <Card>
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-medium">Market Data</CardTitle>
-                  <DollarSign className="w-4 h-4 text-muted-foreground" />
-                </div>
+                <CardTitle className="text-sm font-medium">Volume (24h)</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-muted-foreground">
-                  Coming Soon
+                <div className="text-2xl font-bold">
+                  {data.priceData?.volume24h 
+                    ? `$${formatNumber(data.priceData.volume24h)}`
+                    : 'N/A'}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Price & market cap data
+                  Trading volume
                 </p>
               </CardContent>
             </Card>

@@ -112,7 +112,7 @@ class HeliusService {
   }
 
   /**
-   * Get comprehensive token info (metadata + supply + holders)
+   * Get comprehensive token info with security analysis
    */
   async getTokenAnalysis(mintAddress: string) {
     try {
@@ -121,15 +121,68 @@ class HeliusService {
         this.getTokenSupply(mintAddress),
       ]);
 
-      // Note: Skipping holders fetch for now as getTokenLargestAccounts
-      // fails for tokens with many holders (like USDC with 20M+ holders)
-      // This can be enabled later for tokens with fewer holders
-      const topHolders: any[] = [];
+      const tokenInfo = metadata?.[0];
+      const onChainInfo = tokenInfo?.onChainAccountInfo?.accountInfo?.data?.parsed?.info;
+      
+      // Get price and market data from DexScreener
+      let priceData = null;
+      try {
+        const priceResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mintAddress}`);
+        if (priceResponse.ok) {
+          const priceJson = await priceResponse.json();
+          if (priceJson.pairs?.[0]) {
+            const pair = priceJson.pairs[0];
+            priceData = {
+              price: parseFloat(pair.priceUsd || 0),
+              marketCap: parseFloat(pair.marketCap || 0),
+              liquidity: parseFloat(pair.liquidity?.usd || 0),
+              volume24h: parseFloat(pair.volume?.h24 || 0),
+              priceChange24h: parseFloat(pair.priceChange?.h24 || 0),
+            };
+          }
+        }
+      } catch (e) {
+        // Price fetch failed
+      }
+      
+      // Security analysis
+      const securityFlags = [];
+      const supplyValue = supply?.value?.uiAmount || 0;
+      const hasMintAuthority = !!onChainInfo?.mintAuthority;
+      const hasFreezeAuthority = !!onChainInfo?.freezeAuthority;
+      
+      // Check for unusual supply (not 1B or 999.91M)
+      const isUnusualSupply = supplyValue !== 1_000_000_000 && 
+                              Math.abs(supplyValue - 999_910_000) > 100_000;
+      
+      if (hasMintAuthority) {
+        securityFlags.push({
+          type: 'warning',
+          message: 'Mint authority is enabled - supply can be increased',
+        });
+      }
+      
+      if (hasFreezeAuthority) {
+        securityFlags.push({
+          type: 'warning',
+          message: 'Freeze authority is enabled - accounts can be frozen',
+        });
+      }
+      
+      if (isUnusualSupply && supplyValue > 0) {
+        securityFlags.push({
+          type: 'info',
+          message: `Unusual supply: ${supplyValue.toLocaleString()} tokens`,
+        });
+      }
 
       return {
-        metadata: metadata?.[0] || null,
+        metadata: tokenInfo || null,
         supply,
-        topHolders,
+        priceData,
+        securityFlags,
+        hasMintAuthority,
+        hasFreezeAuthority,
         timestamp: Date.now(),
       };
     } catch (error) {
