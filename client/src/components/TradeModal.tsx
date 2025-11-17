@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -12,7 +12,7 @@ import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { Token, Position } from '@shared/schema';
-import { TrendingUp, TrendingDown, LogIn, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, LogIn, Loader2, RefreshCw } from 'lucide-react';
 import { formatSol, toBigInt, formatTokenAmount, lamportsToTokens, formatUSD } from '@/lib/lamports';
 
 interface TradeModalProps {
@@ -57,6 +57,8 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   const currentPrice = position?.currentPrice || token?.price || 0;
   const symbol = position?.tokenSymbol || token?.symbol || '';
   const name = position?.tokenName || token?.name || '';
+  const [lastQuoteUpdate, setLastQuoteUpdate] = useState<Date>(new Date());
+  const [effectivePriceLamports, setEffectivePriceLamports] = useState<number>(currentPrice);
 
   if (!isAuthenticated) {
     return (
@@ -133,12 +135,22 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     ? `/api/tokens/quote/buy?tokenAddress=${buyTokenAddress}&solAmount=${solAmount}` 
     : null;
   
-  const { data: jupiterQuote, isLoading: quoteLoading } = useQuery<JupiterQuote>({
+  const { data: jupiterQuote, isLoading: quoteLoading, dataUpdatedAt } = useQuery<JupiterQuote>({
     queryKey: [buyQuoteUrl],
     enabled: isBuying && !!buyQuoteUrl,
     refetchOnWindowFocus: false,
-    staleTime: 10000, // 10 seconds
+    refetchInterval: 2500, // Auto-refresh every 2.5 seconds
+    staleTime: 0, // Always fetch fresh data
+    placeholderData: (previousData) => previousData, // Keep previous data while refetching for smooth UI
   });
+
+  // Update effective price whenever quote changes
+  useEffect(() => {
+    if (jupiterQuote?.effectivePriceLamports) {
+      setEffectivePriceLamports(jupiterQuote.effectivePriceLamports);
+      setLastQuoteUpdate(new Date());
+    }
+  }, [jupiterQuote]);
 
   // Fetch Jupiter quote for selling (keep BigInt throughout)
   const sellTokenAddress = position?.tokenAddress || '';
@@ -156,7 +168,9 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     queryKey: [sellQuoteUrl],
     enabled: !isBuying && !!sellQuoteUrl,
     refetchOnWindowFocus: false,
-    staleTime: 10000, // 10 seconds
+    refetchInterval: 2500, // Auto-refresh every 2.5 seconds
+    staleTime: 0, // Always fetch fresh data
+    placeholderData: (previousData) => previousData, // Keep previous data while refetching for smooth UI
   });
 
   // Use Jupiter quote for estimated tokens if available, fallback to calculation with correct decimals
@@ -236,14 +250,14 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
       return;
     }
     
-    // Always use currentPrice for precision (Jupiter quotes are display-only)
-    // Most pump.fun tokens use 6 decimals
+    // Use effectivePriceLamports from Jupiter quote for most accurate execution
+    // Falls back to currentPrice if no quote available
     const tradeData = {
       tokenAddress: token.tokenAddress,
       tokenName: token.name,
       tokenSymbol: token.symbol,
       solAmount: data.solAmount,
-      price: currentPrice,
+      price: effectivePriceLamports,
       decimals: token.decimals || 6, // Default to 6 for pump.fun tokens
     };
     
@@ -347,7 +361,12 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
 
                 <div className="rounded-lg bg-muted p-4 space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Est. Tokens:</span>
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      Est. Tokens:
+                      {jupiterQuote && solAmount > 0 && (
+                        <RefreshCw className="h-3 w-3 text-primary animate-pulse" />
+                      )}
+                    </span>
                     <span className="font-mono font-semibold flex items-center gap-2" data-testid="text-estimated-tokens">
                       {quoteLoading && solAmount > 0 ? (
                         <><Loader2 className="h-3 w-3 animate-spin" /> Loading...</>
@@ -356,6 +375,11 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
                       )}
                     </span>
                   </div>
+                  {jupiterQuote && solAmount > 0 && (
+                    <div className="text-xs text-muted-foreground text-right">
+                      Live quote • Auto-updating
+                    </div>
+                  )}
                   {jupiterQuote && priceImpact !== 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Price Impact:</span>
@@ -370,16 +394,23 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
                   </div>
                 </div>
 
-                <Button
-                  type="submit"
-                  className="w-full"
-                  size="lg"
-                  variant="default"
-                  disabled={tradeMutation.isPending || solAmount <= 0}
-                  data-testid="button-buy"
-                >
-                  {tradeMutation.isPending ? 'Processing...' : 'Buy Now'}
-                </Button>
+                <div className="space-y-2">
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    size="lg"
+                    variant="default"
+                    disabled={tradeMutation.isPending || solAmount <= 0}
+                    data-testid="button-buy"
+                  >
+                    {tradeMutation.isPending ? 'Processing...' : 'Buy Now'}
+                  </Button>
+                  {jupiterQuote && solAmount > 0 && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      Trade executes at the current live quote price
+                    </p>
+                  )}
+                </div>
               </form>
             </Form>
           ) : (
