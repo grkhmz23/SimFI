@@ -78,14 +78,6 @@ export default function Trade() {
                 Practice trading Solana memecoins with virtual SOL. Master your strategy without financial risk.
               </p>
 
-              {/* $SimFi Token - Launching Soon */}
-              <div className="max-w-2xl mx-auto mb-8">
-                <Card className="p-6 bg-card/95 backdrop-blur text-center">
-                  <h3 className="text-lg font-bold mb-2 gradient-simfi-text">$SimFi Token</h3>
-                  <p className="text-sm text-muted-foreground">Launching Soon</p>
-                </Card>
-              </div>
-
               {/* Google-style Search Bar */}
               <div className="max-w-2xl mx-auto mb-8">
                 <p className="text-sm text-muted-foreground text-center mb-3">
