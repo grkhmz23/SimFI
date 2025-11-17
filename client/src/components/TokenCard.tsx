@@ -68,12 +68,6 @@ export function TokenCard({ token }: TokenCardProps) {
               {formatMarketCap(token.marketCap)}
             </p>
           </div>
-
-          <div className="pt-3 border-t border-border">
-            <p className="text-xs text-center text-muted-foreground italic">
-              Launching Soon
-            </p>
-          </div>
         </div>
       </Card>
     </>
