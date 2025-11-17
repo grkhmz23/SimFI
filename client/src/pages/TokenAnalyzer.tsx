@@ -1,18 +1,10 @@
 // client/src/pages/TokenAnalyzer.tsx
-// Main Study Section Page with 4 tabs
+// Study Section - Coming Soon
 
-import { useState } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card } from '@/components/ui/card';
-import TokenAnalysis from '@/components/TokenAnalysis';
-import WalletExplorer from '@/components/WalletExplorer';
-import TransactionHistory from '@/components/TransactionHistory';
-import RealtimeData from '@/components/RealtimeData';
-import { Search, TrendingUp, Wallet, History, Activity } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Search } from 'lucide-react';
 
 export default function TokenAnalyzer() {
-  const [activeTab, setActiveTab] = useState('token-analysis');
-
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       {/* Header */}
@@ -28,65 +20,39 @@ export default function TokenAnalyzer() {
         </p>
       </div>
 
-      {/* Main Content */}
+      {/* Coming Soon Card */}
       <Card className="border-2">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="w-full grid grid-cols-4 h-auto p-2 gap-2">
-            <TabsTrigger 
-              value="token-analysis" 
-              className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-            >
-              <TrendingUp className="w-4 h-4" />
-              <span className="hidden sm:inline">Token Analysis</span>
-              <span className="sm:hidden">Token</span>
-            </TabsTrigger>
-            
-            <TabsTrigger 
-              value="wallet-explorer"
-              className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-            >
-              <Wallet className="w-4 h-4" />
-              <span className="hidden sm:inline">Wallet Explorer</span>
-              <span className="sm:hidden">Wallet</span>
-            </TabsTrigger>
-            
-            <TabsTrigger 
-              value="transaction-history"
-              className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-            >
-              <History className="w-4 h-4" />
-              <span className="hidden sm:inline">Transactions</span>
-              <span className="sm:hidden">TX</span>
-            </TabsTrigger>
-            
-            <TabsTrigger 
-              value="realtime-data"
-              className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-            >
-              <Activity className="w-4 h-4" />
-              <span className="hidden sm:inline">Real-time Data</span>
-              <span className="sm:hidden">Live</span>
-            </TabsTrigger>
-          </TabsList>
-
-          <div className="p-6">
-            <TabsContent value="token-analysis" className="mt-0">
-              <TokenAnalysis />
-            </TabsContent>
-
-            <TabsContent value="wallet-explorer" className="mt-0">
-              <WalletExplorer />
-            </TabsContent>
-
-            <TabsContent value="transaction-history" className="mt-0">
-              <TransactionHistory />
-            </TabsContent>
-
-            <TabsContent value="realtime-data" className="mt-0">
-              <RealtimeData />
-            </TabsContent>
+        <CardHeader className="text-center pb-4">
+          <CardTitle className="text-4xl font-bold">Coming Soon</CardTitle>
+          <CardDescription className="text-lg mt-2">
+            Advanced blockchain analytics and exploration tools are under development
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="text-center pb-8">
+          <div className="space-y-4">
+            <p className="text-muted-foreground">
+              Features in development:
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+              <div className="p-4 rounded-lg bg-muted/50">
+                <h3 className="font-semibold mb-1">Token Analysis</h3>
+                <p className="text-sm text-muted-foreground">Deep dive into token metrics and security</p>
+              </div>
+              <div className="p-4 rounded-lg bg-muted/50">
+                <h3 className="font-semibold mb-1">Wallet Explorer</h3>
+                <p className="text-sm text-muted-foreground">Comprehensive portfolio analytics</p>
+              </div>
+              <div className="p-4 rounded-lg bg-muted/50">
+                <h3 className="font-semibold mb-1">Transaction History</h3>
+                <p className="text-sm text-muted-foreground">Detailed transaction parsing</p>
+              </div>
+              <div className="p-4 rounded-lg bg-muted/50">
+                <h3 className="font-semibold mb-1">Real-time Data</h3>
+                <p className="text-sm text-muted-foreground">Live blockchain monitoring</p>
+              </div>
+            </div>
           </div>
-        </Tabs>
+        </CardContent>
       </Card>
 
       {/* Info Footer */}
