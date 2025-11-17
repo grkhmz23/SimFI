@@ -168,7 +168,7 @@ class HeliusService {
   }
 
   /**
-   * Get comprehensive wallet portfolio
+   * Get comprehensive wallet portfolio with enriched token data
    */
   async getWalletPortfolio(walletAddress: string) {
     try {
@@ -178,10 +178,70 @@ class HeliusService {
         this.getWalletNFTs(walletAddress).catch(() => ({ nfts: [] })),
       ]);
 
+      const rawTokens = (balances as any)?.tokens || [];
+      
+      // Enrich token data with metadata and prices
+      const enrichedTokens = await Promise.all(
+        rawTokens.map(async (token: any) => {
+          try {
+            // Fetch token metadata
+            const metadata = await this.getTokenMetadata(token.mint);
+            const tokenInfo = metadata?.[0];
+            
+            // Calculate actual balance using decimals
+            const actualBalance = token.amount / Math.pow(10, token.decimals);
+            
+            // Try to fetch price from DexScreener
+            let price = null;
+            try {
+              const priceData = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${token.mint}`);
+              if (priceData.ok) {
+                const priceJson = await priceData.json();
+                if (priceJson.pairs?.[0]?.priceUsd) {
+                  price = parseFloat(priceJson.pairs[0].priceUsd);
+                }
+              }
+            } catch (e) {
+              // Price fetch failed, continue without it
+            }
+            
+            const enrichedToken = {
+              tokenAccount: token.tokenAccount,
+              mint: token.mint,
+              name: tokenInfo?.legacyMetadata?.name || tokenInfo?.onChainMetadata?.metadata?.data?.name || 'Unknown Token',
+              symbol: tokenInfo?.legacyMetadata?.symbol || tokenInfo?.onChainMetadata?.metadata?.data?.symbol || '???',
+              logo: tokenInfo?.legacyMetadata?.logoURI || null,
+              amount: actualBalance,
+              rawAmount: token.amount,
+              decimals: token.decimals,
+              price,
+              value: price ? actualBalance * price : null,
+            };
+            
+            return enrichedToken;
+          } catch (error) {
+            console.error(`Failed to enrich token ${token.mint}:`, error);
+            // If enrichment fails, return basic data
+            return {
+              tokenAccount: token.tokenAccount,
+              mint: token.mint,
+              name: 'Unknown Token',
+              symbol: '???',
+              logo: null,
+              amount: token.amount / Math.pow(10, token.decimals),
+              rawAmount: token.amount,
+              decimals: token.decimals,
+              price: null,
+              value: null,
+            };
+          }
+        })
+      );
+
       return {
         address: walletAddress,
         solBalance,
-        tokens: (balances as any)?.tokens || [],
+        tokens: enrichedTokens,
         nfts: (nfts as any)?.nfts || [],
         timestamp: Date.now(),
       };
