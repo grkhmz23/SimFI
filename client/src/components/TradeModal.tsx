@@ -144,14 +144,6 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     placeholderData: (previousData) => previousData, // Keep previous data while refetching for smooth UI
   });
 
-  // Update effective price whenever quote changes
-  useEffect(() => {
-    if (jupiterQuote?.effectivePriceLamports) {
-      setEffectivePriceLamports(jupiterQuote.effectivePriceLamports);
-      setLastQuoteUpdate(new Date());
-    }
-  }, [jupiterQuote]);
-
   // Fetch Jupiter quote for selling (keep BigInt throughout)
   const sellTokenAddress = position?.tokenAddress || '';
   const sellAmountBigInt = !isBuying && position 
@@ -172,6 +164,21 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     staleTime: 0, // Always fetch fresh data
     placeholderData: (previousData) => previousData, // Keep previous data while refetching for smooth UI
   });
+
+  // Update effective price whenever buy/sell quote changes
+  useEffect(() => {
+    if (jupiterQuote?.effectivePriceLamports) {
+      setEffectivePriceLamports(jupiterQuote.effectivePriceLamports);
+      setLastQuoteUpdate(new Date());
+    }
+  }, [jupiterQuote]);
+
+  useEffect(() => {
+    if (jupiterSellQuote?.effectivePriceLamports) {
+      setEffectivePriceLamports(jupiterSellQuote.effectivePriceLamports);
+      setLastQuoteUpdate(new Date());
+    }
+  }, [jupiterSellQuote]);
 
   // Use Jupiter quote for estimated tokens if available, fallback to calculation with correct decimals
   const buyTokenDecimals = token?.decimals || 6;
@@ -307,10 +314,18 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
 
         <div className="space-y-6">
           <div className="rounded-lg bg-card p-4 text-center border border-card-border">
-            <p className="text-sm text-muted-foreground mb-2">Current Price</p>
-            <p className="text-3xl font-bold font-mono text-primary" data-testid="text-current-price">
-              {formatUSD(currentPrice, 6)}
+            <p className="text-sm text-muted-foreground mb-2 flex items-center justify-center gap-1">
+              Current Price
+              {(isBuying ? jupiterQuote : jupiterSellQuote) && (
+                <RefreshCw className="h-3 w-3 text-primary animate-pulse" />
+              )}
             </p>
+            <p className="text-3xl font-bold font-mono text-primary" data-testid="text-current-price">
+              {formatUSD(effectivePriceLamports, 6)}
+            </p>
+            {(isBuying ? jupiterQuote : jupiterSellQuote) && (
+              <p className="text-xs text-muted-foreground mt-1">Live • Auto-updating</p>
+            )}
           </div>
 
           {isBuying ? (
