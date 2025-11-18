@@ -56,11 +56,11 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   const isBuying = !position;
   const [lastQuoteUpdate, setLastQuoteUpdate] = useState<Date>(new Date());
 
-  // Fetch fresh token data when selling from position (ensures price consistency)
+  // Fetch fresh token data when position is provided without token (ensures price consistency)
   const tokenAddress = position?.tokenAddress || token?.tokenAddress || '';
-  const { data: freshToken } = useQuery<Token>({
+  const { data: freshToken, isLoading: isFetchingFreshToken } = useQuery<Token>({
     queryKey: [`/api/tokens/${tokenAddress}`],
-    enabled: !isBuying && !token && !!tokenAddress,
+    enabled: !!position && !token && !!tokenAddress,
     staleTime: 2500,
     refetchInterval: 2500,
   });
