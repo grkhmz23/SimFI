@@ -343,7 +343,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Middleware to verify telegram bot requests
   const verifyBotSecret = (req: any, res: any, next: any) => {
     const botSecret = req.headers['x-bot-secret'];
-    const expectedSecret = process.env.TELEGRAM_BOT_TOKEN;
+    // Use dev token in development, production token in production (same as bot.js)
+    const expectedSecret = process.env.NODE_ENV === 'development' 
+      ? process.env.TELEGRAM_BOT_TOKEN_DEV 
+      : process.env.TELEGRAM_BOT_TOKEN;
     
     if (!botSecret || botSecret !== expectedSecret) {
       return res.status(403).json({ error: 'Forbidden - Invalid bot secret' });
