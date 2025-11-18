@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { Token, Position } from '@shared/schema';
 import { TrendingUp, TrendingDown, LogIn, Loader2, RefreshCw } from 'lucide-react';
-import { formatSol, toBigInt, formatTokenAmount, lamportsToTokens, formatUSD } from '@/lib/lamports';
+import { formatSol, toBigInt, formatTokenAmount, lamportsToTokens, formatUSD, lamportsToUSD } from '@/lib/lamports';
 
 interface TradeModalProps {
   token?: Token;
@@ -55,10 +55,12 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   const [, setLocation] = useLocation();
   const isBuying = !position;
   const currentPrice = position?.currentPrice || token?.price || 0;
+  const currentPriceUsd = position ? undefined : token?.priceUsd;
   const symbol = position?.tokenSymbol || token?.symbol || '';
   const name = position?.tokenName || token?.name || '';
   const [lastQuoteUpdate, setLastQuoteUpdate] = useState<Date>(new Date());
   const [effectivePriceLamports, setEffectivePriceLamports] = useState<number>(currentPrice);
+  const [displayPriceUsd, setDisplayPriceUsd] = useState<number | undefined>(currentPriceUsd);
 
   if (!isAuthenticated) {
     return (
@@ -169,6 +171,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   useEffect(() => {
     if (jupiterQuote?.effectivePriceLamports) {
       setEffectivePriceLamports(jupiterQuote.effectivePriceLamports);
+      setDisplayPriceUsd(lamportsToUSD(jupiterQuote.effectivePriceLamports));
       setLastQuoteUpdate(new Date());
     }
   }, [jupiterQuote]);
@@ -176,6 +179,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   useEffect(() => {
     if (jupiterSellQuote?.effectivePriceLamports) {
       setEffectivePriceLamports(jupiterSellQuote.effectivePriceLamports);
+      setDisplayPriceUsd(lamportsToUSD(jupiterSellQuote.effectivePriceLamports));
       setLastQuoteUpdate(new Date());
     }
   }, [jupiterSellQuote]);
@@ -321,7 +325,12 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
               )}
             </p>
             <p className="text-3xl font-bold font-mono text-primary" data-testid="text-current-price">
-              {formatUSD(effectivePriceLamports, 6)}
+              {displayPriceUsd !== undefined 
+                ? (displayPriceUsd < 0.01 && displayPriceUsd > 0 
+                    ? `$${displayPriceUsd.toFixed(6)}` 
+                    : `$${displayPriceUsd.toFixed(4)}`)
+                : formatUSD(effectivePriceLamports, 6)
+              }
             </p>
             {(isBuying ? jupiterQuote : jupiterSellQuote) && (
               <p className="text-xs text-muted-foreground mt-1">Live • Auto-updating</p>
