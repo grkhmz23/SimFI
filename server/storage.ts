@@ -105,8 +105,9 @@ class DbStorage implements IStorage {
           // Increment amount and solSpent atomically
           amount: sql`${positions.amount} + ${data.amount}`,
           solSpent: sql`${positions.solSpent} + ${data.solSpent}`,
-          // Recalculate average entry price using the EXCLUDED (new) values
-          entryPrice: sql`((${positions.solSpent} + EXCLUDED.sol_spent) * 1000000000) / (${positions.amount} + EXCLUDED.amount)`,
+          // Recalculate weighted average entry price: (total_solSpent * 10^decimals) / total_amount
+          // Use numeric division to preserve precision, guard against NULL decimals
+          entryPrice: sql`FLOOR(((${positions.solSpent} + EXCLUDED.sol_spent)::numeric * power(10::numeric, COALESCE(EXCLUDED.decimals, 6))) / NULLIF((${positions.amount} + EXCLUDED.amount), 0))::bigint`,
         },
       })
       .returning();
@@ -136,12 +137,12 @@ class DbStorage implements IStorage {
 
   async aggregatePosition(id: string, additionalAmount: bigint, additionalSolSpent: bigint): Promise<Position | undefined> {
     // Use SQL-level increments to avoid race conditions
-    // Calculate new average entry price atomically: (total_sol_spent * 1_000_000_000) / total_amount
+    // Calculate weighted average entry price: (total_solSpent * 10^decimals) / total_amount
     const [position] = await db.update(positions)
       .set({
         amount: sql`${positions.amount} + ${additionalAmount}`,
         solSpent: sql`${positions.solSpent} + ${additionalSolSpent}`,
-        entryPrice: sql`((${positions.solSpent} + ${additionalSolSpent}) * 1000000000) / (${positions.amount} + ${additionalAmount})`,
+        entryPrice: sql`FLOOR(((${positions.solSpent} + ${additionalSolSpent})::numeric * power(10::numeric, COALESCE(${positions.decimals}, 6))) / NULLIF((${positions.amount} + ${additionalAmount}), 0))::bigint`,
       })
       .where(eq(positions.id, id))
       .returning();
