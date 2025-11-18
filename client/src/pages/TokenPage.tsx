@@ -412,7 +412,7 @@ export default function TokenPage() {
       {showModal && (
         <TradeModal
           token={tradeMode === 'buy' ? token : undefined}
-          position={tradeMode === 'sell' && userPosition ? { ...userPosition, currentPrice: token.price } : undefined}
+          position={tradeMode === 'sell' && userPosition ? userPosition : undefined}
           onClose={() => setShowModal(false)}
         />
       )}
