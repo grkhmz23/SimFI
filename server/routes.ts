@@ -213,6 +213,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/auth/login', async (req, res) => {
     try {
+      console.log('🔐 Login attempt:', { body: req.body });
+      
       // Validate request body with Zod - accept either email OR username
       const loginSchema = z.object({
         email: z.string().optional(),
@@ -225,12 +227,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const validationResult = loginSchema.safeParse(req.body);
       if (!validationResult.success) {
+        console.log('❌ Validation failed:', validationResult.error);
         return res.status(400).json({ 
           error: validationResult.error.errors[0]?.message || 'Invalid login data' 
         });
       }
       
       const { email, username, password } = validationResult.data;
+      console.log('🔍 Looking up user:', { email, username });
       
       // Try to find user by email or username
       let user;
@@ -241,11 +245,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       if (!user) {
+        console.log('❌ User not found');
         return res.status(400).json({ error: 'Invalid credentials' });
       }
       
+      console.log('✅ User found:', { id: user.id, username: user.username });
+      
       const validPassword = await bcrypt.compare(password, user.password);
+      console.log('🔑 Password validation:', validPassword);
+      
       if (!validPassword) {
+        console.log('❌ Invalid password');
         return res.status(400).json({ error: 'Invalid credentials' });
       }
       
