@@ -56,18 +56,19 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   const isBuying = !position;
   const [lastQuoteUpdate, setLastQuoteUpdate] = useState<Date>(new Date());
 
-  // ALWAYS fetch fresh token data to ensure price consistency across all entry points
+  // Fetch fresh token data ONLY when we don't have token prop (e.g., selling from positions dropdown)
+  // This ensures we don't show 0 price while loading when token page already has the data
   const tokenAddress = position?.tokenAddress || token?.tokenAddress || '';
   const { data: freshToken, isLoading: isFetchingFreshToken } = useQuery<Token>({
     queryKey: [`/api/tokens/${tokenAddress}`],
-    enabled: !!tokenAddress,
-    staleTime: 0, // Always fetch fresh
+    enabled: !token && !!tokenAddress, // Only fetch if token not provided
+    staleTime: 0,
     refetchInterval: 2500,
     refetchOnMount: 'always',
   });
 
-  // Priority: fresh token > passed token > fallback to position data during loading
-  const activeToken = freshToken || token;
+  // Priority: passed token (from token page) > fresh fetch > fallback to position data
+  const activeToken = token || freshToken;
   const currentPrice = activeToken?.price || position?.currentPrice || 0;
   const currentPriceUsd = activeToken?.priceUsd;
   const symbol = position?.tokenSymbol || activeToken?.symbol || '';
