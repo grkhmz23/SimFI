@@ -44,6 +44,30 @@ const expectedSecret = process.env.NODE_ENV === 'development'
 
 **Note**: This feature was already implemented but may not have been obvious to users. The database query confirms active sessions exist with proper expiration dates.
 
+### Positions Display Fixes (November 2025)
+**Issues Fixed**: Position details in the dropdown menu were showing incorrect values:
+- Holdings showing 0.00 instead of actual token amounts
+- Entry Price and Current Price missing SOL suffix
+- Position data not auto-updating frequently enough
+
+**Root Cause**: The aggregation formula in `server/storage.ts` was using a hardcoded constant (1 billion) instead of the token's actual decimals (`10^decimals`), and the frontend was only displaying 2 decimal places for token amounts.
+
+**Solutions**:
+1. **Fixed aggregation formula** (lines 113, 148 in `server/storage.ts`):
+   - Changed from hardcoded `* 1000000000` to dynamic `* power(10::numeric, COALESCE(decimals, 6))`
+   - Uses numeric division with FLOOR to preserve precision
+   - Guards against NULL decimals by defaulting to 6
+
+2. **Improved Holdings display** (line 232 in `client/src/pages/Positions.tsx`):
+   - Increased display precision from 2 to up to 6 decimal places
+   - Prevents small fractional token amounts from rounding to "0.00"
+
+3. **Added SOL suffix** to Entry Price and Current Price for clarity
+
+4. **Increased update frequency** from 5 seconds to 2.5 seconds with `staleTime` optimization to prevent API saturation
+
+**Status**: All position values now display correctly with proper precision and auto-update every 2.5 seconds.
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.

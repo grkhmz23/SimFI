@@ -27,8 +27,9 @@ export default function Positions() {
   const { data: positionsData, isLoading } = useQuery<{ positions: EnrichedPosition[] }>({
     queryKey: ['/api/trades/positions'],
     enabled: isAuthenticated,
-    refetchInterval: 5000,
+    refetchInterval: 2500, // Auto-refresh every 2.5 seconds (user requested)
     refetchIntervalInBackground: true,
+    staleTime: 2000, // Consider data stale after 2 seconds to reduce redundant requests
   });
 
   // Enrich positions with calculated P/L values
@@ -226,19 +227,19 @@ export default function Positions() {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Holdings</span>
                         <span className="font-mono font-semibold" data-testid={`text-holdings-${position.id}`}>
-                          {formatTokenAmount(tokenAmount, 2)}
+                          {formatTokenAmount(tokenAmount, Math.min(6, position.decimals || 6), position.decimals || 6)}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Entry Price</span>
                         <span className="font-mono" data-testid={`text-entry-price-${position.id}`}>
-                          {formatSol(toBigInt(position.entryPrice), 8)}
+                          {formatSol(toBigInt(position.entryPrice), 8)} SOL
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Current Price</span>
                         <span className="font-mono" data-testid={`text-current-price-${position.id}`}>
-                          {formatSol(toBigInt(position.currentPrice), 8)}
+                          {formatSol(toBigInt(position.currentPrice), 8)} SOL
                         </span>
                       </div>
                     </div>
