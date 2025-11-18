@@ -26,6 +26,24 @@ const expectedSecret = process.env.NODE_ENV === 'development'
 
 **Status**: Bot is now fully operational and can authenticate, save sessions, and interact with all backend endpoints.
 
+### Auto-Detection of Solana Token Addresses
+**Feature**: The Telegram bot now automatically detects when users send Solana token contract addresses in chat messages and immediately displays the buy menu for that token.
+
+**Implementation**: Added `isSolanaAddress()` helper function that validates messages against the base58 encoding pattern (32-44 characters, alphanumeric excluding 0, O, I, l). When detected, the bot automatically fetches token information and shows the buy menu, eliminating the need to navigate through "Buy Token" → "Enter Address" steps.
+
+**User Experience**: Users can now simply paste a token address (e.g., `METvsvVRapdj9cFLzq4Tr43xK4tAjQfwX76z3n6mWQL`) directly into the chat, and the bot will respond with token details and purchase options.
+
+### Persistent Login System
+**Feature**: The bot implements persistent login sessions with 30-day expiration. Users only need to login once per month.
+
+**How It Works**:
+- On `/start`, the bot checks for existing sessions in the `telegram_sessions` table
+- If a valid session exists, it's automatically restored and the user is taken to the main menu
+- Sessions are only deleted on explicit `/logout` or after 30-day expiration
+- All session data (token, balance, user info) is persisted in the database
+
+**Note**: This feature was already implemented but may not have been obvious to users. The database query confirms active sessions exist with proper expiration dates.
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.

@@ -34,6 +34,14 @@ const formatTokenAmount = (lamports, decimals = 6) => {
   return tokens.toFixed(2);
 };
 
+// Helper function to detect Solana token addresses
+const isSolanaAddress = (text) => {
+  // Solana addresses are base58 encoded, typically 32-44 characters
+  // They only contain: 1-9, A-H, J-N, P-Z, a-k, m-z (no 0, O, I, l)
+  const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  return base58Regex.test(text.trim());
+};
+
 const apiRequest = async (endpoint, method = 'GET', data = null, token = null, isBotRequest = false) => {
   try {
     const headers = {};
@@ -112,6 +120,54 @@ const showMainMenu = async (ctx) => {
     { 
       parse_mode: 'Markdown',
       ...getMainMenuKeyboard(user.balance)
+    }
+  );
+};
+
+// Helper function to show buy menu for a token
+const showBuyMenu = async (ctx, tokenAddress, session) => {
+  const userId = ctx.from.id;
+  
+  const result = await apiRequest(`/tokens/${tokenAddress}`, 'GET', null, session.token);
+  if (!result.success) {
+    if (result.error.includes('expired') || result.error.includes('auth')) {
+      userSessions.delete(userId);
+      userStates.delete(userId);
+      return ctx.reply('❌ Session expired. Please /start to login again.');
+    }
+    return ctx.reply(
+      '❌ Token not found. Please check the address and try again.',
+      Markup.inlineKeyboard([
+        [Markup.button.callback('⬅️ Back', 'main_menu')]
+      ])
+    );
+  }
+
+  const token = result.data.token;
+  userStates.set(userId, {
+    state: 'awaiting_buy_amount',
+    tokenAddress,
+    token
+  });
+
+  await ctx.reply(
+    `📈 *${token.name} (${token.symbol})*\n\n` +
+    `Price: *${formatSol(token.price)} SOL*\n` +
+    `Market Cap: *$${token.marketCap.toLocaleString()}*\n\n` +
+    `How much SOL do you want to spend?`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [
+          Markup.button.callback('0.1 SOL', 'buy_amt:0.1'),
+          Markup.button.callback('0.5 SOL', 'buy_amt:0.5'),
+        ],
+        [
+          Markup.button.callback('1 SOL', 'buy_amt:1'),
+          Markup.button.callback('5 SOL', 'buy_amt:5'),
+        ],
+        [Markup.button.callback('⬅️ Back', 'main_menu')]
+      ])
     }
   );
 };
@@ -505,6 +561,22 @@ bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
   const state = userStates.get(userId);
   const text = ctx.message.text;
+  const session = userSessions.get(userId);
+
+  // Don't auto-detect during login flow
+  const isLoginState = state && (state.state === 'awaiting_username' || state.state === 'awaiting_password');
+  
+  // Auto-detect Solana token addresses (but not during login)
+  if (!isLoginState && isSolanaAddress(text)) {
+    if (!session) {
+      return ctx.reply('Please /start to login first.');
+    }
+    
+    // User sent a token address - automatically show buy menu
+    await ctx.reply('🔍 Fetching token information...');
+    await showBuyMenu(ctx, text.trim(), session);
+    return;
+  }
 
   if (!state) {
     return ctx.reply('Please use /start to begin.');
@@ -569,57 +641,13 @@ bot.on('text', async (ctx) => {
   }
 
   if (state.state === 'awaiting_buy_token') {
-    const session = userSessions.get(userId);
-    
     if (!session) {
       userStates.delete(userId);
       return ctx.reply('❌ Session expired. Please /start to login again.');
     }
     
     const tokenAddress = text.trim();
-
-    const result = await apiRequest(`/tokens/${tokenAddress}`, 'GET', null, session.token);
-    if (!result.success) {
-      if (result.error.includes('expired') || result.error.includes('auth')) {
-        userSessions.delete(userId);
-        userStates.delete(userId);
-        return ctx.reply('❌ Session expired. Please /start to login again.');
-      }
-      return ctx.reply(
-        '❌ Token not found. Please check the address and try again.',
-        Markup.inlineKeyboard([
-          [Markup.button.callback('⬅️ Back', 'main_menu')]
-        ])
-      );
-    }
-
-    const token = result.data.token;
-    userStates.set(userId, {
-      state: 'awaiting_buy_amount',
-      tokenAddress,
-      token
-    });
-
-    await ctx.reply(
-      `📈 *${token.name} (${token.symbol})*\n\n` +
-      `Price: *${formatSol(token.price)} SOL*\n` +
-      `Market Cap: *$${token.marketCap.toLocaleString()}*\n\n` +
-      `How much SOL do you want to spend?`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [
-            Markup.button.callback('0.1 SOL', 'buy_amt:0.1'),
-            Markup.button.callback('0.5 SOL', 'buy_amt:0.5'),
-          ],
-          [
-            Markup.button.callback('1 SOL', 'buy_amt:1'),
-            Markup.button.callback('5 SOL', 'buy_amt:5'),
-          ],
-          [Markup.button.callback('⬅️ Back', 'main_menu')]
-        ])
-      }
-    );
+    await showBuyMenu(ctx, tokenAddress, session);
   }
 
   if (state.state === 'awaiting_buy_amount_custom') {
