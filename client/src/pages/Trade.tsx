@@ -9,7 +9,6 @@ import { SiX } from 'react-icons/si';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth-context';
-import { PositionsBar } from '@/components/PositionsBar';
 
 interface SearchResult {
   tokenAddress: string;
@@ -196,15 +195,6 @@ export default function Trade() {
           </div>
         </div>
       </div>
-
-      {/* Positions Bar (Authenticated Users) */}
-      {isAuthenticated && (
-        <div className="border-b border-border">
-          <div className="container mx-auto px-4 py-4">
-            <PositionsBar />
-          </div>
-        </div>
-      )}
 
       {/* Main Content Section */}
       <div className="container mx-auto px-4 py-12 max-w-5xl">
