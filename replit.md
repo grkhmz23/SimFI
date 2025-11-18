@@ -68,6 +68,46 @@ const expectedSecret = process.env.NODE_ENV === 'development'
 
 **Status**: All position values now display correctly with proper precision and auto-update every 2.5 seconds.
 
+### Critical Security and Data Integrity Fixes (November 2025)
+
+**Issues Discovered During Comprehensive Code Review:**
+
+1. **Security Vulnerability - Password Logging** ❌ CRITICAL
+   - **Issue**: Login endpoint was logging entire request body including plaintext passwords to server logs
+   - **Impact**: Severe security risk - credentials persisted in logs
+   - **Fix**: Removed password from logging, only log username/email (server/routes.ts line 219-220)
+   - **Status**: FIXED
+
+2. **Data Corruption Risk - No Transactions** ❌ CRITICAL
+   - **Issue**: Buy/sell operations updated balance, positions, and trades through separate async calls without database transactions
+   - **Impact**: Mid-sequence failures or concurrent requests could debit SOL without recording the position/trade
+   - **Fix**: Added `executeBuyTrade` and `executeSellTrade` methods that wrap all mutations in `db.transaction()` (server/storage.ts lines 342-461)
+   - **Status**: FIXED
+
+3. **Position Aggregation Bug - Wrong Decimals**
+   - **Issue**: Aggregation formula used incoming `EXCLUDED.decimals` instead of preserving existing `positions.decimals`
+   - **Impact**: When aggregating positions with missing decimals field, weighted average entry price would be miscalculated
+   - **Fix**: Updated formula to prioritize `positions.decimals` over `EXCLUDED.decimals` (server/storage.ts line 384)
+   - **Status**: FIXED
+
+4. **Telegram Bot - Concurrent Sell Operations** ❌ CRITICAL
+   - **Issue**: No locking mechanism for sell operations; rapid button taps could execute multiple sells for same position
+   - **Impact**: Could drain positions incorrectly and create duplicate trades
+   - **Fix**: Added `pendingOperations` Map to track and prevent concurrent operations (bot.js lines 29, 346-348, 397-399)
+   - **Status**: FIXED
+
+5. **Memory Leak - Unbounded Map Growth**
+   - **Issue**: `userSessions` and `userStates` Maps never evicted idle entries
+   - **Impact**: Memory grows unbounded for inactive Telegram users
+   - **Fix**: Added 30-minute cleanup interval for inactive user states (bot.js lines 32-43)
+   - **Status**: FIXED
+
+**Next Steps Required:**
+- ~~Consider rotating JWT secret after password logging fix~~ (low priority - logs are development only)
+- Monitor transaction performance under load
+- Add retry logic for failed transactions
+- Consider adding operation timeout protection
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
