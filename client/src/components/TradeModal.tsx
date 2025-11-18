@@ -193,12 +193,13 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     ? (toBigInt(position.solSpent) * BigInt(percentage)) / BigInt(100)
     : BigInt(0);
   
-  // Calculate sell value with BigInt arithmetic (always use currentPrice for precision)
-  // Jupiter quotes are JS numbers which can lose precision for large values
+  // Calculate sell value with BigInt arithmetic
+  // currentPrice is in lamports per 1.0 whole token (not per token lamport)
+  // Formula: (tokenLamports * priceLamportsPerToken) / 10^decimals = SOL lamports
   // CRITICAL: Use token's decimals (6 for pump.fun), not SOL decimals (9)!
   const tokenDecimals = position?.decimals || token?.decimals || 6;
   const sellValueBigInt = !isBuying 
-    ? (sellAmountBigInt * BigInt(Math.floor(currentPrice))) / BigInt(10 ** tokenDecimals)
+    ? (sellAmountBigInt * BigInt(Math.floor(currentPrice))) / (BigInt(10) ** BigInt(tokenDecimals))
     : BigInt(0);
   
   const profitLossBigInt = !isBuying ? sellValueBigInt - proportionalCostBigInt : BigInt(0);
@@ -274,8 +275,8 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     // Keep BigInt throughout - send lamports as string to backend
     const sellAmountLamports = (toBigInt(position.amount) * BigInt(data.percentage)) / BigInt(100);
     
-    // Always use currentPrice for trade execution (Jupiter quote is display-only)
-    // This ensures precision for large values (Jupiter API returns JS numbers which truncate)
+    // currentPrice is in lamports per whole token from DexScreener
+    // Floor defensively before BigInt conversion to prevent RangeError on fractional values
     const exitPriceLamports = BigInt(Math.floor(currentPrice));
     
     tradeMutation.mutate({
