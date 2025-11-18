@@ -107,6 +107,48 @@ const expectedSecret = process.env.NODE_ENV === 'development'
 
 **Status**: Holdings display correctly with proper decimals, prices are consistent across all views, and sell calculations use correct BigInt arithmetic.
 
+### BigInt Precision Fix (November 2025)
+
+**Issue**: TradeModal was converting BigInt lamport values (sellValueBigInt, proportionalCostBigInt, profitLossBigInt) to Number for display, causing precision loss and potential overflow for large positions (>9,000 SOL).
+
+**Root Cause**: Lines 208-210 in TradeModal.tsx converted BigInt to Number before passing to display functions, which can overflow JavaScript's Number.MAX_SAFE_INTEGER (~9e15) and lose precision.
+
+**Solution**: 
+- Removed all Number() conversions - keep values as BigInt throughout
+- Display using formatSol(sellValueBigInt) which accepts BigInt directly
+- Changed comparisons to use BigInt literals: `profitLossBigInt >= 0n`
+
+**Status**: All sell P/L calculations now maintain full precision for any position size.
+
+### Price Consistency Across Entry Points (November 2025)
+
+**Issue**: Same token showing different prices in sell modal when accessed from different pages:
+- From landing page → token page: Fresh DexScreener price
+- From positions dropdown menu: Stale `position.currentPrice` from positions API
+
+**Root Cause**: TradeModal prioritized `position?.currentPrice || token?.price`, using cached price when opened from Positions.tsx (which only passes `position` prop). Different entry points resulted in price discrepancies of 15-20% for the same token.
+
+**Solution** (TradeModal.tsx lines 62-76):
+1. Added fresh token data query when selling from position without token prop:
+   ```typescript
+   const { data: freshToken } = useQuery<Token>({
+     queryKey: [`/api/tokens/${tokenAddress}`],
+     enabled: !isBuying && !token && !!tokenAddress,
+     staleTime: 2500,
+     refetchInterval: 2500,
+   });
+   ```
+
+2. Changed price priority logic:
+   ```typescript
+   const activeToken = token || freshToken;
+   const currentPrice = activeToken?.price || position?.currentPrice || 0;
+   ```
+
+**Impact**: Now always fetches and uses latest DexScreener price regardless of entry point, ensuring identical prices and SOL estimates for the same token across all pages.
+
+**Status**: Price consistency verified - same token shows identical prices from all entry points (landing page, token page, positions dropdown).
+
 ### Critical Security and Data Integrity Fixes (November 2025)
 
 **Issues Discovered During Comprehensive Code Review:**
