@@ -23,6 +23,21 @@ const bot = new Telegraf(BOT_TOKEN);
 
 const userSessions = new Map();
 const userStates = new Map();
+const pendingOperations = new Map(); // Track pending operations to prevent concurrent trades
+
+// Cleanup old sessions and states every 30 minutes
+setInterval(() => {
+  const now = Date.now();
+  const THIRTY_MINUTES = 30 * 60 * 1000;
+  
+  for (const [userId, state] of userStates.entries()) {
+    if (state.lastActivity && (now - state.lastActivity) > THIRTY_MINUTES) {
+      userStates.delete(userId);
+    }
+  }
+  
+  console.log('🧹 Cleaned up inactive user states');
+}, 30 * 60 * 1000);
 
 const formatSol = (lamports) => {
   const sol = Number(lamports) / 1_000_000_000;
@@ -319,12 +334,18 @@ bot.action(/^sell_token:(.+)$/, async (ctx) => {
 
 bot.action(/^sell_pct:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
+  const userId = ctx.from.id;
   const percentage = parseInt(ctx.match[1]);
-  const session = userSessions.get(ctx.from.id);
-  const state = userStates.get(ctx.from.id);
+  const session = userSessions.get(userId);
+  const state = userStates.get(userId);
+  
+  // Prevent concurrent sell operations
+  if (pendingOperations.get(userId)) {
+    return ctx.reply('⏳ Please wait for the current operation to complete.');
+  }
   
   if (!session) {
-    userStates.delete(ctx.from.id);
+    userStates.delete(userId);
     return ctx.reply('❌ Session expired. Please /start to login again.');
   }
   
@@ -332,39 +353,47 @@ bot.action(/^sell_pct:(\d+)$/, async (ctx) => {
     return ctx.reply('❌ Session expired. Please try again.');
   }
 
-  // Calculate sell amount as percentage of position (position.amount is already in lamports)
-  const sellAmountLamports = (BigInt(state.position.amount) * BigInt(percentage)) / BigInt(100);
-  
-  // Fetch current token price for exit price
-  const tokenResult = await apiRequest(`/tokens/${state.tokenAddress}`, 'GET', null, session.token);
-  if (!tokenResult.success) {
-    return ctx.reply('❌ Error fetching token price: ' + tokenResult.error);
+  try {
+    // Mark operation as pending
+    pendingOperations.set(userId, true);
+    
+    // Calculate sell amount as percentage of position (position.amount is already in lamports)
+    const sellAmountLamports = (BigInt(state.position.amount) * BigInt(percentage)) / BigInt(100);
+    
+    // Fetch current token price for exit price
+    const tokenResult = await apiRequest(`/tokens/${state.tokenAddress}`, 'GET', null, session.token);
+    if (!tokenResult.success) {
+      return ctx.reply('❌ Error fetching token price: ' + tokenResult.error);
+    }
+    
+    // token.price is already in lamports, don't convert again!
+    const currentPriceLamports = BigInt(Math.floor(tokenResult.data.token.price));
+
+    const result = await apiRequest('/trades/sell', 'POST', {
+      positionId: state.position.id,
+      amountLamports: sellAmountLamports.toString(),  // Already in lamports from position.amount
+      exitPriceLamports: currentPriceLamports.toString()
+    }, session.token);
+
+    if (!result.success) {
+      return ctx.reply('❌ Error: ' + result.error);
+    }
+
+    userStates.delete(userId);
+    const decimals = state.position.decimals || 6;
+    await ctx.reply(
+      `✅ Successfully sold ${percentage}% of ${state.position.tokenSymbol}!\n\n` +
+      `Amount: *${formatTokenAmount(sellAmountLamports, decimals)} ${state.position.tokenSymbol}*\n` +
+      `Received: *${formatSol(result.data.trade?.solReceived || result.data.solReceived)} SOL*\n` +
+      `Profit/Loss: *${formatSol(result.data.trade?.profitLoss || result.data.profitLoss)} SOL*`,
+      { parse_mode: 'Markdown' }
+    );
+    
+    await showMainMenu(ctx);
+  } finally {
+    // Always clear pending operation
+    pendingOperations.delete(userId);
   }
-  
-  // token.price is already in lamports, don't convert again!
-  const currentPriceLamports = BigInt(Math.floor(tokenResult.data.token.price));
-
-  const result = await apiRequest('/trades/sell', 'POST', {
-    positionId: state.position.id,
-    amountLamports: sellAmountLamports.toString(),  // Already in lamports from position.amount
-    exitPriceLamports: currentPriceLamports.toString()
-  }, session.token);
-
-  if (!result.success) {
-    return ctx.reply('❌ Error: ' + result.error);
-  }
-
-  userStates.delete(ctx.from.id);
-  const decimals = state.position.decimals || 6;
-  await ctx.reply(
-    `✅ Successfully sold ${percentage}% of ${state.position.tokenSymbol}!\n\n` +
-    `Amount: *${formatTokenAmount(sellAmountLamports, decimals)} ${state.position.tokenSymbol}*\n` +
-    `Received: *${formatSol(result.data.trade?.solReceived || result.data.solReceived)} SOL*\n` +
-    `Profit/Loss: *${formatSol(result.data.trade?.profitLoss || result.data.profitLoss)} SOL*`,
-    { parse_mode: 'Markdown' }
-  );
-  
-  await showMainMenu(ctx);
 });
 
 bot.action('positions', async (ctx) => {
@@ -583,7 +612,7 @@ bot.on('text', async (ctx) => {
   }
 
   if (state.state === 'awaiting_username') {
-    userStates.set(userId, { state: 'awaiting_password', username: text });
+    userStates.set(userId, { state: 'awaiting_password', username: text, lastActivity: Date.now() });
     return ctx.reply('🔐 Please enter your *password*:', { parse_mode: 'Markdown' });
   }
 
