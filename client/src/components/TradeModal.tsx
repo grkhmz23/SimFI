@@ -203,11 +203,6 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     : BigInt(0);
   
   const profitLossBigInt = !isBuying ? sellValueBigInt - proportionalCostBigInt : BigInt(0);
-  
-  // Convert to Number only for display
-  const sellValue = Number(sellValueBigInt);
-  const proportionalCost = Number(proportionalCostBigInt);
-  const profitLoss = Number(profitLossBigInt);
 
   const tradeMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -499,7 +494,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
                         {sellQuoteLoading && sellAmountBigInt > 0n ? (
                           <><Loader2 className="h-3 w-3 animate-spin" /> Loading...</>
                         ) : (
-                          `${formatSol(sellValue)} SOL`
+                          `${formatSol(sellValueBigInt)} SOL`
                         )}
                       </span>
                     </div>
@@ -514,10 +509,10 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
                     <div className="flex justify-between text-sm pt-2 border-t border-border">
                       <span className="text-muted-foreground">Profit/Loss:</span>
                       <span 
-                        className={`font-mono font-bold ${profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}
+                        className={`font-mono font-bold ${profitLossBigInt >= 0n ? 'text-success' : 'text-destructive'}`}
                         data-testid="text-profit-loss"
                       >
-                        {profitLoss >= 0 ? '+' : ''}{formatSol(profitLoss)} SOL
+                        {profitLossBigInt >= 0n ? '+' : ''}{formatSol(profitLossBigInt)} SOL
                       </span>
                     </div>
                   </div>
