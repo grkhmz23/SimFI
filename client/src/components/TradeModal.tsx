@@ -66,9 +66,9 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
     refetchOnMount: 'always',
   });
 
-  // Always prioritize freshly fetched token data over any provided token/position data
+  // Priority: fresh token > passed token > fallback to position data during loading
   const activeToken = freshToken || token;
-  const currentPrice = activeToken?.price || 0;
+  const currentPrice = activeToken?.price || position?.currentPrice || 0;
   const currentPriceUsd = activeToken?.priceUsd;
   const symbol = position?.tokenSymbol || activeToken?.symbol || '';
   const name = position?.tokenName || activeToken?.name || '';
