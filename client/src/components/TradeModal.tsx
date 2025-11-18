@@ -54,11 +54,23 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const isBuying = !position;
-  const currentPrice = position?.currentPrice || token?.price || 0;
-  const currentPriceUsd = position ? undefined : token?.priceUsd;
-  const symbol = position?.tokenSymbol || token?.symbol || '';
-  const name = position?.tokenName || token?.name || '';
   const [lastQuoteUpdate, setLastQuoteUpdate] = useState<Date>(new Date());
+
+  // Fetch fresh token data when selling from position (ensures price consistency)
+  const tokenAddress = position?.tokenAddress || token?.tokenAddress || '';
+  const { data: freshToken } = useQuery<Token>({
+    queryKey: [`/api/tokens/${tokenAddress}`],
+    enabled: !isBuying && !token && !!tokenAddress,
+    staleTime: 2500,
+    refetchInterval: 2500,
+  });
+
+  // Always prioritize fresh token data over stale position.currentPrice
+  const activeToken = token || freshToken;
+  const currentPrice = activeToken?.price || position?.currentPrice || 0;
+  const currentPriceUsd = activeToken?.priceUsd || (position ? undefined : undefined);
+  const symbol = position?.tokenSymbol || activeToken?.symbol || '';
+  const name = position?.tokenName || activeToken?.name || '';
 
   if (!isAuthenticated) {
     return (
