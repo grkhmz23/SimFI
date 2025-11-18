@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, Wallet, ChevronRight } from 'lucide-react';
-import { formatSol } from '@/lib/lamports';
+import { formatSol, formatTokenAmount } from '@/lib/lamports';
 import type { Position } from '@shared/schema';
 
 export function PositionsBar() {
@@ -58,7 +58,7 @@ export function PositionsBar() {
 
       <div className="space-y-2">
         {positions.map((position) => {
-          const amountDisplay = position.amount.toLocaleString();
+          const amountDisplay = formatTokenAmount(position.amount, position.decimals || 6);
 
           return (
             <div

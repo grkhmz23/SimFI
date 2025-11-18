@@ -196,7 +196,6 @@ export default function Positions() {
               const pnl = Number(pnlBigInt);
               const pnlPercent = position.profitLossPercent;
               const isProfitable = pnl >= 0;
-              const tokenAmount = lamportsToTokens(toBigInt(position.amount), position.decimals);
 
               return (
                 <Card key={position.id} className="hover-elevate" data-testid={`card-position-${position.id}`}>
@@ -227,7 +226,7 @@ export default function Positions() {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Holdings</span>
                         <span className="font-mono font-semibold" data-testid={`text-holdings-${position.id}`}>
-                          {formatTokenAmount(tokenAmount, Math.min(6, position.decimals || 6), position.decimals || 6)}
+                          {formatTokenAmount(position.amount, 6, position.decimals || 6)}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
