@@ -68,6 +68,45 @@ const expectedSecret = process.env.NODE_ENV === 'development'
 
 **Status**: All position values now display correctly with proper precision and auto-update every 2.5 seconds.
 
+### Holdings Display and Price Consistency Fixes (November 2025)
+
+**Issues Fixed**:
+1. Holdings showing "0.00" instead of actual token amounts in positions dropdown
+2. Different prices appearing in positions dropdown vs buy/sell trade modals
+3. Price jumping/changing when Jupiter quotes loaded in TradeModal
+
+**Root Causes**:
+1. **Holdings Display Bug**: `PositionsBar.tsx` was calling `toLocaleString()` on BigInt values without decimal conversion, displaying raw lamports as integers
+2. **Price Inconsistency**: TradeModal was overriding DexScreener prices with Jupiter's effective price when quotes loaded, causing displayed price to jump
+3. **Double Conversion**: `Positions.tsx` was converting BigInt to string before passing to formatTokenAmount, breaking decimal conversion
+
+**Solutions**:
+1. **Fixed PositionsBar.tsx (line 232)**:
+   - Changed from: `{toBigInt(position.amount).toLocaleString()}`
+   - Changed to: `{formatTokenAmount(position.amount, 6, position.decimals || 6)}`
+   - Now properly converts token lamports to human-readable amounts
+
+2. **Fixed Positions.tsx (line 169)**:
+   - Changed from: `{formatTokenAmount(amount.toString(), 6, position.decimals || 6)}`
+   - Changed to: `{formatTokenAmount(amount, 6, position.decimals || 6)}`
+   - Removed redundant string conversion
+
+3. **Fixed TradeModal.tsx**:
+   - Removed `effectivePriceLamports` and `displayPriceUsd` state variables that were being overridden
+   - Removed useEffect hooks that updated price from Jupiter quotes (lines 171-182)
+   - Now consistently uses `currentPrice` from DexScreener for all displays
+   - Jupiter quotes only used for estimated tokens and price impact, not displayed price
+   - Fixed sell calculation to use proper BigInt arithmetic: `(tokenLamports * priceLamportsPerToken) / 10^decimals`
+   - Added defensive Math.floor() before BigInt conversion to prevent RangeError
+
+**Price Unit Documentation**:
+- `currentPrice` represents **lamports per 1.0 whole token** (not per token lamport)
+- Backend converts DexScreener's `priceNative` (in SOL) to lamports: `Math.floor(priceNative * 1_000_000_000)`
+- All price displays across the platform now use DexScreener as single source of truth
+- Jupiter API only used for swap quote details (price impact, estimated amounts)
+
+**Status**: Holdings display correctly with proper decimals, prices are consistent across all views, and sell calculations use correct BigInt arithmetic.
+
 ### Critical Security and Data Integrity Fixes (November 2025)
 
 **Issues Discovered During Comprehensive Code Review:**
