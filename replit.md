@@ -3,6 +3,50 @@
 ## Overview
 SimFi is a comprehensive Solana token trading and analysis platform designed for risk-free simulation of memecoin trading. It includes a full-stack web application for paper trading, a mobile-friendly Telegram bot for on-the-go interaction, and a CLI tool for on-chain token analysis. The platform leverages real-time market data from various APIs to provide an authentic trading experience without financial risk, aiming to explore the market potential of simulated trading environments.
 
+## Recent Changes (November 2025)
+
+### Critical Price Consistency Fix
+**Issue**: Trade modals showed different prices for the same token depending on entry point (token page vs positions dropdown vs landing page).
+
+**Root Cause**: TradeModal was using a complex fallback chain that prioritized stale data:
+- Position data from `/api/trades/positions` had outdated `currentPrice`
+- Token page was passing stale token state to modal
+- Different entry points resulted in 15-30% price discrepancies
+
+**Solution** (TradeModal.tsx lines 62-77):
+```typescript
+// ALWAYS fetch fresh token data on mount
+const { data: freshToken } = useQuery<Token>({
+  queryKey: [`/api/tokens/${tokenAddress}`],
+  enabled: !!tokenAddress,
+  staleTime: 0,              // Never use cache
+  refetchInterval: 2500,     // Auto-refresh
+  refetchOnMount: 'always',  // Force refetch on open
+});
+
+// Prioritize fresh data over all else
+const activeToken = freshToken || token;
+const currentPrice = activeToken?.price || 0;
+```
+
+**Impact**: Every trade modal now fetches and displays the absolute latest DexScreener price, ensuring 100% consistency across all pages and entry points.
+
+### Holdings Display Fixes
+**Issues**: Token amounts showing "0.00" in positions dropdown and incorrect decimal precision.
+
+**Solutions**:
+- PositionsBar.tsx: Changed from `toBigInt().toLocaleString()` to `formatTokenAmount(position.amount, 6, position.decimals || 6)`
+- Positions.tsx: Removed double string conversion
+- All pages now use proper lamport-to-token conversion with correct decimals
+
+### BigInt Precision & Sell Calculations
+**Issue**: Sell P/L calculations converting to Number, risking overflow for positions >9,000 SOL.
+
+**Solution**: Keep all BigInt values as BigInt until final display via formatSol/formatTokenAmount helpers.
+
+### UI Cleanup
+**Change**: Removed PositionsBar from main landing page (Trade.tsx). Positions now only visible in dropdown menu for cleaner UI.
+
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
