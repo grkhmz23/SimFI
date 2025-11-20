@@ -370,7 +370,7 @@ export default function TokenPage() {
                   <div>
                     <p className="text-xs text-muted-foreground uppercase mb-1">Amount Held</p>
                     <p className="text-xl font-bold font-mono">
-                      {Number(formatTokenAmount(userPosition.amount, 2)).toLocaleString()} {token.symbol}
+                      {Number(formatTokenAmount(userPosition.amount, 2, userPosition.decimals || token.decimals || 6)).toLocaleString()} {token.symbol}
                     </p>
                   </div>
                   <div>
