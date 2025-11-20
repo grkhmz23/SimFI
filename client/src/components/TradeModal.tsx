@@ -154,9 +154,8 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const percentage = sellForm.watch('percentage') || 100;
   
   // Fetch Jupiter quote for buying
-  const buyTokenAddress = token?.tokenAddress || '';
-  const buyQuoteUrl = buyTokenAddress && solAmount > 0 
-    ? `/api/tokens/quote/buy?tokenAddress=${buyTokenAddress}&solAmount=${solAmount}` 
+  const buyQuoteUrl = tokenAddress && solAmount > 0 
+    ? `/api/tokens/quote/buy?tokenAddress=${tokenAddress}&solAmount=${solAmount}` 
     : null;
   
   const { data: jupiterQuote, isLoading: quoteLoading, dataUpdatedAt } = useQuery<JupiterQuote>({
@@ -203,7 +202,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   }, [jupiterSellQuote]);
 
   // Use Jupiter quote for estimated tokens if available, fallback to calculation with correct decimals
-  const buyTokenDecimals = token?.decimals || 6;
+  const buyTokenDecimals = activeToken?.decimals || 6;
   const currentPriceNumber = Number(currentPrice);
   const estimatedTokens = isBuying 
     ? (jupiterQuote?.tokenAmountDisplay || ((solAmount * 1_000_000_000) * (10 ** buyTokenDecimals)) / currentPriceNumber / (10 ** buyTokenDecimals))
@@ -222,7 +221,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   // currentPrice is in lamports per 1.0 whole token (not per token lamport)
   // Formula: (tokenLamports * priceLamportsPerToken) / 10^decimals = SOL lamports
   // CRITICAL: Use token's decimals (6 for pump.fun), not SOL decimals (9)!
-  const tokenDecimals = position?.decimals || token?.decimals || 6;
+  const tokenDecimals = position?.decimals || activeToken?.decimals || 6;
   const sellValueBigInt = !isBuying 
     ? (sellAmountBigInt * currentPrice) / (BigInt(10) ** BigInt(tokenDecimals))
     : BigInt(0);
@@ -264,7 +263,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   });
 
   const onBuySubmit = buyForm.handleSubmit((data) => {
-    if (!token) return;
+    if (!activeToken || !tokenAddress) return;
     const solSpentBigInt = BigInt(Math.floor(data.solAmount * 1_000_000_000));
     const userBalanceBigInt = toBigInt(user?.balance || 0);
     if (solSpentBigInt > userBalanceBigInt) {
@@ -278,12 +277,12 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     
     // Use currentPrice from DexScreener for consistent pricing across the app
     const tradeData = {
-      tokenAddress: token.tokenAddress,
-      tokenName: token.name,
-      tokenSymbol: token.symbol,
+      tokenAddress: tokenAddress,
+      tokenName: activeToken.name || name,
+      tokenSymbol: activeToken.symbol || symbol,
       solAmount: data.solAmount,
       price: Number(currentPrice), // Convert BigInt to number for API
-      decimals: token.decimals || 6, // Default to 6 for pump.fun tokens
+      decimals: activeToken.decimals || 6, // Default to 6 for pump.fun tokens
     };
     
     tradeMutation.mutate(tradeData);
