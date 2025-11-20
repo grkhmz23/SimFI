@@ -482,13 +482,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Calculate how much SOL to spend in Lamports (convert to BigInt)
       const solSpent = BigInt(Math.floor(solAmount * 1_000_000_000)); // Convert SOL to Lamports
-      const priceBigInt = BigInt(Math.floor(price)); // Price in Lamports per token
+      const priceBigInt = BigInt(Math.floor(price)); // Price in Lamports per whole token
+      
+      console.log(`📊 BUY DEBUG:`);
+      console.log(`  - Incoming price: ${price}`);
+      console.log(`  - SOL amount: ${solAmount}`);
+      console.log(`  - Decimals: ${decimals}`);
+      console.log(`  - solSpent: ${solSpent.toString()}`);
+      console.log(`  - priceBigInt: ${priceBigInt.toString()}`);
       
       // Calculate tokens using correct decimals (6 for pump.fun, 9 for SOL-like tokens)
-      // tokenAmount = solSpent (lamports) / price (lamports per token) * 10^decimals
+      // tokenAmount = solSpent (lamports) * 10^decimals / price (lamports per whole token)
       const decimalMultiplier = BigInt(10 ** decimals);
       const tokenAmount = (solSpent * decimalMultiplier) / priceBigInt;
       const tokensDisplay = Number(tokenAmount) / (10 ** decimals);
+      
+      console.log(`  - decimalMultiplier: ${decimalMultiplier.toString()}`);
+      console.log(`  - numerator: ${(solSpent * decimalMultiplier).toString()}`);
+      console.log(`  - tokenAmount (atomic): ${tokenAmount.toString()}`);
+      console.log(`  - tokensDisplay (whole): ${tokensDisplay.toFixed(6)}`);
       console.log(`🔢 Buy: ${solAmount} SOL → ${tokensDisplay.toFixed(2)} tokens (${decimals} decimals) at ${price} Lamports/token`);
       
       if (tokenAmount <= 0n) {
