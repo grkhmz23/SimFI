@@ -51,6 +51,28 @@ function serializeBigInts(obj: any): any {
   );
 }
 
+// Helper to fetch current price from DexScreener (for price validation)
+async function fetchDexScreenerPrice(tokenAddress: string): Promise<{ price: number } | null> {
+  try {
+    const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 3000);
+    if (dexResponse.ok) {
+      const dexData = await dexResponse.json();
+      const solanaPair = dexData.pairs?.find((pair: any) => 
+        pair.chainId === 'solana' && pair.baseToken?.address === tokenAddress
+      );
+      
+      if (solanaPair && solanaPair.priceNative) {
+        // Convert price to lamports per token
+        const priceLamports = Math.floor(parseFloat(solanaPair.priceNative) * 1_000_000_000);
+        return { price: priceLamports };
+      }
+    }
+  } catch (error) {
+    console.log(`⚠️ DexScreener price fetch failed for ${tokenAddress}`);
+  }
+  return null;
+}
+
 // Helper to fetch token metadata from multiple APIs with fallbacks
 async function fetchTokenMetadata(tokenAddress: string): Promise<{ icon?: string; name?: string; symbol?: string } | null> {
   let dexMetadata: { icon?: string; name?: string; symbol?: string } | null = null;
@@ -478,6 +500,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUserById(req.userId!);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
+      }
+      
+      // Validate price hasn't changed significantly (5% threshold)
+      const currentTokenData = await fetchDexScreenerPrice(tokenAddress);
+      if (currentTokenData && currentTokenData.price) {
+        const currentPrice = BigInt(currentTokenData.price);
+        const providedPrice = BigInt(Math.floor(price));
+        
+        const priceDiff = currentPrice > providedPrice 
+          ? currentPrice - providedPrice 
+          : providedPrice - currentPrice;
+        const percentChange = (Number(priceDiff) * 100) / Number(providedPrice);
+        
+        if (percentChange > 5) {
+          return res.status(400).json({ 
+            error: `Price changed by ${percentChange.toFixed(2)}%. Please refresh and try again.`,
+            currentPrice: currentPrice.toString(),
+            providedPrice: providedPrice.toString()
+          });
+        }
       }
       
       // Calculate how much SOL to spend in Lamports (convert to BigInt)
