@@ -17,7 +17,8 @@ import { formatSol, toBigInt, formatTokenAmount, lamportsToTokens, formatUSD, la
 
 interface TradeModalProps {
   token?: Token;
-  position?: Position & { currentPrice?: number };
+  position?: Position & { currentPrice?: number | string | bigint };
+  mode?: 'buy' | 'sell';
   onClose: () => void;
 }
 
@@ -49,11 +50,11 @@ const sellSchema = z.object({
   percentage: z.number().min(1).max(100),
 });
 
-export function TradeModal({ token, position, onClose }: TradeModalProps) {
+export function TradeModal({ token, position, mode, onClose }: TradeModalProps) {
   const { user, isAuthenticated, refreshUser } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const isBuying = !position;
+  const isBuying = mode === 'buy' || !position;
   const [lastQuoteUpdate, setLastQuoteUpdate] = useState<Date>(new Date());
 
   // Fetch fresh token data ONLY when we don't have token prop (e.g., selling from positions dropdown)
@@ -69,7 +70,7 @@ export function TradeModal({ token, position, onClose }: TradeModalProps) {
 
   // Priority: passed token (from token page) > fresh fetch > fallback to position data
   const activeToken = token || freshToken;
-  const currentPrice = activeToken?.price || position?.currentPrice || 0;
+  const currentPrice = toBigInt(activeToken?.price || position?.currentPrice || 0);
   const currentPriceUsd = activeToken?.priceUsd;
   const symbol = position?.tokenSymbol || activeToken?.symbol || '';
   const name = position?.tokenName || activeToken?.name || '';
