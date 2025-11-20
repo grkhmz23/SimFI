@@ -484,19 +484,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         currentPrice: priceMap.get(p.tokenAddress) || p.entryPrice, // Both are BigInt now
       }));
       
-      // Debug logging for first position
-      if (enrichedPositions.length > 0) {
-        const first = enrichedPositions[0];
-        console.log(`📊 POSITION DEBUG:`);
-        console.log(`  - Token: ${first.tokenSymbol}`);
-        console.log(`  - Entry Price (BigInt): ${first.entryPrice.toString()}`);
-        console.log(`  - Current Price (BigInt): ${first.currentPrice.toString()}`);
-        console.log(`  - Amount: ${first.amount.toString()}`);
-        console.log(`  - SOL Spent: ${first.solSpent.toString()}`);
-        console.log(`  - Decimals: ${first.decimals}`);
-        console.log(`  - Manual calc: (${first.solSpent} * ${10 ** (first.decimals || 6)}) / ${first.amount} = ${(first.solSpent * BigInt(10 ** (first.decimals || 6))) / first.amount}`);
-      }
-      
       res.json(serializeBigInts({ positions: enrichedPositions }));
     } catch (error: any) {
       console.error('Get positions error:', error);
@@ -542,24 +529,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const solSpent = BigInt(Math.floor(solAmount * 1_000_000_000)); // Convert SOL to Lamports
       const priceBigInt = BigInt(Math.floor(price)); // Price in Lamports per whole token
       
-      console.log(`📊 BUY DEBUG:`);
-      console.log(`  - Incoming price: ${price}`);
-      console.log(`  - SOL amount: ${solAmount}`);
-      console.log(`  - Decimals: ${decimals}`);
-      console.log(`  - solSpent: ${solSpent.toString()}`);
-      console.log(`  - priceBigInt: ${priceBigInt.toString()}`);
-      
       // Calculate tokens using correct decimals (6 for pump.fun, 9 for SOL-like tokens)
       // tokenAmount = solSpent (lamports) * 10^decimals / price (lamports per whole token)
       const decimalMultiplier = BigInt(10 ** decimals);
       const tokenAmount = (solSpent * decimalMultiplier) / priceBigInt;
       const tokensDisplay = Number(tokenAmount) / (10 ** decimals);
-      
-      console.log(`  - decimalMultiplier: ${decimalMultiplier.toString()}`);
-      console.log(`  - numerator: ${(solSpent * decimalMultiplier).toString()}`);
-      console.log(`  - tokenAmount (atomic): ${tokenAmount.toString()}`);
-      console.log(`  - tokensDisplay (whole): ${tokensDisplay.toFixed(6)}`);
-      console.log(`🔢 Buy: ${solAmount} SOL → ${tokensDisplay.toFixed(2)} tokens (${decimals} decimals) at ${price} Lamports/token`);
       
       if (tokenAmount <= 0n) {
         return res.status(400).json({ error: 'SOL amount too small to buy tokens' });
