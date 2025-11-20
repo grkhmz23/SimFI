@@ -66,6 +66,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     staleTime: 0, // Never use cache
     refetchInterval: 2500, // Auto-refresh every 2.5 seconds
     refetchOnMount: 'always', // Force refetch on modal open
+    select: (data: any) => data.token, // Unwrap { token: {...} } response
   });
 
   // ALWAYS prioritize fresh data over stale position/token data
