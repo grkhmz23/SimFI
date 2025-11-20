@@ -51,6 +51,30 @@ function serializeBigInts(obj: any): any {
   );
 }
 
+// Helper to find the best (highest liquidity) Solana pair from DexScreener pairs array
+// This ensures we get the most accurate price from the most liquid market
+function findBestSolanaPair(pairs: any[], tokenAddress: string): any | null {
+  if (!pairs || pairs.length === 0) return null;
+  
+  // Filter for Solana pairs matching this token
+  const solanaPairs = pairs.filter((pair: any) => 
+    pair.chainId === 'solana' && 
+    pair.baseToken?.address === tokenAddress &&
+    pair.priceNative
+  );
+  
+  if (solanaPairs.length === 0) return null;
+  
+  // Sort by liquidity (USD) descending - highest liquidity = most accurate price
+  solanaPairs.sort((a: any, b: any) => {
+    const liquidityA = parseFloat(a.liquidity?.usd || '0');
+    const liquidityB = parseFloat(b.liquidity?.usd || '0');
+    return liquidityB - liquidityA;
+  });
+  
+  return solanaPairs[0]; // Return highest liquidity pair
+}
+
 // Helper to fetch current price from DexScreener (for price validation)
 // Returns price in lamports per token (clamped to minimum 1 for sub-lamport tokens)
 async function fetchDexScreenerPrice(tokenAddress: string): Promise<{ priceLamports: number } | null> {
@@ -58,9 +82,7 @@ async function fetchDexScreenerPrice(tokenAddress: string): Promise<{ priceLampo
     const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 3000);
     if (dexResponse.ok) {
       const dexData = await dexResponse.json();
-      const solanaPair = dexData.pairs?.find((pair: any) => 
-        pair.chainId === 'solana' && pair.baseToken?.address === tokenAddress
-      );
+      const solanaPair = findBestSolanaPair(dexData.pairs, tokenAddress);
       
       if (solanaPair && solanaPair.priceNative) {
         // Convert to lamports, clamp to 1 minimum (sub-lamport tokens are <$0.0000002)
@@ -83,9 +105,7 @@ async function fetchTokenMetadata(tokenAddress: string): Promise<{ icon?: string
     const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 3000);
     if (dexResponse.ok) {
       const dexData = await dexResponse.json();
-      const solanaPair = dexData.pairs?.find((pair: any) => 
-        pair.chainId === 'solana' && pair.baseToken?.address === tokenAddress
-      );
+      const solanaPair = findBestSolanaPair(dexData.pairs, tokenAddress);
       
       if (solanaPair) {
         dexMetadata = {
@@ -461,12 +481,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const dexData = await dexResponse.json();
               const pairs = dexData.pairs || [];
               
-              // Build price map from pairs (store as BigInt for consistency)
-              for (const pair of pairs) {
-                const tokenAddr = pair.baseToken?.address;
-                if (tokenAddr && pair.chainId === 'solana' && pair.priceNative) {
+              // Build price map using best (highest liquidity) pair for each token
+              for (const tokenAddr of batch) {
+                const bestPair = findBestSolanaPair(pairs, tokenAddr);
+                if (bestPair && bestPair.priceNative) {
                   // Clamp to 1 lamport minimum (sub-lamport tokens <$0.0000002 are negligible)
-                  const priceLamports = BigInt(Math.max(1, Math.floor(parseFloat(pair.priceNative) * 1_000_000_000)));
+                  const priceLamports = BigInt(Math.max(1, Math.floor(parseFloat(bestPair.priceNative) * 1_000_000_000)));
                   priceMap.set(tokenAddr, priceLamports);
                 }
               }
@@ -970,10 +990,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (dexResponse.ok) {
             const dexData = await dexResponse.json();
             
-            // Find the Solana pair for this token
-            const solanaPair = dexData.pairs?.find((pair: any) => 
-              pair.chainId === 'solana' && pair.baseToken?.address === address
-            );
+            // Find the best (highest liquidity) Solana pair for this token
+            const solanaPair = findBestSolanaPair(dexData.pairs, address);
             
             if (solanaPair) {
               // Get both native (SOL) and USD prices
