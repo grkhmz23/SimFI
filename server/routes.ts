@@ -484,6 +484,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         currentPrice: priceMap.get(p.tokenAddress) || p.entryPrice, // Both are BigInt now
       }));
       
+      // Debug logging for first position
+      if (enrichedPositions.length > 0) {
+        const first = enrichedPositions[0];
+        console.log(`📊 POSITION DEBUG:`);
+        console.log(`  - Token: ${first.tokenSymbol}`);
+        console.log(`  - Entry Price (BigInt): ${first.entryPrice.toString()}`);
+        console.log(`  - Current Price (BigInt): ${first.currentPrice.toString()}`);
+        console.log(`  - Amount: ${first.amount.toString()}`);
+        console.log(`  - SOL Spent: ${first.solSpent.toString()}`);
+        console.log(`  - Decimals: ${first.decimals}`);
+        console.log(`  - Manual calc: (${first.solSpent} * ${10 ** (first.decimals || 6)}) / ${first.amount} = ${(first.solSpent * BigInt(10 ** (first.decimals || 6))) / first.amount}`);
+      }
+      
       res.json(serializeBigInts({ positions: enrichedPositions }));
     } catch (error: any) {
       console.error('Get positions error:', error);
