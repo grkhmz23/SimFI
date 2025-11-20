@@ -11,7 +11,7 @@ import { TrendingUp, TrendingDown, Wallet, ShoppingCart, DollarSign, ExternalLin
 import type { Position } from '@shared/schema';
 
 interface EnrichedPosition extends Position {
-  currentPrice: number;
+  currentPrice: number | string | bigint;
   currentValue: bigint;
   profitLoss: bigint;
   profitLossPercent: number;
@@ -317,6 +317,7 @@ export default function Positions() {
         {showTradeModal && selectedPosition && (
           <TradeModal
             position={selectedPosition}
+            mode={tradeMode}
             onClose={closeTradeModal}
           />
         )}
