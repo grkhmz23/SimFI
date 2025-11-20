@@ -52,7 +52,8 @@ function serializeBigInts(obj: any): any {
 }
 
 // Helper to fetch current price from DexScreener (for price validation)
-async function fetchDexScreenerPrice(tokenAddress: string): Promise<{ price: number } | null> {
+// Returns price in lamports per token (clamped to minimum 1 for sub-lamport tokens)
+async function fetchDexScreenerPrice(tokenAddress: string): Promise<{ priceLamports: number } | null> {
   try {
     const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 3000);
     if (dexResponse.ok) {
@@ -62,9 +63,9 @@ async function fetchDexScreenerPrice(tokenAddress: string): Promise<{ price: num
       );
       
       if (solanaPair && solanaPair.priceNative) {
-        // Convert price to lamports per token
-        const priceLamports = Math.floor(parseFloat(solanaPair.priceNative) * 1_000_000_000);
-        return { price: priceLamports };
+        // Convert to lamports, clamp to 1 minimum (sub-lamport tokens are <$0.0000002)
+        const priceLamports = Math.max(1, Math.floor(parseFloat(solanaPair.priceNative) * 1_000_000_000));
+        return { priceLamports };
       }
     }
   } catch (error) {
@@ -464,7 +465,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               for (const pair of pairs) {
                 const tokenAddr = pair.baseToken?.address;
                 if (tokenAddr && pair.chainId === 'solana' && pair.priceNative) {
-                  const priceLamports = BigInt(Math.floor(parseFloat(pair.priceNative) * 1_000_000_000));
+                  // Clamp to 1 lamport minimum (sub-lamport tokens <$0.0000002 are negligible)
+                  const priceLamports = BigInt(Math.max(1, Math.floor(parseFloat(pair.priceNative) * 1_000_000_000)));
                   priceMap.set(tokenAddr, priceLamports);
                 }
               }
@@ -503,14 +505,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Validate price hasn't changed significantly (5% threshold)
-      // Compare price-per-token values, not SOL amounts
+      // NOTE: Sub-lamport tokens (<1 lamport = <$0.0000002) are clamped to 1 lamport
       const currentTokenData = await fetchDexScreenerPrice(tokenAddress);
-      if (currentTokenData && currentTokenData.price) {
-        const currentPriceLamports = currentTokenData.price;
+      if (currentTokenData && currentTokenData.priceLamports) {
+        const currentPriceLamports = currentTokenData.priceLamports;
         const providedPriceLamports = Math.floor(price);
         
         const priceDiff = Math.abs(currentPriceLamports - providedPriceLamports);
-        // Use safe denominator to avoid division by zero for low-priced tokens
+        // Use safe denominator to avoid division by zero
         const denominator = Math.max(currentPriceLamports, providedPriceLamports, 1);
         const percentChange = (priceDiff * 100) / denominator;
         
