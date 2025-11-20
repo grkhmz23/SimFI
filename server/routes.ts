@@ -503,21 +503,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Validate price hasn't changed significantly (5% threshold)
+      // Compare price-per-token values, not SOL amounts
       const currentTokenData = await fetchDexScreenerPrice(tokenAddress);
       if (currentTokenData && currentTokenData.price) {
-        const currentPrice = BigInt(currentTokenData.price);
-        const providedPrice = BigInt(Math.floor(price));
+        const currentPriceLamports = currentTokenData.price;
+        const providedPriceLamports = Math.floor(price);
         
-        const priceDiff = currentPrice > providedPrice 
-          ? currentPrice - providedPrice 
-          : providedPrice - currentPrice;
-        const percentChange = (Number(priceDiff) * 100) / Number(providedPrice);
+        const priceDiff = Math.abs(currentPriceLamports - providedPriceLamports);
+        // Use safe denominator to avoid division by zero for low-priced tokens
+        const denominator = Math.max(currentPriceLamports, providedPriceLamports, 1);
+        const percentChange = (priceDiff * 100) / denominator;
         
         if (percentChange > 5) {
           return res.status(400).json({ 
             error: `Price changed by ${percentChange.toFixed(2)}%. Please refresh and try again.`,
-            currentPrice: currentPrice.toString(),
-            providedPrice: providedPrice.toString()
+            currentPrice: currentPriceLamports.toString(),
+            providedPrice: providedPriceLamports.toString()
           });
         }
       }
@@ -1018,7 +1019,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get Jupiter quote for buying tokens with SOL
   app.get('/api/tokens/quote/buy', async (req, res) => {
     try {
-      const { tokenAddress, solAmount } = req.query;
+      const { tokenAddress, solAmount, decimals } = req.query;
       
       if (!tokenAddress || !solAmount) {
         return res.status(400).json({ error: 'tokenAddress and solAmount are required' });
@@ -1028,6 +1029,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(solAmountNum) || solAmountNum <= 0) {
         return res.status(400).json({ error: 'Invalid SOL amount' });
       }
+
+      // Use provided decimals or default to 6 for pump.fun tokens
+      const TOKEN_DECIMALS = decimals ? parseInt(decimals as string) : 6;
 
       // Convert SOL to Lamports for Jupiter API
       const inputAmountLamports = Math.floor(solAmountNum * 1_000_000_000);
@@ -1058,14 +1062,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tokenAmountOut = parseInt(quoteData.outAmount); // In token's smallest unit
       const priceImpactPct = parseFloat(quoteData.priceImpactPct || '0');
       
-      // Most pump.fun tokens use 6 decimals, not 9
-      const TOKEN_DECIMALS = 6;
+      // Convert using actual token decimals
       const tokenAmountDecimal = tokenAmountOut / (10 ** TOKEN_DECIMALS);
       const effectivePriceLamports = tokenAmountDecimal > 0 
         ? Math.floor(inputAmountLamports / tokenAmountDecimal)
         : 0;
       
-      console.log(`✅ Jupiter quote: ${solAmountNum} SOL → ${tokenAmountDecimal.toFixed(2)} tokens (impact: ${priceImpactPct}%)`);
+      console.log(`✅ Jupiter quote: ${solAmountNum} SOL → ${tokenAmountDecimal.toFixed(2)} tokens (${TOKEN_DECIMALS} decimals, impact: ${priceImpactPct}%)`);
       
       res.json({
         solAmount: solAmountNum,
@@ -1085,7 +1088,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get Jupiter quote for selling tokens for SOL
   app.get('/api/tokens/quote/sell', async (req, res) => {
     try {
-      const { tokenAddress, tokenAmount } = req.query;
+      const { tokenAddress, tokenAmount, decimals } = req.query;
       
       if (!tokenAddress || !tokenAmount) {
         return res.status(400).json({ error: 'tokenAddress and tokenAmount are required' });
@@ -1096,8 +1099,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Invalid token amount' });
       }
 
-      // Most pump.fun tokens use 6 decimals, not 9
-      const TOKEN_DECIMALS = 6;
+      // Use provided decimals or default to 6 for pump.fun tokens
+      const TOKEN_DECIMALS = decimals ? parseInt(decimals as string) : 6;
       const inputAmountTokenUnits = Math.floor(tokenAmountNum * (10 ** TOKEN_DECIMALS));
       
       // SOL mint address (wrapped SOL)
