@@ -263,7 +263,24 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   });
 
   const onBuySubmit = buyForm.handleSubmit((data) => {
-    if (!activeToken || !tokenAddress) return;
+    if (!activeToken || !tokenAddress) {
+      console.error('Buy blocked: missing activeToken or tokenAddress');
+      return;
+    }
+    
+    const priceNumber = Number(currentPrice);
+    console.log('Buy submit - currentPrice:', currentPrice.toString(), 'priceNumber:', priceNumber);
+    console.log('Buy submit - activeToken:', activeToken);
+    
+    if (priceNumber <= 0) {
+      toast({
+        title: 'Price Unavailable',
+        description: 'Token price is loading, please wait a moment and try again',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     const solSpentBigInt = BigInt(Math.floor(data.solAmount * 1_000_000_000));
     const userBalanceBigInt = toBigInt(user?.balance || 0);
     if (solSpentBigInt > userBalanceBigInt) {
@@ -281,10 +298,11 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       tokenName: activeToken.name || name,
       tokenSymbol: activeToken.symbol || symbol,
       solAmount: data.solAmount,
-      price: Number(currentPrice), // Convert BigInt to number for API
+      price: priceNumber, // Convert BigInt to number for API
       decimals: activeToken.decimals || 6, // Default to 6 for pump.fun tokens
     };
     
+    console.log('Submitting buy trade:', tradeData);
     tradeMutation.mutate(tradeData);
   });
 
