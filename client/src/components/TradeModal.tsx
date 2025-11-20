@@ -153,10 +153,11 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
 
   const solAmount = buyForm.watch('solAmount') || 0;
   const percentage = sellForm.watch('percentage') || 100;
+  const buyTokenDecimals = activeToken?.decimals || 6;
   
   // Fetch Jupiter quote for buying
   const buyQuoteUrl = tokenAddress && solAmount > 0 
-    ? `/api/tokens/quote/buy?tokenAddress=${tokenAddress}&solAmount=${solAmount}` 
+    ? `/api/tokens/quote/buy?tokenAddress=${tokenAddress}&solAmount=${solAmount}&decimals=${buyTokenDecimals}` 
     : null;
   
   const { data: jupiterQuote, isLoading: quoteLoading, dataUpdatedAt } = useQuery<JupiterQuote>({
@@ -177,7 +178,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const positionDecimals = position?.decimals || 6;
   const sellTokenAmountStr = sellAmountBigInt > 0n ? lamportsToTokens(sellAmountBigInt, positionDecimals) : '0';
   const sellQuoteUrl = sellTokenAddress && sellTokenAmountStr !== '0'
-    ? `/api/tokens/quote/sell?tokenAddress=${sellTokenAddress}&tokenAmount=${sellTokenAmountStr}`
+    ? `/api/tokens/quote/sell?tokenAddress=${sellTokenAddress}&tokenAmount=${sellTokenAmountStr}&decimals=${positionDecimals}`
     : null;
 
   const { data: jupiterSellQuote, isLoading: sellQuoteLoading } = useQuery<JupiterSellQuote>({
@@ -203,10 +204,9 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   }, [jupiterSellQuote]);
 
   // Use Jupiter quote for estimated tokens if available, fallback to calculation with correct decimals
-  const buyTokenDecimals = activeToken?.decimals || 6;
   const currentPriceNumber = Number(currentPrice);
   const estimatedTokens = isBuying 
-    ? (jupiterQuote?.tokenAmountDisplay || (solAmount * 1_000_000_000) / currentPriceNumber)
+    ? (jupiterQuote?.tokenAmountDisplay || (currentPriceNumber > 0 && isFinite(currentPriceNumber) ? (solAmount * 1_000_000_000) / currentPriceNumber : 0))
     : 0;
   
   const priceImpact = isBuying 
