@@ -206,7 +206,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const buyTokenDecimals = activeToken?.decimals || 6;
   const currentPriceNumber = Number(currentPrice);
   const estimatedTokens = isBuying 
-    ? (jupiterQuote?.tokenAmountDisplay || ((solAmount * 1_000_000_000) * (10 ** buyTokenDecimals)) / currentPriceNumber / (10 ** buyTokenDecimals))
+    ? (jupiterQuote?.tokenAmountDisplay || (solAmount * 1_000_000_000) / currentPriceNumber)
     : 0;
   
   const priceImpact = isBuying 

@@ -1016,20 +1016,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tokenAmountOut = parseInt(quoteData.outAmount); // In token's smallest unit
       const priceImpactPct = parseFloat(quoteData.priceImpactPct || '0');
       
-      // Calculate effective price: SOL spent / tokens received = SOL per token
-      // Both in their raw units (Lamports / token base units)
-      const tokenAmountDecimal = tokenAmountOut / 1_000_000_000;
+      // Most pump.fun tokens use 6 decimals, not 9
+      const TOKEN_DECIMALS = 6;
+      const tokenAmountDecimal = tokenAmountOut / (10 ** TOKEN_DECIMALS);
       const effectivePriceLamports = tokenAmountDecimal > 0 
         ? Math.floor(inputAmountLamports / tokenAmountDecimal)
         : 0;
       
-      console.log(`✅ Jupiter quote: ${solAmountNum} SOL → ${tokenAmountOut / 1_000_000_000} tokens (impact: ${priceImpactPct}%)`);
+      console.log(`✅ Jupiter quote: ${solAmountNum} SOL → ${tokenAmountDecimal.toFixed(2)} tokens (impact: ${priceImpactPct}%)`);
       
       res.json({
         solAmount: solAmountNum,
         solAmountLamports: inputAmountLamports,
         tokenAmountOut: tokenAmountOut,
-        tokenAmountDisplay: tokenAmountOut / 1_000_000_000,
+        tokenAmountDisplay: tokenAmountDecimal,
         effectivePriceLamports: effectivePriceLamports,
         priceImpactPct: priceImpactPct,
         slippageBps: 50,
@@ -1054,8 +1054,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Invalid token amount' });
       }
 
-      // Convert token amount to smallest unit (assuming 9 decimals like most Solana tokens)
-      const inputAmountTokenUnits = Math.floor(tokenAmountNum * 1_000_000_000);
+      // Most pump.fun tokens use 6 decimals, not 9
+      const TOKEN_DECIMALS = 6;
+      const inputAmountTokenUnits = Math.floor(tokenAmountNum * (10 ** TOKEN_DECIMALS));
       
       // SOL mint address (wrapped SOL)
       const SOL_MINT = 'So11111111111111111111111111111111111111112';
