@@ -69,7 +69,16 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   });
 
   // ALWAYS prioritize fresh data over stale position/token data
-  const activeToken = freshToken || token;
+  // If we have a position but no fresh token yet, use position's currentPrice as fallback
+  const activeToken = freshToken || token || (position ? {
+    tokenAddress: position.tokenAddress,
+    name: position.tokenName,
+    symbol: position.tokenSymbol,
+    price: position.currentPrice || 0,
+    priceUsd: undefined,
+    decimals: position.decimals || 6,
+  } as Partial<Token> : undefined);
+  
   const currentPrice = toBigInt(activeToken?.price || 0);
   const currentPriceUsd = activeToken?.priceUsd;
   const symbol = position?.tokenSymbol || activeToken?.symbol || '';
@@ -324,19 +333,25 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
           <div className="rounded-lg bg-card p-4 text-center border border-card-border">
             <p className="text-sm text-muted-foreground mb-2 flex items-center justify-center gap-1">
               Current Price
-              {(isBuying ? jupiterQuote : jupiterSellQuote) && (
+              {(isFetchingFreshToken || (isBuying ? jupiterQuote : jupiterSellQuote)) && (
                 <RefreshCw className="h-3 w-3 text-primary animate-pulse" />
               )}
             </p>
-            <p className="text-3xl font-bold font-mono text-primary" data-testid="text-current-price">
-              {currentPriceUsd !== undefined 
-                ? (currentPriceUsd < 0.01 && currentPriceUsd > 0 
-                    ? `$${currentPriceUsd.toFixed(6)}` 
-                    : `$${currentPriceUsd.toFixed(4)}`)
-                : formatUSD(currentPrice, 6)
-              }
-            </p>
-            {(isBuying ? jupiterQuote : jupiterSellQuote) && (
+            {isFetchingFreshToken && !activeToken ? (
+              <p className="text-xl font-mono text-muted-foreground" data-testid="text-current-price">
+                Loading...
+              </p>
+            ) : (
+              <p className="text-3xl font-bold font-mono text-primary" data-testid="text-current-price">
+                {currentPriceUsd !== undefined 
+                  ? (currentPriceUsd < 0.01 && currentPriceUsd > 0 
+                      ? `$${currentPriceUsd.toFixed(6)}` 
+                      : `$${currentPriceUsd.toFixed(4)}`)
+                  : formatUSD(currentPrice, 6)
+                }
+              </p>
+            )}
+            {!isFetchingFreshToken && (isBuying ? jupiterQuote : jupiterSellQuote) && (
               <p className="text-xs text-muted-foreground mt-1">Live • Auto-updating</p>
             )}
           </div>
