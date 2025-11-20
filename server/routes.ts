@@ -419,7 +419,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fetch current prices for all unique tokens
       const uniqueTokenAddresses = positions.map(p => p.tokenAddress);
       const uniqueTokens = Array.from(new Set(uniqueTokenAddresses));
-      const priceMap = new Map<string, number>();
+      const priceMap = new Map<string, bigint>();
       
       if (uniqueTokens.length > 0) {
         try {
@@ -438,11 +438,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const dexData = await dexResponse.json();
               const pairs = dexData.pairs || [];
               
-              // Build price map from pairs
+              // Build price map from pairs (store as BigInt for consistency)
               for (const pair of pairs) {
                 const tokenAddr = pair.baseToken?.address;
                 if (tokenAddr && pair.chainId === 'solana' && pair.priceNative) {
-                  const priceLamports = Math.floor(parseFloat(pair.priceNative) * 1_000_000_000);
+                  const priceLamports = BigInt(Math.floor(parseFloat(pair.priceNative) * 1_000_000_000));
                   priceMap.set(tokenAddr, priceLamports);
                 }
               }
@@ -454,10 +454,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Enrich positions with current prices
+      // Enrich positions with current prices (both entryPrice and currentPrice are BigInt)
       const enrichedPositions = positions.map(p => ({
         ...p,
-        currentPrice: priceMap.get(p.tokenAddress) || p.entryPrice, // Fallback to entry price
+        currentPrice: priceMap.get(p.tokenAddress) || p.entryPrice, // Both are BigInt now
       }));
       
       res.json(serializeBigInts({ positions: enrichedPositions }));
