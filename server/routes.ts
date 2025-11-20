@@ -592,6 +592,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sellAmount = amountLamports ? BigInt(amountLamports) : position.amount;
       const exitPriceBigInt = BigInt(exitPriceLamports);
       
+      // Validate price hasn't changed significantly (5% threshold) - same as buy validation
+      const currentTokenData = await fetchDexScreenerPrice(position.tokenAddress);
+      if (currentTokenData && currentTokenData.priceLamports) {
+        const currentPriceLamports = currentTokenData.priceLamports;
+        const providedPriceLamports = Number(exitPriceBigInt); // Convert BigInt to number for comparison
+        
+        const priceDiff = Math.abs(currentPriceLamports - providedPriceLamports);
+        const denominator = Math.max(currentPriceLamports, providedPriceLamports, 1);
+        const percentChange = (priceDiff * 100) / denominator;
+        
+        if (percentChange > 5) {
+          return res.status(400).json({ 
+            error: `Price changed by ${percentChange.toFixed(2)}%. Please refresh and try again.`,
+            currentPrice: currentPriceLamports.toString(),
+            providedPrice: providedPriceLamports.toString()
+          });
+        }
+      }
+      
       // Use position's decimals (6 for pump.fun tokens, 9 for SOL-like tokens)
       const decimals = position.decimals || 6;
       const decimalDivisor = BigInt(10 ** decimals);
