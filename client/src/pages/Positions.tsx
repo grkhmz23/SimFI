@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TradeModal } from '@/components/TradeModal';
 import { useAuth } from '@/lib/auth-context';
-import { formatSol, formatTokenAmount, formatPricePerToken, lamportsToTokens, toBigInt } from '@/lib/lamports';
+import { formatSol, formatTokenAmount, formatPricePerToken, lamportsToTokens, toBigInt, SOL_PRICE_USD } from '@/lib/lamports';
 import { TrendingUp, TrendingDown, Wallet, ShoppingCart, DollarSign, ExternalLink, BarChart3 } from 'lucide-react';
 import type { Position } from '@shared/schema';
 
@@ -232,13 +232,13 @@ export default function Positions() {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Entry Price</span>
                         <span className="font-mono" data-testid={`text-entry-price-${position.id}`}>
-                          {formatPricePerToken(position.entryPrice, 9)} SOL
+                          ${(Number(toBigInt(position.entryPrice)) / 1e9 * SOL_PRICE_USD).toFixed(6)}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Current Price</span>
                         <span className="font-mono" data-testid={`text-current-price-${position.id}`}>
-                          {formatPricePerToken(position.currentPrice, 9)} SOL
+                          ${(Number(toBigInt(position.currentPrice)) / 1e9 * SOL_PRICE_USD).toFixed(6)}
                         </span>
                       </div>
                     </div>
