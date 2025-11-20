@@ -195,8 +195,9 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
 
   // Use Jupiter quote for estimated tokens if available, fallback to calculation with correct decimals
   const buyTokenDecimals = token?.decimals || 6;
+  const currentPriceNumber = Number(currentPrice);
   const estimatedTokens = isBuying 
-    ? (jupiterQuote?.tokenAmountDisplay || ((solAmount * 1_000_000_000) * (10 ** buyTokenDecimals)) / currentPrice / (10 ** buyTokenDecimals))
+    ? (jupiterQuote?.tokenAmountDisplay || ((solAmount * 1_000_000_000) * (10 ** buyTokenDecimals)) / currentPriceNumber / (10 ** buyTokenDecimals))
     : 0;
   
   const priceImpact = isBuying 
@@ -214,7 +215,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   // CRITICAL: Use token's decimals (6 for pump.fun), not SOL decimals (9)!
   const tokenDecimals = position?.decimals || token?.decimals || 6;
   const sellValueBigInt = !isBuying 
-    ? (sellAmountBigInt * BigInt(Math.floor(currentPrice))) / (BigInt(10) ** BigInt(tokenDecimals))
+    ? (sellAmountBigInt * currentPrice) / (BigInt(10) ** BigInt(tokenDecimals))
     : BigInt(0);
   
   const profitLossBigInt = !isBuying ? sellValueBigInt - proportionalCostBigInt : BigInt(0);
@@ -272,7 +273,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       tokenName: token.name,
       tokenSymbol: token.symbol,
       solAmount: data.solAmount,
-      price: currentPrice,
+      price: Number(currentPrice), // Convert BigInt to number for API
       decimals: token.decimals || 6, // Default to 6 for pump.fun tokens
     };
     
@@ -285,9 +286,8 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     // Keep BigInt throughout - send lamports as string to backend
     const sellAmountLamports = (toBigInt(position.amount) * BigInt(data.percentage)) / BigInt(100);
     
-    // currentPrice is in lamports per whole token from DexScreener
-    // Floor defensively before BigInt conversion to prevent RangeError on fractional values
-    const exitPriceLamports = BigInt(Math.floor(currentPrice));
+    // currentPrice is already a BigInt in lamports per whole token from DexScreener
+    const exitPriceLamports = currentPrice;
     
     tradeMutation.mutate({
       positionId: position.id,
