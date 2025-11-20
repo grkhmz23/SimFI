@@ -90,3 +90,12 @@ export function formatUSD(lamports: number | bigint | string, decimals: number =
   }
   return `$${usdAmount.toFixed(decimals)}`;
 }
+
+// Format price per token (lamports per whole token → SOL per whole token)
+// Input: lamports per whole token (e.g., 1,396 lamports)
+// Output: SOL per whole token (e.g., "0.000001396 SOL")
+export function formatPricePerToken(lamportsPerToken: number | bigint | string, decimals: number = 9): string {
+  const value = toBigInt(lamportsPerToken);
+  const solPerToken = Number(value) / LAMPORTS_PER_SOL;
+  return solPerToken.toFixed(decimals);
+}

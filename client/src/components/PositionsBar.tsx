@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, Wallet, ChevronRight } from 'lucide-react';
-import { formatSol, formatTokenAmount, toBigInt } from '@/lib/lamports';
+import { formatSol, formatTokenAmount, formatPricePerToken, toBigInt } from '@/lib/lamports';
 import type { Position } from '@shared/schema';
 
 export function PositionsBar() {
@@ -58,7 +58,7 @@ export function PositionsBar() {
 
       <div className="space-y-2">
         {positions.map((position) => {
-          const amountDisplay = formatTokenAmount(position.amount, position.decimals || 6);
+          const amountDisplay = formatTokenAmount(position.amount, 6, position.decimals || 6);
 
           return (
             <div
@@ -85,7 +85,7 @@ export function PositionsBar() {
                     <div>
                       <span className="text-muted-foreground">Entry:</span>
                       <span className="ml-1 font-mono font-semibold">
-                        {formatSol(toBigInt(position.entryPrice))} SOL
+                        {formatPricePerToken(position.entryPrice, 9)} SOL
                       </span>
                     </div>
                     <div className="col-span-2">
