@@ -1178,7 +1178,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const ohlcvData = await geckoResponse.json();
+      
+      // Debug: Log what we got from GeckoTerminal
+      console.log(`📊 GeckoTerminal response structure for ${address}:`, {
+        hasData: !!ohlcvData?.data,
+        hasAttributes: !!ohlcvData?.data?.attributes,
+        hasOhlcvList: !!ohlcvData?.data?.attributes?.ohlcv_list,
+        ohlcvListLength: ohlcvData?.data?.attributes?.ohlcv_list?.length || 0,
+        responseKeys: Object.keys(ohlcvData || {})
+      });
+      
       let candles = ohlcvData?.data?.attributes?.ohlcv_list || [];
+      
+      // Validate candles is an array and contains valid data
+      if (!Array.isArray(candles)) {
+        console.error(`⚠️ OHLCV candles is not an array for ${address}:`, typeof candles, candles);
+        candles = [];
+      }
+      
+      // Filter out any invalid candles
+      candles = candles.filter((candle: any) => {
+        if (!Array.isArray(candle) || candle.length < 5) {
+          console.warn(`Skipping invalid candle: ${JSON.stringify(candle)}`);
+          return false;
+        }
+        return true;
+      });
+
+      if (candles.length === 0) {
+        console.warn(`⚠️ No valid OHLCV candles for ${address} after filtering`);
+      }
 
       // Sort candles in ascending order by timestamp (required by TradingView Lightweight Charts)
       // GeckoTerminal returns them in descending order (newest first), we need ascending (oldest first)
@@ -1186,7 +1215,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Debug: Log first and last timestamps to verify sort order
       if (candles.length >= 2) {
-        console.log(`📊 OHLCV data for ${address}: ${candles.length} candles, timestamps ${candles[0][0]} to ${candles[candles.length - 1][0]} (${candles[0][0] < candles[candles.length - 1][0] ? 'ASC ✅' : 'DESC ❌'})`);
+        console.log(`✅ OHLCV data for ${address}: ${candles.length} candles, timestamps ${candles[0][0]} to ${candles[candles.length - 1][0]} (${candles[0][0] < candles[candles.length - 1][0] ? 'ASC ✅' : 'DESC ❌'})`);
+      } else if (candles.length === 1) {
+        console.log(`✅ OHLCV data for ${address}: 1 candle at timestamp ${candles[0][0]}`);
       }
 
       // Prevent caching - chart data changes frequently and needs to be fresh
@@ -1198,11 +1229,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true,
         candles,
         pairAddress,
-        timeframe
+        timeframe,
+        candleCount: candles.length
       });
     } catch (error: any) {
-      console.error('OHLCV fetch error:', error);
-      res.status(500).json({ error: 'Failed to fetch chart data' });
+      console.error('❌ OHLCV fetch error:', error.message || error);
+      console.error('Full error:', error);
+      res.status(500).json({ error: 'Failed to fetch chart data', details: error.message });
     }
   });
 

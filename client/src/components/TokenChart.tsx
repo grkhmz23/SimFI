@@ -185,6 +185,8 @@ const TokenChart = ({
       const candleData: CandlestickData[] = [];
       const volumeData: HistogramData[] = [];
 
+      console.log(`📊 Processing ${candles.length} candles for chart...`);
+      
       candles.forEach((candle: any, index: number) => {
         try {
           // Handle both array and object formats
@@ -196,10 +198,15 @@ const TokenChart = ({
             throw new Error(`Candle ${index} is not an array: ${JSON.stringify(candle).substring(0, 100)}`);
           }
           
-          // Validate data
-          if (!timestamp || typeof timestamp !== 'number' || typeof open !== 'number' || 
-              typeof high !== 'number' || typeof low !== 'number' || typeof close !== 'number') {
-            console.warn(`Skipping invalid candle at index ${index}:`, candle);
+          // Validate data - allow 0 values except for timestamp
+          if (timestamp === undefined || timestamp === null || typeof timestamp !== 'number') {
+            console.warn(`Skipping invalid candle at index ${index}: no valid timestamp`, candle);
+            return;
+          }
+          
+          if (typeof open !== 'number' || typeof high !== 'number' || 
+              typeof low !== 'number' || typeof close !== 'number') {
+            console.warn(`Skipping invalid candle at index ${index}: invalid OHLC values`, { open, high, low, close });
             return;
           }
           
@@ -222,6 +229,8 @@ const TokenChart = ({
           console.warn(`Error processing candle ${index}:`, candleErr);
         }
       });
+      
+      console.log(`✅ Successfully formatted ${candleData.length} candles for TradingView`);
 
       // Update chart data
       if (candleSeriesRef.current && volumeSeriesRef.current) {
