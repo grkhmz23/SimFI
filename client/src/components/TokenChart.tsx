@@ -160,11 +160,22 @@ const TokenChart = ({
 
       const response = await fetch(`/api/tokens/${tokenAddress}/ohlcv?timeframe=${tf}`);
       if (!response.ok) {
-        throw new Error('Failed to fetch chart data');
+        throw new Error(`API returned ${response.status}: Failed to fetch chart data`);
       }
 
       const data = await response.json();
-      const candles = data.candles || [];
+      
+      // Validate response structure
+      if (!data || typeof data !== 'object') {
+        console.error('Invalid response format:', data);
+        throw new Error('Invalid response format from server');
+      }
+      
+      const candles = data.candles;
+      if (!Array.isArray(candles)) {
+        console.error('Candles is not an array:', { data, candlesType: typeof candles });
+        throw new Error('Invalid candles data format');
+      }
 
       if (candles.length === 0) {
         throw new Error('No chart data available for this token');
@@ -174,24 +185,42 @@ const TokenChart = ({
       const candleData: CandlestickData[] = [];
       const volumeData: HistogramData[] = [];
 
-      candles.forEach((candle: number[]) => {
-        const [timestamp, open, high, low, close, volume] = candle;
-        
-        // TradingView expects Unix timestamps in seconds (not milliseconds)
-        // GeckoTerminal returns timestamps in seconds, so use as-is
-        candleData.push({
-          time: timestamp as any,
-          open,
-          high,
-          low,
-          close,
-        });
+      candles.forEach((candle: any, index: number) => {
+        try {
+          // Handle both array and object formats
+          let timestamp, open, high, low, close, volume;
+          
+          if (Array.isArray(candle)) {
+            [timestamp, open, high, low, close, volume] = candle;
+          } else {
+            throw new Error(`Candle ${index} is not an array: ${JSON.stringify(candle).substring(0, 100)}`);
+          }
+          
+          // Validate data
+          if (!timestamp || typeof timestamp !== 'number' || typeof open !== 'number' || 
+              typeof high !== 'number' || typeof low !== 'number' || typeof close !== 'number') {
+            console.warn(`Skipping invalid candle at index ${index}:`, candle);
+            return;
+          }
+          
+          // TradingView expects Unix timestamps in seconds (not milliseconds)
+          // GeckoTerminal returns timestamps in seconds, so use as-is
+          candleData.push({
+            time: timestamp as any,
+            open,
+            high,
+            low,
+            close,
+          });
 
-        volumeData.push({
-          time: timestamp as any,
-          value: volume || 0,
-          color: close >= open ? 'rgba(74, 222, 128, 0.3)' : 'rgba(248, 113, 113, 0.3)',
-        });
+          volumeData.push({
+            time: timestamp as any,
+            value: volume || 0,
+            color: close >= open ? 'rgba(74, 222, 128, 0.3)' : 'rgba(248, 113, 113, 0.3)',
+          });
+        } catch (candleErr) {
+          console.warn(`Error processing candle ${index}:`, candleErr);
+        }
       });
 
       // Update chart data
@@ -234,8 +263,13 @@ const TokenChart = ({
       setLoading(false);
       setRefreshing(false);
     } catch (err: any) {
-      console.error('Chart data error:', err);
-      setError(err.message || 'Failed to load chart data');
+      const errorMsg = err?.message || err?.toString?.() || 'Unknown error';
+      console.error('Chart data error details:', { 
+        message: errorMsg,
+        error: err,
+        stack: err?.stack
+      });
+      setError(errorMsg);
       setLoading(false);
       setRefreshing(false);
     }
