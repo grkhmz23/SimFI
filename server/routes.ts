@@ -831,7 +831,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
         .from(positions)
         .groupBy(positions.tokenAddress, positions.tokenName, positions.tokenSymbol, positions.decimals)
-        .orderBy(sql`COUNT(DISTINCT ${positions.userId})`, 'desc')
+        .orderBy((t: any) => t.buyerCount, 'desc')
         .limit(30);
 
       // Get sell activity (users who closed positions)
