@@ -73,18 +73,31 @@ export function formatTokenAmount(amount: number | bigint | string, displayDecim
 }
 
 // USD conversion functions
-// Approximate SOL price in USD (can be updated or fetched from API)
-export const SOL_PRICE_USD = 175; // Update this value as needed
+// NOTE: SOL_PRICE_USD should be obtained from useSolPrice() hook in React components
+// For non-React utility functions, use a default fallback value
+let dynamicSolPriceUSD = 175;
 
-// Convert lamports to USD
-export function lamportsToUSD(lamports: number | bigint | string): number {
+export function setSolPrice(price: number) {
+  dynamicSolPriceUSD = price;
+}
+
+export function getSolPrice(): number {
+  return dynamicSolPriceUSD;
+}
+
+// DEPRECATED: Use useSolPrice() hook in React components instead
+export const SOL_PRICE_USD = 175;
+
+// Convert lamports to USD (uses dynamic price if available, fallback to 175)
+export function lamportsToUSD(lamports: number | bigint | string, solPrice?: number): number {
   const solAmount = lamportsToSol(lamports);
-  return solAmount * SOL_PRICE_USD;
+  const price = solPrice || dynamicSolPriceUSD || 175;
+  return solAmount * price;
 }
 
 // Format lamports as USD with $ symbol
-export function formatUSD(lamports: number | bigint | string, decimals: number = 4): string {
-  const usdAmount = lamportsToUSD(lamports);
+export function formatUSD(lamports: number | bigint | string, decimals: number = 4, solPrice?: number): string {
+  const usdAmount = lamportsToUSD(lamports, solPrice);
   if (usdAmount < 0.01 && usdAmount > 0) {
     return `$${usdAmount.toFixed(6)}`;
   }
@@ -103,10 +116,11 @@ export function formatPricePerToken(lamportsPerToken: number | bigint | string, 
 // Format price per token in USD
 // Input: lamports per whole token
 // Output: USD price (e.g., "$0.195")
-export function formatPricePerTokenUSD(lamportsPerToken: number | bigint | string, decimals: number = 6): string {
+export function formatPricePerTokenUSD(lamportsPerToken: number | bigint | string, decimals: number = 6, solPrice?: number): string {
   const value = toBigInt(lamportsPerToken);
   const solPerToken = Number(value) / LAMPORTS_PER_SOL;
-  const usdPrice = solPerToken * SOL_PRICE_USD;
+  const price = solPrice || dynamicSolPriceUSD || 175;
+  const usdPrice = solPerToken * price;
   if (usdPrice < 0.00001 && usdPrice > 0) {
     return `$${usdPrice.toFixed(9)}`;
   }

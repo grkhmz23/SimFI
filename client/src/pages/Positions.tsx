@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TradeModal } from '@/components/TradeModal';
 import { useAuth } from '@/lib/auth-context';
-import { formatSol, formatTokenAmount, formatPricePerToken, formatPricePerTokenUSD, lamportsToTokens, toBigInt, SOL_PRICE_USD } from '@/lib/lamports';
+import { useSolPrice } from '@/lib/price-context';
+import { formatSol, formatTokenAmount, formatPricePerToken, formatPricePerTokenUSD, lamportsToTokens, toBigInt } from '@/lib/lamports';
 import { TrendingUp, TrendingDown, Wallet, ShoppingCart, DollarSign, ExternalLink, BarChart3 } from 'lucide-react';
 import type { Position } from '@shared/schema';
 

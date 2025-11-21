@@ -54,6 +54,36 @@ function serializeBigInts(obj: any): any {
   );
 }
 
+// Cache for SOL price to reduce API calls
+let cachedSolPrice: { price: number; timestamp: number } | null = null;
+const SOL_PRICE_CACHE_TTL = 30000; // 30 seconds
+
+// Fetch current SOL price from CoinGecko
+async function fetchSolPrice(): Promise<number> {
+  const now = Date.now();
+  
+  // Return cached price if still valid
+  if (cachedSolPrice && (now - cachedSolPrice.timestamp) < SOL_PRICE_CACHE_TTL) {
+    return cachedSolPrice.price;
+  }
+  
+  try {
+    const response = await fetchWithTimeout('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', 5000);
+    if (response.ok) {
+      const data = await response.json();
+      const price = data?.solana?.usd || 175;
+      cachedSolPrice = { price, timestamp: now };
+      console.log(`💰 Updated SOL price: $${price}`);
+      return price;
+    }
+  } catch (error) {
+    console.warn('⚠️ Failed to fetch SOL price from CoinGecko, using cached value');
+  }
+  
+  // Return cached price if available, fallback to 175
+  return cachedSolPrice?.price || 175;
+}
+
 // Helper to find the best (highest liquidity) Solana pair from DexScreener pairs array
 // This ensures we get the most accurate price from the most liquid market
 function findBestSolanaPair(pairs: any[], tokenAddress: string): any | null {
@@ -327,6 +357,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     console.log('✅ User logged out, cookie cleared');
     res.json({ message: 'Logged out successfully' });
+  });
+
+  // Get current SOL price (cached, refreshes every 30 seconds)
+  app.get('/api/solana/price', async (req, res) => {
+    try {
+      const price = await fetchSolPrice();
+      res.json({ price, timestamp: new Date().toISOString() });
+    } catch (error: any) {
+      console.error('SOL price fetch error:', error);
+      res.status(500).json({ error: 'Could not fetch SOL price', fallback: 175 });
+    }
   });
 
   app.get('/api/auth/profile', authenticateToken, async (req, res) => {
