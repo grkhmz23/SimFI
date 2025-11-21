@@ -269,11 +269,15 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       return;
     }
     
-    const priceNumber = Number(currentPrice);
-    console.log('Buy submit - currentPrice:', currentPrice.toString(), 'priceNumber:', priceNumber);
-    console.log('Buy submit - activeToken:', activeToken);
+    // ✅ CRITICAL: Use Jupiter effective price as entry price (most accurate swap price)
+    // Falls back to DexScreener price if Jupiter quote not available
+    const entryPrice = jupiterQuote?.effectivePriceLamports || Number(currentPrice);
     
-    if (priceNumber <= 0) {
+    console.log('Buy submit - Jupiter effective price:', jupiterQuote?.effectivePriceLamports);
+    console.log('Buy submit - DexScreener price:', Number(currentPrice));
+    console.log('Buy submit - Using entry price:', entryPrice);
+    
+    if (entryPrice <= 0) {
       toast({
         title: 'Price Unavailable',
         description: 'Token price is loading, please wait a moment and try again',
@@ -293,17 +297,17 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       return;
     }
     
-    // Use currentPrice from DexScreener for consistent pricing across the app
+    // ✅ Send Jupiter effective price as entry price for accurate P/L calculations
     const tradeData = {
       tokenAddress: tokenAddress,
       tokenName: activeToken.name || name,
       tokenSymbol: activeToken.symbol || symbol,
       solAmount: data.solAmount,
-      price: priceNumber, // Convert BigInt to number for API
+      price: entryPrice, // ✅ Use Jupiter effective price, not market price
       decimals: activeToken.decimals || 6, // Default to 6 for pump.fun tokens
     };
     
-    console.log('Submitting buy trade:', tradeData);
+    console.log('Submitting buy trade with Jupiter price:', tradeData);
     tradeMutation.mutate(tradeData);
   });
 
