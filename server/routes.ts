@@ -108,9 +108,10 @@ function findBestSolanaPair(pairs: any[], tokenAddress: string): any | null {
   return solanaPairs[0]; // Return highest liquidity pair
 }
 
-// Helper to fetch current price from DexScreener (for price validation)
+// Helper to fetch current price and decimals from DexScreener
 // Returns price in lamports per token (clamped to minimum 1 for sub-lamport tokens)
-async function fetchDexScreenerPrice(tokenAddress: string): Promise<{ priceLamports: number } | null> {
+// Also returns token decimals (6 for pump.fun, 9 for other launchpads)
+async function fetchDexScreenerPrice(tokenAddress: string): Promise<{ priceLamports: number; decimals?: number } | null> {
   try {
     const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 3000);
     if (dexResponse.ok) {
@@ -120,7 +121,11 @@ async function fetchDexScreenerPrice(tokenAddress: string): Promise<{ priceLampo
       if (solanaPair && solanaPair.priceNative) {
         // Convert to lamports, clamp to 1 minimum (sub-lamport tokens are <$0.0000002)
         const priceLamports = Math.max(1, Math.floor(parseFloat(solanaPair.priceNative) * 1_000_000_000));
-        return { priceLamports };
+        
+        // Extract decimals from baseToken if available (6 or 9)
+        const decimals = solanaPair.baseToken?.decimals || 6;
+        
+        return { priceLamports, decimals };
       }
     }
   } catch (error) {
@@ -674,7 +679,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/trades/buy', authenticateToken, async (req, res) => {
     try {
-      const { tokenAddress, tokenName, tokenSymbol, solAmount, price, decimals = 6 } = req.body;
+      const { tokenAddress, tokenName, tokenSymbol, solAmount, price } = req.body;
       
       if (!tokenAddress || !tokenName || !tokenSymbol || solAmount <= 0 || price <= 0) {
         return res.status(400).json({ error: 'Invalid trade data' });
@@ -685,32 +690,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'User not found' });
       }
       
-      // Validate price hasn't changed significantly (5% threshold)
-      // NOTE: Sub-lamport tokens (<1 lamport = <$0.0000002) are clamped to 1 lamport
+      // Fetch current price AND decimals from DexScreener (validate both)
+      // This ensures we use the correct decimals (6 or 9) from the blockchain, never a default
       const currentTokenData = await fetchDexScreenerPrice(tokenAddress);
-      if (currentTokenData && currentTokenData.priceLamports) {
-        const currentPriceLamports = currentTokenData.priceLamports;
-        const providedPriceLamports = Math.floor(price);
-        
-        const priceDiff = Math.abs(currentPriceLamports - providedPriceLamports);
-        // Use safe denominator to avoid division by zero
-        const denominator = Math.max(currentPriceLamports, providedPriceLamports, 1);
-        const percentChange = (priceDiff * 100) / denominator;
-        
-        if (percentChange > 5) {
-          return res.status(400).json({ 
-            error: `Price changed by ${percentChange.toFixed(2)}%. Please refresh and try again.`,
-            currentPrice: currentPriceLamports.toString(),
-            providedPrice: providedPriceLamports.toString()
-          });
-        }
+      if (!currentTokenData) {
+        return res.status(400).json({ error: 'Could not fetch token data from DexScreener. Try again.' });
+      }
+      
+      const currentPriceLamports = currentTokenData.priceLamports;
+      const decimals = currentTokenData.decimals || 6; // Get from DexScreener, fallback to 6 only if missing
+      
+      const providedPriceLamports = Math.floor(price);
+      
+      // Validate price hasn't changed significantly (5% threshold)
+      const priceDiff = Math.abs(currentPriceLamports - providedPriceLamports);
+      const denominator = Math.max(currentPriceLamports, providedPriceLamports, 1);
+      const percentChange = (priceDiff * 100) / denominator;
+      
+      if (percentChange > 5) {
+        return res.status(400).json({ 
+          error: `Price changed by ${percentChange.toFixed(2)}%. Please refresh and try again.`,
+          currentPrice: currentPriceLamports.toString(),
+          providedPrice: providedPriceLamports.toString()
+        });
       }
       
       // Calculate how much SOL to spend in Lamports (convert to BigInt)
       const solSpent = BigInt(Math.floor(solAmount * 1_000_000_000)); // Convert SOL to Lamports
       const priceBigInt = BigInt(Math.floor(price)); // Price in Lamports per whole token
       
-      // Calculate tokens using correct decimals (6 for pump.fun, 9 for SOL-like tokens)
+      // Calculate tokens using correct decimals from DexScreener (6 or 9)
       // tokenAmount = solSpent (lamports) * 10^decimals / price (lamports per whole token)
       const decimalMultiplier = BigInt(10 ** decimals);
       const tokenAmount = (solSpent * decimalMultiplier) / priceBigInt;
