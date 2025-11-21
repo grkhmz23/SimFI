@@ -17,6 +17,7 @@ import History from "@/pages/History";
 import Leaderboard from "@/pages/Leaderboard";
 import About from "@/pages/About";
 import TokenAnalyzer from "@/pages/TokenAnalyzer";
+import Trending from "@/pages/Trending";
 import NotFound from "@/pages/not-found";
 
 function PageLayout({ component: Component }: { component: React.ComponentType }) {
@@ -60,6 +61,9 @@ function Router() {
       </Route>
       <Route path="/study">
         <PageLayout component={TokenAnalyzer} />
+      </Route>
+      <Route path="/trending">
+        <PageLayout component={Trending} />
       </Route>
       <Route path="/about">
         <PageLayout component={About} />

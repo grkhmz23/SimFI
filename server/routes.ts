@@ -814,6 +814,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
 
   // IMPORTANT: Search route must come BEFORE :address route to avoid matching "search" as an address
+  // Get trending tokens based on user activity (most bought/sold by user count)
+  app.get('/api/trending', async (req, res) => {
+    try {
+      // Get top tokens by number of unique users who bought them
+      const buyActivity = await db
+        .select({
+          tokenAddress: positions.tokenAddress,
+          tokenName: positions.tokenName,
+          tokenSymbol: positions.tokenSymbol,
+          decimals: positions.decimals,
+          buyerCount: sql`COUNT(DISTINCT ${positions.userId})`.as('buyerCount'),
+        })
+        .from(positions)
+        .groupBy(positions.tokenAddress, positions.tokenName, positions.tokenSymbol, positions.decimals)
+        .orderBy(sql`COUNT(DISTINCT ${positions.userId})`, 'desc')
+        .limit(30);
+
+      // Get sell activity (users who closed positions)
+      const sellActivity = await db
+        .select({
+          tokenAddress: tradeHistory.tokenAddress,
+          sellerCount: sql`COUNT(DISTINCT ${tradeHistory.userId})`.as('sellerCount'),
+        })
+        .from(tradeHistory)
+        .groupBy(tradeHistory.tokenAddress)
+        .limit(100);
+
+      // Merge and score tokens (weighted by activity)
+      const trendingMap = new Map<string, any>();
+      
+      // Add buy activity
+      for (const token of buyActivity) {
+        const addr = token.tokenAddress;
+        trendingMap.set(addr, {
+          tokenAddress: addr,
+          tokenName: token.tokenName,
+          tokenSymbol: token.tokenSymbol,
+          decimals: token.decimals,
+          buyerCount: parseInt(token.buyerCount as string),
+          sellerCount: 0,
+          totalActivity: parseInt(token.buyerCount as string),
+        });
+      }
+
+      // Add/update sell activity
+      for (const item of sellActivity) {
+        const addr = item.tokenAddress;
+        const existing = trendingMap.get(addr);
+        const sellerCount = parseInt(item.sellerCount as string);
+        
+        if (existing) {
+          existing.sellerCount = sellerCount;
+          existing.totalActivity = existing.buyerCount + sellerCount;
+        } else {
+          trendingMap.set(addr, {
+            tokenAddress: addr,
+            tokenName: '',
+            tokenSymbol: '',
+            decimals: 6,
+            buyerCount: 0,
+            sellerCount: sellerCount,
+            totalActivity: sellerCount,
+          });
+        }
+      }
+
+      // Sort by total activity and get top 20
+      const trending = Array.from(trendingMap.values())
+        .sort((a, b) => b.totalActivity - a.totalActivity)
+        .slice(0, 20);
+
+      // Fetch current prices for trending tokens
+      const trendingAddresses = trending.map(t => t.tokenAddress);
+      const priceMap = new Map<string, bigint>();
+      
+      if (trendingAddresses.length > 0) {
+        try {
+          const batchSize = 30;
+          for (let i = 0; i < trendingAddresses.length; i += batchSize) {
+            const batch = trendingAddresses.slice(i, i + batchSize);
+            const addressesParam = batch.join(',');
+            
+            const dexResponse = await fetchWithTimeout(
+              `https://api.dexscreener.com/latest/dex/tokens/${addressesParam}`,
+              8000
+            );
+            
+            if (dexResponse.ok) {
+              const dexData = await dexResponse.json();
+              const pairs = dexData.pairs || [];
+              
+              for (const addr of batch) {
+                const bestPair = findBestSolanaPair(pairs, addr);
+                if (bestPair && bestPair.priceNative) {
+                  const priceLamports = BigInt(Math.max(1, Math.floor(parseFloat(bestPair.priceNative) * 1_000_000_000)));
+                  priceMap.set(addr, priceLamports);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ Failed to fetch trending prices:', error);
+        }
+      }
+
+      // Enrich with prices
+      const enrichedTrending = trending.map(t => ({
+        ...t,
+        currentPrice: priceMap.get(t.tokenAddress)?.toString() || '0',
+      }));
+
+      res.json({ trending: enrichedTrending });
+    } catch (error: any) {
+      console.error('Trending fetch error:', error);
+      res.status(500).json({ error: 'Could not fetch trending tokens' });
+    }
+  });
+
   app.get('/api/tokens/search', async (req, res) => {
     try {
       const query = req.query.q as string || '';
