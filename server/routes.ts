@@ -702,12 +702,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const providedPriceLamports = Math.floor(price);
       
+      console.log(`💰 Buy price validation:`);
+      console.log(`   Provided price: ${providedPriceLamports} lamports/token = ${(providedPriceLamports / 1_000_000_000).toFixed(9)} SOL/token`);
+      console.log(`   DexScreener price: ${currentPriceLamports} lamports/token = ${(currentPriceLamports / 1_000_000_000).toFixed(9)} SOL/token`);
+      console.log(`   Token decimals: ${decimals}`);
+      
       // Validate price hasn't changed significantly (5% threshold)
       const priceDiff = Math.abs(currentPriceLamports - providedPriceLamports);
       const denominator = Math.max(currentPriceLamports, providedPriceLamports, 1);
       const percentChange = (priceDiff * 100) / denominator;
       
+      console.log(`   Price difference: ${percentChange.toFixed(2)}%`);
+      
       if (percentChange > 5) {
+        console.warn(`⚠️  Price changed too much, rejecting trade`);
         return res.status(400).json({ 
           error: `Price changed by ${percentChange.toFixed(2)}%. Please refresh and try again.`,
           currentPrice: currentPriceLamports.toString(),
@@ -724,6 +732,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const decimalMultiplier = BigInt(10 ** decimals);
       const tokenAmount = (solSpent * decimalMultiplier) / priceBigInt;
       const tokensDisplay = Number(tokenAmount) / (10 ** decimals);
+      
+      console.log(`📊 Buy calculation:`);
+      console.log(`   SOL spent: ${solAmount} SOL = ${solSpent.toString()} lamports`);
+      console.log(`   Entry price: ${priceBigInt.toString()} lamports/token`);
+      console.log(`   Token decimals: ${decimals}`);
+      console.log(`   Calculated tokens: ${tokensDisplay.toFixed(6)} (${tokenAmount.toString()} units)`);
       
       if (tokenAmount <= 0n) {
         return res.status(400).json({ error: 'SOL amount too small to buy tokens' });
@@ -749,7 +763,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         solSpent,
       });
       
-      console.log(`💼 Position for ${tokenSymbol}: ${tokensDisplay.toFixed(2)} tokens (${position.id})`);
+      console.log(`✅ Position created: ${tokenSymbol} - ${tokensDisplay.toFixed(6)} tokens at ${(Number(priceBigInt) / 1_000_000_000).toFixed(9)} SOL/token`);
       
       const newUser = await storage.getUserById(req.userId!);
       
@@ -1406,16 +1420,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Extract quote details
-      const tokenAmountOut = parseInt(quoteData.outAmount); // In token's smallest unit
+      const tokenAmountOut = parseInt(quoteData.outAmount); // In token's smallest unit (already includes decimals)
       const priceImpactPct = parseFloat(quoteData.priceImpactPct || '0');
       
-      // Convert using actual token decimals
-      const tokenAmountDecimal = tokenAmountOut / (10 ** TOKEN_DECIMALS);
-      const effectivePriceLamports = tokenAmountDecimal > 0 
-        ? Math.floor(inputAmountLamports / tokenAmountDecimal)
+      // ✅ FIX: Calculate effective price correctly
+      // effectivePriceLamports = SOL lamports / token units (from Jupiter)
+      // This gives us: SOL lamports per smallest unit of token
+      // Then we need to scale to "per whole token" by multiplying by 10^decimals
+      const effectivePriceLamports = tokenAmountOut > 0
+        ? Math.floor((inputAmountLamports * (10 ** TOKEN_DECIMALS)) / tokenAmountOut)
         : 0;
       
-      console.log(`✅ Jupiter quote: ${solAmountNum} SOL → ${tokenAmountDecimal.toFixed(2)} tokens (${TOKEN_DECIMALS} decimals, impact: ${priceImpactPct}%)`);
+      // For display/logging
+      const tokenAmountDecimal = tokenAmountOut / (10 ** TOKEN_DECIMALS);
+      const effectivePriceSOL = effectivePriceLamports / 1_000_000_000;
+      
+      console.log(`✅ Jupiter quote: ${solAmountNum} SOL → ${tokenAmountDecimal.toFixed(4)} tokens`);
+      console.log(`   TOKEN_DECIMALS: ${TOKEN_DECIMALS}, tokenAmountOut (units): ${tokenAmountOut}`);
+      console.log(`   Effective Price: ${effectivePriceLamports} lamports/token = ${effectivePriceSOL.toFixed(9)} SOL/token (impact: ${priceImpactPct}%)`);
       
       res.json({
         solAmount: solAmountNum,

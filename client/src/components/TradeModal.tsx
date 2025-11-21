@@ -273,9 +273,11 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     // Falls back to DexScreener price if Jupiter quote not available
     const entryPrice = jupiterQuote?.effectivePriceLamports || Number(currentPrice);
     
-    console.log('Buy submit - Jupiter effective price:', jupiterQuote?.effectivePriceLamports);
-    console.log('Buy submit - DexScreener price:', Number(currentPrice));
-    console.log('Buy submit - Using entry price:', entryPrice);
+    console.log('🛒 Buy submit - Jupiter Quote:', jupiterQuote);
+    console.log('   Jupiter effective price:', jupiterQuote?.effectivePriceLamports);
+    console.log('   DexScreener price:', Number(currentPrice));
+    console.log('   Using entry price:', entryPrice);
+    console.log('   SOL amount:', data.solAmount);
     
     if (entryPrice <= 0) {
       toast({
