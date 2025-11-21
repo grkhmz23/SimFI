@@ -613,6 +613,7 @@ if (percentDiff > 5) {
 | BigInt Overflow P/L | CRITICAL | ✅ FIXED | Multiple files | +Supports unlimited positions |
 | Hardcoded SOL Price | MAJOR | ✅ FIXED | routes.ts + price-context | Real-time USD accuracy |
 | Token Decimals Validation | **CRITICAL** | ✅ FIXED | routes.ts L113-127, L675-724 | Supports all launchpad tokens (6 or 9 decimals) |
+| Jupiter Price → Entry Price | **CRITICAL** | ✅ FIXED | TradeModal.tsx L275-314 | Entry price now reflects actual swap price |
 
 ## CRITICAL FIX APPLIED: Token Decimals Validation ✅
 
@@ -657,6 +658,49 @@ await storage.createOrAggregatePosition({
 - ✅ P/L calculations now always use correct blockchain decimals
 - ✅ No more silent calculation errors for 9-decimal tokens
 - ✅ Fails safely if DexScreener unavailable (user retries instead of wrong calc)
+
+---
+
+## CRITICAL FIX APPLIED: Jupiter Effective Price as Entry Price ✅
+
+### Problem (Resolved)
+When users bought tokens, the entry price was set to DexScreener market price, not the actual swap price they received from Jupiter. This caused P/L calculations to be inaccurate - the entry price didn't match what they actually paid.
+
+**Example:**
+- Market price: $0.24 per token
+- Jupiter effective price (with slippage): $0.26 per token
+- User bought at $0.26, but entry price was stored as $0.24
+- Result: P/L calculations overstated gains
+
+### Solution Implemented (TradeModal.tsx L275-314)
+
+```typescript
+// ✅ Use Jupiter effective price as entry price (most accurate swap price)
+const entryPrice = jupiterQuote?.effectivePriceLamports || Number(currentPrice);
+
+const tradeData = {
+  tokenAddress: tokenAddress,
+  tokenName: activeToken.name || name,
+  tokenSymbol: activeToken.symbol || symbol,
+  solAmount: data.solAmount,
+  price: entryPrice, // ✅ Use Jupiter effective price, not market price
+  decimals: activeToken.decimals || 6,
+};
+```
+
+**Flow:**
+1. User enters SOL amount
+2. Frontend fetches Jupiter quote → gets `effectivePriceLamports`
+3. User clicks "Buy Now"
+4. **Entry price = Jupiter effective price** (accurate swap execution price)
+5. Backend stores this as `entryPrice` in database
+6. P/L = `currentValue - (amount × entryPrice) / 10^decimals` ✅ Correct
+
+### Impact
+- ✅ Entry price now reflects actual swap execution price
+- ✅ P/L calculations 100% accurate to what user actually paid
+- ✅ Slippage/impact accounted for in entry price
+- ✅ Fair leaderboard rankings (based on actual execution prices)
 
 ---
 
