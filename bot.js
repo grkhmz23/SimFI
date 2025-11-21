@@ -684,6 +684,8 @@ bot.on('text', async (ctx) => {
     try {
       await ctx.reply('⏳ Creating account...');
       
+      console.log(`📝 Bot registration attempt:`, { email: state.email, username: state.username });
+      
       const result = await apiRequest('/telegram/auth/register', 'POST', {
         email: state.email,
         username: state.username,
@@ -691,13 +693,17 @@ bot.on('text', async (ctx) => {
         walletAddress: walletAddress
       }, null, true);
 
+      console.log(`📝 Bot registration result:`, { success: result.success, error: result.error });
+
       if (!result.success) {
         userStates.delete(userId);
-        return ctx.reply('❌ Registration failed: ' + result.error + '\n\nPlease /start to try again.');
+        return ctx.reply('❌ Registration failed: ' + (result.error || 'Unknown error') + '\n\nPlease /start to try again.');
       }
 
       const user = result.data.user;
       const token = result.data.token;
+
+      console.log(`✅ Bot user registered:`, user.username);
 
       userSessions.set(userId, {
         username: user.username,
@@ -725,7 +731,8 @@ bot.on('text', async (ctx) => {
       await showMainMenu(ctx);
     } catch (error) {
       userStates.delete(userId);
-      ctx.reply('❌ Error during registration. Please /start to try again.');
+      console.error('❌ Bot registration exception:', error);
+      ctx.reply('❌ Error during registration: ' + (error.message || 'Unknown error') + '. Please /start to try again.');
     }
   }
 
@@ -905,13 +912,30 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
   await showMainMenu(ctx);
 });
 
-bot.launch().then(() => {
+// Start bot with explicit polling configuration
+console.log('🚀 Starting bot with polling...');
+bot.launch({
+  polling: {
+    interval: 300,
+    timeout: 30,
+    allowedUpdates: ['message', 'callback_query']
+  }
+}).then(() => {
   console.log('✅ Telegram bot is running!');
   console.log(`📡 API Base URL: ${API_BASE_URL}`);
+  console.log('🎯 Bot is listening for messages...');
 }).catch((err) => {
-  console.error('❌ Failed to start bot:', err);
+  console.error('❌ Failed to start bot:', err.message || err);
+  console.error('Full error:', err);
   process.exit(1);
 });
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+// Enable graceful shutdown
+process.once('SIGINT', () => {
+  console.log('📴 Stopping bot...');
+  bot.stop('SIGINT');
+});
+process.once('SIGTERM', () => {
+  console.log('📴 Stopping bot...');
+  bot.stop('SIGTERM');
+});
