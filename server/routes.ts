@@ -387,7 +387,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================================================
-  // Telegram Session Routes (Bot-Only - Protected by shared secret)
+  // Telegram Auth Routes (Bot-Only - Protected by shared secret)
   // ============================================================================
 
   // Middleware to verify telegram bot requests
@@ -404,6 +404,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     next();
   };
+
+  // Telegram registration endpoint
+  app.post('/api/telegram/auth/register', verifyBotSecret, async (req, res) => {
+    try {
+      const { email, username, password, walletAddress } = req.body;
+      
+      // Validate inputs
+      if (!email || !username || !password) {
+        return res.status(400).json({ error: 'Email, username, and password are required' });
+      }
+
+      // Use same registration validation as web app
+      const validationSchema = insertUserSchema.extend({
+        email: z.string().email('Invalid email'),
+        username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_-]+$/, 'Invalid username format'),
+        password: z.string().min(6, 'Password must be at least 6 characters'),
+        walletAddress: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, 'Invalid Solana wallet'),
+      });
+
+      const validationResult = validationSchema.safeParse({
+        email,
+        username,
+        password,
+        walletAddress: walletAddress || 'So11111111111111111111111111111111111111112',
+      });
+
+      if (!validationResult.success) {
+        return res.status(400).json({ error: validationResult.error.errors[0]?.message || 'Validation failed' });
+      }
+
+      // Check if email or username already exists
+      const existingEmail = await storage.getUserByEmail(email);
+      if (existingEmail) {
+        return res.status(400).json({ error: 'Email already registered' });
+      }
+
+      const existingUsername = await storage.getUserByUsername(username);
+      if (existingUsername) {
+        return res.status(400).json({ error: 'Username already taken' });
+      }
+
+      // Hash password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Create user
+      const user = await storage.createUser({
+        email,
+        username,
+        password: hashedPassword,
+        walletAddress: walletAddress || 'So11111111111111111111111111111111111111112',
+      });
+
+      // Generate token
+      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+
+      console.log('✅ Telegram bot user registered:', user.username);
+
+      const { password: _, ...userWithoutPassword } = user;
+      res.status(201).json(serializeBigInts({ 
+        user: userWithoutPassword,
+        token 
+      }));
+    } catch (error: any) {
+      console.error('Telegram registration error:', error);
+      res.status(500).json({ error: 'Registration failed' });
+    }
+  });
+
+  // Telegram login endpoint
+  app.post('/api/telegram/auth/login', verifyBotSecret, async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password are required' });
+      }
+
+      // Find user by email
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(400).json({ error: 'Invalid credentials' });
+      }
+
+      // Check password
+      const validPassword = await bcrypt.compare(password, user.password);
+      if (!validPassword) {
+        return res.status(400).json({ error: 'Invalid credentials' });
+      }
+
+      // Generate token
+      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+
+      console.log('✅ Telegram bot user logged in:', user.username);
+
+      const { password: _, ...userWithoutPassword } = user;
+      res.json(serializeBigInts({ 
+        user: userWithoutPassword,
+        token 
+      }));
+    } catch (error: any) {
+      console.error('Telegram login error:', error);
+      res.status(500).json({ error: 'Login failed' });
+    }
+  });
+
+  // ============================================================================
+  // Telegram Session Routes (Bot-Only - Protected by shared secret)
+  // ============================================================================
 
   app.post('/api/telegram/session', verifyBotSecret, async (req, res) => {
     try {
