@@ -742,18 +742,39 @@ bot.on('text', async (ctx) => {
     try {
       await ctx.reply('⏳ Logging in...');
       
+      console.log(`🔐 Bot login attempt for email: ${state.email}`);
+      
       const result = await apiRequest('/telegram/auth/login', 'POST', {
         email: state.email,
         password: text
       }, null, true);
 
+      console.log(`📊 Bot login result:`, { success: result.success, error: result.error });
+
       if (!result.success) {
         userStates.delete(userId);
-        return ctx.reply('❌ Login failed: ' + result.error + '\n\nPlease /start to try again.');
+        
+        // Better error messages
+        let errorMsg = result.error || 'Unknown error';
+        if (errorMsg.includes('Invalid credentials')) {
+          return ctx.reply(
+            `❌ Login failed: Email or password is incorrect.\n\n` +
+            `💡 Make sure you:\n` +
+            `1. Registered via /register on this bot (not on website)\n` +
+            `2. Entered your email correctly\n\n` +
+            `Need to register? Use /register`
+          );
+        }
+        if (errorMsg.includes('Invalid bot secret') || errorMsg.includes('Forbidden')) {
+          return ctx.reply('❌ Bot authentication failed. Please contact support.');
+        }
+        return ctx.reply(`❌ Login failed: ${errorMsg}\n\nPlease /start to try again.`);
       }
 
       const user = result.data.user;
       const token = result.data.token;
+
+      console.log(`✅ Bot user ${user.username} logged in successfully`);
 
       userSessions.set(userId, {
         username: user.username,
@@ -775,6 +796,7 @@ bot.on('text', async (ctx) => {
       await showMainMenu(ctx);
     } catch (error) {
       userStates.delete(userId);
+      console.error('❌ Bot login exception:', error);
       ctx.reply('❌ Error during login. Please /start to try again.');
     }
   }

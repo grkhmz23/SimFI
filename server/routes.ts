@@ -477,21 +477,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { email, password } = req.body;
       
+      console.log(`🔐 Telegram login attempt for: ${email}`);
+      
       if (!email || !password) {
+        console.warn('Missing email or password in login request');
         return res.status(400).json({ error: 'Email and password are required' });
       }
 
       // Find user by email
       const user = await storage.getUserByEmail(email);
       if (!user) {
-        return res.status(400).json({ error: 'Invalid credentials' });
+        console.warn(`❌ No user found with email: ${email}`);
+        return res.status(400).json({ error: 'Invalid credentials - user not found' });
       }
+
+      console.log(`✅ User found: ${user.username}, checking password...`);
 
       // Check password
       const validPassword = await bcrypt.compare(password, user.password);
       if (!validPassword) {
-        return res.status(400).json({ error: 'Invalid credentials' });
+        console.warn(`❌ Invalid password for user: ${user.username}`);
+        return res.status(400).json({ error: 'Invalid credentials - wrong password' });
       }
+
+      console.log(`✅ Password valid for user: ${user.username}`);
 
       // Generate token
       const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
@@ -504,8 +513,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         token 
       }));
     } catch (error: any) {
-      console.error('Telegram login error:', error);
-      res.status(500).json({ error: 'Login failed' });
+      console.error('❌ Telegram login error:', error.message || error);
+      res.status(500).json({ error: 'Login failed - server error' });
     }
   });
 
