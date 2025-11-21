@@ -99,3 +99,16 @@ export function formatPricePerToken(lamportsPerToken: number | bigint | string, 
   const solPerToken = Number(value) / LAMPORTS_PER_SOL;
   return solPerToken.toFixed(decimals);
 }
+
+// Format price per token in USD
+// Input: lamports per whole token
+// Output: USD price (e.g., "$0.195")
+export function formatPricePerTokenUSD(lamportsPerToken: number | bigint | string, decimals: number = 6): string {
+  const value = toBigInt(lamportsPerToken);
+  const solPerToken = Number(value) / LAMPORTS_PER_SOL;
+  const usdPrice = solPerToken * SOL_PRICE_USD;
+  if (usdPrice < 0.00001 && usdPrice > 0) {
+    return `$${usdPrice.toFixed(9)}`;
+  }
+  return `$${usdPrice.toFixed(decimals)}`;
+}
