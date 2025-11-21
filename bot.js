@@ -206,13 +206,41 @@ bot.start(async (ctx) => {
     return;
   }
   
-  // No existing session, start login flow
-  userStates.set(ctx.from.id, { state: 'awaiting_username' });
+  // No existing session, show auth options
   await ctx.reply(
     '👋 Welcome to Solana Paper Trading Bot!\n\n' +
-    'Please enter your *username*:',
-    { parse_mode: 'Markdown' }
+    'Create a new account or login to existing one:',
+    Markup.inlineKeyboard([
+      [Markup.button.callback('📝 Register', 'register_start')],
+      [Markup.button.callback('🔐 Login', 'login_start')]
+    ])
   );
+});
+
+// Register command/action
+bot.command('register', async (ctx) => {
+  await ctx.answerCbQuery?.();
+  userStates.set(ctx.from.id, { state: 'register_email' });
+  await ctx.reply('📝 *Registration*\n\nEnter your email address:', { parse_mode: 'Markdown' });
+});
+
+bot.action('register_start', async (ctx) => {
+  await ctx.answerCbQuery();
+  userStates.set(ctx.from.id, { state: 'register_email' });
+  await ctx.reply('📝 *Registration*\n\nEnter your email address:', { parse_mode: 'Markdown' });
+});
+
+// Login command/action
+bot.command('login', async (ctx) => {
+  await ctx.answerCbQuery?.();
+  userStates.set(ctx.from.id, { state: 'login_email' });
+  await ctx.reply('🔐 *Login*\n\nEnter your email address:', { parse_mode: 'Markdown' });
+});
+
+bot.action('login_start', async (ctx) => {
+  await ctx.answerCbQuery();
+  userStates.set(ctx.from.id, { state: 'login_email' });
+  await ctx.reply('🔐 *Login*\n\nEnter your email address:', { parse_mode: 'Markdown' });
 });
 
 bot.command('logout', async (ctx) => {
@@ -592,11 +620,15 @@ bot.on('text', async (ctx) => {
   const text = ctx.message.text;
   const session = userSessions.get(userId);
 
-  // Don't auto-detect during login flow
-  const isLoginState = state && (state.state === 'awaiting_username' || state.state === 'awaiting_password');
+  // Auth flow states
+  const isAuthState = state && (
+    state.state === 'register_email' || state.state === 'register_username' || 
+    state.state === 'register_password' || state.state === 'register_wallet' ||
+    state.state === 'login_email' || state.state === 'login_password'
+  );
   
-  // Auto-detect Solana token addresses (but not during login)
-  if (!isLoginState && isSolanaAddress(text)) {
+  // Auto-detect Solana token addresses (but not during auth flow)
+  if (!isAuthState && isSolanaAddress(text)) {
     if (!session) {
       return ctx.reply('Please /start to login first.');
     }
@@ -611,62 +643,140 @@ bot.on('text', async (ctx) => {
     return ctx.reply('Please use /start to begin.');
   }
 
-  if (state.state === 'awaiting_username') {
-    userStates.set(userId, { state: 'awaiting_password', username: text, lastActivity: Date.now() });
-    return ctx.reply('🔐 Please enter your *password*:', { parse_mode: 'Markdown' });
+  // REGISTRATION FLOW
+  if (state.state === 'register_email') {
+    if (!text.includes('@')) {
+      return ctx.reply('❌ Invalid email. Please enter a valid email address:');
+    }
+    userStates.set(userId, { state: 'register_username', email: text });
+    return ctx.reply('Choose a *username* (3-20 characters, letters/numbers/_/-):', { parse_mode: 'Markdown' });
   }
 
-  if (state.state === 'awaiting_password') {
-    const result = await apiRequest('/auth/login', 'POST', {
-      username: state.username,
-      password: text
-    });
-
-    if (!result.success) {
-      userStates.delete(userId);
-      return ctx.reply('❌ Login failed: ' + result.error + '\n\nPlease /start again.');
+  if (state.state === 'register_username') {
+    if (!/^[a-zA-Z0-9_-]{3,20}$/.test(text)) {
+      return ctx.reply('❌ Invalid username. Use 3-20 characters: letters, numbers, _, -');
     }
+    userStates.set(userId, { ...state, username: text, state: 'register_password' });
+    return ctx.reply('Create a *password* (minimum 6 characters):', { parse_mode: 'Markdown' });
+  }
 
-    // Extract token from Set-Cookie header
-    const cookies = result.headers?.['set-cookie'];
-    let token = null;
+  if (state.state === 'register_password') {
+    if (text.length < 6) {
+      return ctx.reply('❌ Password too short. Minimum 6 characters:');
+    }
+    userStates.set(userId, { ...state, password: text, state: 'register_wallet' });
+    return ctx.reply(
+      'Enter your *Solana wallet address*:\n(or type `/skip` to use default wallet)',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (state.state === 'register_wallet') {
+    let walletAddress = 'So11111111111111111111111111111111111111112'; // Default WSOL
     
-    if (cookies && Array.isArray(cookies)) {
-      const tokenCookie = cookies.find(c => c.startsWith('token='));
-      if (tokenCookie) {
-        token = tokenCookie.split(';')[0].split('=')[1];
+    if (text !== '/skip' && text !== 'skip') {
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(text)) {
+        return ctx.reply('❌ Invalid Solana wallet. Please enter a valid address:');
       }
-    } else if (typeof cookies === 'string' && cookies.startsWith('token=')) {
-      token = cookies.split(';')[0].split('=')[1];
+      walletAddress = text;
     }
 
-    if (!token) {
-      console.error('Failed to extract token from cookies');
-      console.error('Set-Cookie header:', result.headers?.['set-cookie']);
-      console.error('All headers:', JSON.stringify(result.headers, null, 2));
-      return ctx.reply('❌ Authentication token not received. Please try again.');
+    try {
+      await ctx.reply('⏳ Creating account...');
+      
+      const result = await apiRequest('/telegram/auth/register', 'POST', {
+        email: state.email,
+        username: state.username,
+        password: state.password,
+        walletAddress: walletAddress
+      }, null, true);
+
+      if (!result.success) {
+        userStates.delete(userId);
+        return ctx.reply('❌ Registration failed: ' + result.error + '\n\nPlease /start to try again.');
+      }
+
+      const user = result.data.user;
+      const token = result.data.token;
+
+      userSessions.set(userId, {
+        username: user.username,
+        token,
+        balance: BigInt(user.balance)
+      });
+
+      // Save session to database
+      const telegramUserId = userId.toString();
+      await apiRequest('/telegram/session', 'POST', {
+        telegramUserId,
+        userId: user.id,
+        token,
+        balance: user.balance.toString()
+      }, null, true);
+
+      userStates.delete(userId);
+      await ctx.reply(
+        `✅ *Account created successfully!*\n\n` +
+        `Username: ${user.username}\n` +
+        `Email: ${user.email}\n` +
+        `Balance: 10 SOL`,
+        { parse_mode: 'Markdown' }
+      );
+      await showMainMenu(ctx);
+    } catch (error) {
+      userStates.delete(userId);
+      ctx.reply('❌ Error during registration. Please /start to try again.');
     }
+  }
 
-    const balance = result.data.user?.balance || 0;
-    
-    userSessions.set(userId, {
-      username: state.username,
-      token,
-      balance
-    });
+  // LOGIN FLOW
+  if (state.state === 'login_email') {
+    if (!text.includes('@')) {
+      return ctx.reply('❌ Invalid email. Please enter a valid email address:');
+    }
+    userStates.set(userId, { state: 'login_password', email: text });
+    return ctx.reply('Enter your *password*:', { parse_mode: 'Markdown' });
+  }
 
-    // Save session to database for persistence
-    const telegramUserId = userId.toString();
-    await apiRequest('/telegram/session', 'POST', {
-      telegramUserId,
-      userId: result.data.user?.id,
-      token,
-      balance: balance.toString()
-    }, null, true);
+  if (state.state === 'login_password') {
+    try {
+      await ctx.reply('⏳ Logging in...');
+      
+      const result = await apiRequest('/telegram/auth/login', 'POST', {
+        email: state.email,
+        password: text
+      }, null, true);
 
-    userStates.delete(userId);
-    await ctx.reply(`✅ Welcome, *${state.username}*!`, { parse_mode: 'Markdown' });
-    await showMainMenu(ctx);
+      if (!result.success) {
+        userStates.delete(userId);
+        return ctx.reply('❌ Login failed: ' + result.error + '\n\nPlease /start to try again.');
+      }
+
+      const user = result.data.user;
+      const token = result.data.token;
+
+      userSessions.set(userId, {
+        username: user.username,
+        token,
+        balance: BigInt(user.balance)
+      });
+
+      // Save session to database
+      const telegramUserId = userId.toString();
+      await apiRequest('/telegram/session', 'POST', {
+        telegramUserId,
+        userId: user.id,
+        token,
+        balance: user.balance.toString()
+      }, null, true);
+
+      userStates.delete(userId);
+      await ctx.reply(`✅ *Welcome back, ${user.username}!*`, { parse_mode: 'Markdown' });
+      await showMainMenu(ctx);
+    } catch (error) {
+      userStates.delete(userId);
+      ctx.reply('❌ Error during login. Please /start to try again.');
+    }
   }
 
   if (state.state === 'awaiting_buy_token') {
