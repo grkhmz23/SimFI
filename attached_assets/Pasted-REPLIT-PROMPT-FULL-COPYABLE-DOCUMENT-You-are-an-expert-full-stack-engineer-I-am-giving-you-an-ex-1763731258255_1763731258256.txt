@@ -1,0 +1,180 @@
+REPLIT PROMPT (FULL COPYABLE DOCUMENT)
+
+You are an expert full-stack engineer.
+I am giving you an existing web application deployed on Replit: a paper trading simulator.
+Your task is to fully analyze the entire codebase and produce a clear, structured, technical report about price inconsistencies.
+
+OBJECTIVE
+
+Identify every place in the frontend where price, entry price, current price, market cap, or P&L price is used or displayed.
+Trace exactly where these values come from in the backend (API endpoints, WebSocket feeds, internal calculations, cached values, or local state).
+Check whether these connections are correct and consistent.
+
+DELIVERABLES
+
+Produce a detailed report containing:
+
+1. Frontend Price Mapping
+
+List every frontend file, component, and exact variable where prices appear, including:
+
+token page price
+
+token page market cap
+
+positions page price
+
+positions card price
+
+buy/sell modal price
+
+order confirmation price
+
+entry price
+
+current price
+
+unrealized P&L price calculations
+
+chart price feeds
+
+any computed or derived price
+
+For each item include:
+
+file path
+
+component name
+
+line numbers (approximate)
+
+variable names
+
+how the value is calculated
+
+what backend API it calls or subscribes to
+
+2. Backend Price Source Mapping
+
+List every backend source of prices:
+
+REST endpoints
+
+WebSocket or streaming endpoints
+
+background price fetchers
+
+price cache or local storage
+
+cron jobs
+
+any derived price modules
+
+For each:
+
+file path
+
+function name
+
+price source (e.g., CoinGecko, Pump.fun API, custom oracle)
+
+response format
+
+timestamp handling
+
+any transformation or rounding logic
+
+3. End-to-End Connection Audit
+
+For every frontend price point, match it to the exact backend function.
+Identify mismatches, such as:
+
+frontend calling different endpoints for the same data
+
+outdated cached values
+
+multiple different price formats
+
+inconsistent conversion (e.g., decimals, tokens vs USD, SOL vs USD)
+
+stale intervals or missing dependency arrays in React
+
+race conditions
+
+WebSocket vs REST inconsistency
+
+rounding mismatches
+
+4. Root Cause Detection
+
+After comparison, identify clearly:
+
+which components show wrong prices
+
+why the price diverges from the source
+
+which part of the code is responsible
+
+what needs to be fixed
+
+5. Fix Recommendations
+
+For each issue, propose:
+
+exact code changes
+
+which files to modify
+
+whether to unify all prices under one single hook/service
+
+whether to convert everything to WebSocket or REST for consistency
+
+whether to add timestamp checks
+
+how to prevent stale values in React state
+
+6. Final “Ready for Production” Checklist
+
+Provide a checklist confirming:
+
+all price sources unified and standardized
+
+consistent formatting across UI
+
+no duplicate or conflicting price fetchers
+
+all calculations deterministic
+
+no stale intervals
+
+no mismatched decimals
+
+no race conditions
+
+INSTRUCTIONS
+
+Scan all frontend and backend files, including:
+
+/src
+
+/components
+
+/hooks
+
+/pages
+
+/api
+
+/server
+
+/utils
+
+Build a dependency tree of how price flows through the system.
+
+Create a single structured report.
+
+Do not modify code yet.
+First, produce the full diagnostic report.
+After the report, I will ask you for specific fixes.
+
+END OF PROMPT
