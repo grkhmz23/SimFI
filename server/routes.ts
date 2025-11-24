@@ -664,11 +664,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Enrich positions with current prices (both entryPrice and currentPrice are BigInt)
-      const enrichedPositions = positions.map(p => ({
-        ...p,
-        currentPrice: priceMap.get(p.tokenAddress) || p.entryPrice, // Both are BigInt now
-      }));
+      // Enrich positions with current prices and recalculate current value
+      // CRITICAL: Use fresh prices from DexScreener, never fall back to entryPrice
+      const enrichedPositions = positions.map(p => {
+        const freshPrice = priceMap.get(p.tokenAddress);
+        const priceToUse = freshPrice || p.currentPrice || p.entryPrice; // Last resort only
+        
+        // ✅ Recalculate current value based on FRESH price, not stale DB value
+        const decimals = p.decimals || 6;
+        const divisor = BigInt(10 ** decimals);
+        const amountBigInt = toBigInt(p.amount);
+        const priceBigInt = toBigInt(priceToUse);
+        const recalculatedValue = (amountBigInt * priceBigInt) / divisor;
+        
+        return {
+          ...p,
+          currentPrice: priceToUse, // Fresh price (or last known, or entry as last resort)
+          currentValue: recalculatedValue, // ✅ Recalculated with fresh price, not stale DB value
+        };
+      });
+      
+      // Debug logging for price freshness
+      console.log(`📊 Position enrichment - ${enrichedPositions.length} positions updated with fresh prices`);
+      enrichedPositions.forEach(p => {
+        const hasFreshPrice = priceMap.has(p.tokenAddress);
+        const priceSOL = Number(toBigInt(p.currentPrice)) / 1_000_000_000;
+        console.log(`   ${p.tokenSymbol}: fresh=${hasFreshPrice}, price=$${priceSOL.toFixed(9)}`);
+      });
       
       res.json(serializeBigInts({ positions: enrichedPositions }));
     } catch (error: any) {
