@@ -21,6 +21,7 @@ interface EnrichedPosition extends Position {
 export default function Positions() {
   const { isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
+  const solPrice = useSolPrice(); // Get current SOL price from context
   const [selectedPosition, setSelectedPosition] = useState<EnrichedPosition | null>(null);
   const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
   const [showTradeModal, setShowTradeModal] = useState(false);
@@ -233,13 +234,13 @@ export default function Positions() {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Entry Price (Jupiter Swap)</span>
                         <span className="font-mono" data-testid={`text-entry-price-${position.id}`}>
-                          {formatPricePerTokenUSD(position.entryPrice)}
+                          {formatPricePerTokenUSD(position.entryPrice, 6, solPrice)}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Current Price</span>
                         <span className="font-mono" data-testid={`text-current-price-${position.id}`}>
-                          {formatPricePerTokenUSD(position.currentPrice)}
+                          {formatPricePerTokenUSD(position.currentPrice, 6, solPrice)}
                         </span>
                       </div>
                     </div>
