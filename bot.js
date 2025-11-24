@@ -25,6 +25,28 @@ const userSessions = new Map();
 const userStates = new Map();
 const pendingOperations = new Map(); // Track pending operations to prevent concurrent trades
 
+// Add error handlers BEFORE any handlers are registered
+bot.catch((err, ctx) => {
+  console.error('❌ Bot error in context:', {
+    updateId: ctx.update.update_id,
+    error: err.message,
+    stack: err.stack
+  });
+});
+
+// Handle middleware errors
+bot.use(async (ctx, next) => {
+  try {
+    await next();
+  } catch (error) {
+    console.error('❌ Middleware error:', {
+      message: error.message,
+      stack: error.stack,
+      update: ctx.update.update_id
+    });
+  }
+});
+
 // Cleanup old sessions and states every 30 minutes
 setInterval(() => {
   const now = Date.now();
@@ -1038,6 +1060,22 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
 
 // Start bot with explicit polling configuration
 console.log('🚀 Starting bot with polling...');
+console.log(`📝 Registered handlers:`);
+console.log(`   - 1x bot.start`);
+console.log(`   - 2x register (command + action)`);
+console.log(`   - 2x login (command + action)`);
+console.log(`   - 20+ actions and handlers`);
+console.log(`   - 1x text handler for state machine`);
+
+let botStartTimeout = null;
+
+// Add startup timeout to detect hanging
+botStartTimeout = setTimeout(() => {
+  console.error('❌ Bot launch timeout - promise never resolved after 5 seconds');
+  console.error('This indicates one of the handlers is blocking or crashing');
+  process.exit(1);
+}, 5000);
+
 bot.launch({
   polling: {
     interval: 300,
@@ -1045,12 +1083,20 @@ bot.launch({
     allowedUpdates: ['message', 'callback_query']
   }
 }).then(() => {
+  clearTimeout(botStartTimeout);
   console.log('✅ Telegram bot is running!');
   console.log(`📡 API Base URL: ${API_BASE_URL}`);
   console.log('🎯 Bot is listening for messages...');
+  console.log('📲 Try /start to begin!');
 }).catch((err) => {
+  clearTimeout(botStartTimeout);
   console.error('❌ Failed to start bot:', err.message || err);
-  console.error('Full error:', err);
+  console.error('Error details:', {
+    name: err.name,
+    message: err.message,
+    code: err.code,
+    stack: err.stack
+  });
   process.exit(1);
 });
 
