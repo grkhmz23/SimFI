@@ -773,16 +773,23 @@ bot.on('text', async (ctx) => {
 
       // Save session to database
       const telegramUserId = userId.toString();
-      await apiRequest('/api/telegram/session', 'POST', {
+      const sessionResult = await apiRequest('/api/telegram/session', 'POST', {
         telegramUserId,
         userId: user.id,
         token,
         balance: user.balance.toString()
       }, null, true);
 
+      if (!sessionResult.success) {
+        console.warn('⚠️ Warning: Could not save telegram session:', sessionResult.error);
+        // Continue anyway - user is logged in locally even if database save failed
+      }
+
       userStates.delete(userId);
       try {
-        await ctx.deleteMessage(loadingMsg.message_id);
+        if (loadingMsg?.message_id) {
+          await ctx.deleteMessage(loadingMsg.message_id);
+        }
       } catch (e) {
         // Message may have already been deleted
       }
@@ -902,7 +909,9 @@ bot.on('text', async (ctx) => {
 
       userStates.delete(userId);
       try {
-        await ctx.deleteMessage(loadingMsg.message_id);
+        if (loadingMsg?.message_id) {
+          await ctx.deleteMessage(loadingMsg.message_id);
+        }
       } catch (e) {
         // Message may have already been deleted
       }
