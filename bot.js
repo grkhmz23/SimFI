@@ -29,14 +29,18 @@ const pendingOperations = new Map(); // Track pending operations to prevent conc
 setInterval(() => {
   const now = Date.now();
   const THIRTY_MINUTES = 30 * 60 * 1000;
+  let deletedCount = 0;
   
   for (const [userId, state] of userStates.entries()) {
     if (state.lastActivity && (now - state.lastActivity) > THIRTY_MINUTES) {
       userStates.delete(userId);
+      deletedCount++;
     }
   }
   
-  console.log('🧹 Cleaned up inactive user states');
+  if (deletedCount > 0) {
+    console.log(`🧹 Cleaned up ${deletedCount} inactive user states`);
+  }
 }, 30 * 60 * 1000);
 
 const formatSol = (lamports) => {
@@ -163,7 +167,8 @@ const showBuyMenu = async (ctx, tokenAddress, session) => {
   userStates.set(userId, {
     state: 'awaiting_buy_amount',
     tokenAddress,
-    token
+    token,
+    lastActivity: Date.now()
   });
 
   await ctx.reply(
@@ -221,20 +226,20 @@ bot.start(async (ctx) => {
 // Register command/action
 bot.command('register', async (ctx) => {
   await ctx.answerCbQuery?.();
-  userStates.set(ctx.from.id, { state: 'register_email' });
+  userStates.set(ctx.from.id, { state: 'register_email', lastActivity: Date.now() });
   await ctx.reply('📝 *Registration*\n\nEnter your email address:', { parse_mode: 'Markdown' });
 });
 
 bot.action('register_start', async (ctx) => {
   await ctx.answerCbQuery();
-  userStates.set(ctx.from.id, { state: 'register_email' });
+  userStates.set(ctx.from.id, { state: 'register_email', lastActivity: Date.now() });
   await ctx.reply('📝 *Registration*\n\nEnter your email address:', { parse_mode: 'Markdown' });
 });
 
 // Login command/action - supports both email AND username
 bot.command('login', async (ctx) => {
   await ctx.answerCbQuery?.();
-  userStates.set(ctx.from.id, { state: 'login_identifier' });
+  userStates.set(ctx.from.id, { state: 'login_identifier', lastActivity: Date.now() });
   await ctx.reply(
     '🔐 *Login*\n\n' +
     'Enter your *email* or *username*:',
@@ -244,7 +249,7 @@ bot.command('login', async (ctx) => {
 
 bot.action('login_start', async (ctx) => {
   await ctx.answerCbQuery();
-  userStates.set(ctx.from.id, { state: 'login_identifier' });
+  userStates.set(ctx.from.id, { state: 'login_identifier', lastActivity: Date.now() });
   await ctx.reply(
     '🔐 *Login*\n\n' +
     'Enter your *email* or *username*:',
@@ -275,7 +280,7 @@ bot.action('buy', async (ctx) => {
     return ctx.reply('Please /start to login first.');
   }
   
-  userStates.set(ctx.from.id, { state: 'awaiting_buy_token' });
+  userStates.set(ctx.from.id, { state: 'awaiting_buy_token', lastActivity: Date.now() });
   await ctx.reply(
     '🔍 Enter the token contract address you want to buy:',
     Markup.inlineKeyboard([
@@ -346,7 +351,8 @@ bot.action(/^sell_token:(.+)$/, async (ctx) => {
   userStates.set(ctx.from.id, { 
     state: 'awaiting_sell_percentage',
     tokenAddress,
-    position
+    position,
+    lastActivity: Date.now()
   });
 
   await ctx.reply(
@@ -661,7 +667,7 @@ bot.on('text', async (ctx) => {
         '(e.g., user@example.com)'
       );
     }
-    userStates.set(userId, { state: 'register_username', email });
+    userStates.set(userId, { state: 'register_username', email, lastActivity: Date.now() });
     return ctx.reply(
       '✅ Email saved!\n\n' +
       'Choose a *username* (3-20 characters, letters/numbers/_/-):\n' +
@@ -677,7 +683,7 @@ bot.on('text', async (ctx) => {
         'Please try again:'
       );
     }
-    userStates.set(userId, { ...state, username: text, state: 'register_password' });
+    userStates.set(userId, { ...state, username: text, state: 'register_password', lastActivity: Date.now() });
     return ctx.reply(
       '✅ Username saved!\n\n' +
       'Create a *password* (minimum 6 characters):',
@@ -692,7 +698,7 @@ bot.on('text', async (ctx) => {
         'Please try again:'
       );
     }
-    userStates.set(userId, { ...state, password: text, state: 'register_wallet' });
+    userStates.set(userId, { ...state, password: text, state: 'register_wallet', lastActivity: Date.now() });
     return ctx.reply(
       '✅ Password saved!\n\n' +
       'Enter your *Solana wallet address*:\n' +
@@ -793,7 +799,7 @@ bot.on('text', async (ctx) => {
     } catch (error) {
       userStates.delete(userId);
       console.error('❌ Bot registration exception:', error);
-      ctx.reply(
+      await ctx.reply(
         '❌ An unexpected error occurred during registration.\n\n' +
         '💡 Please use /start to try again, or contact support if the problem persists.'
       );
@@ -812,7 +818,7 @@ bot.on('text', async (ctx) => {
       );
     }
     
-    userStates.set(userId, { state: 'login_password', identifier });
+    userStates.set(userId, { state: 'login_password', identifier, lastActivity: Date.now() });
     return ctx.reply(
       '✅ Got it!\n\n' +
       'Now enter your *password*:',
