@@ -31,6 +31,9 @@ export default function Portfolio() {
   const { data: positionsData, isLoading } = useQuery<{ positions: Position[] }>({
     queryKey: ['/api/trades/positions'],
     enabled: isAuthenticated,
+    refetchInterval: 2500, // Auto-refresh every 2.5 seconds to get latest prices
+    refetchIntervalInBackground: true,
+    staleTime: 2000, // Consider data stale after 2 seconds
   });
 
   if (!isAuthenticated) {
