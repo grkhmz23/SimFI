@@ -231,7 +231,7 @@ export default function Positions() {
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Entry Price</span>
+                        <span className="text-muted-foreground">Entry Price (Jupiter Swap)</span>
                         <span className="font-mono" data-testid={`text-entry-price-${position.id}`}>
                           {formatPricePerTokenUSD(position.entryPrice)}
                         </span>

@@ -270,14 +270,22 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     }
     
     // ✅ CRITICAL: Use Jupiter effective price as entry price (most accurate swap price)
-    // Falls back to DexScreener price if Jupiter quote not available
-    const entryPrice = jupiterQuote?.effectivePriceLamports || Number(currentPrice);
+    // This is the ACTUAL price you get from the swap, not market price
+    const jupiterPrice = jupiterQuote?.effectivePriceLamports;
+    const dexScreenerPrice = Number(currentPrice);
+    const entryPrice = jupiterPrice || dexScreenerPrice;
     
-    console.log('🛒 Buy submit - Jupiter Quote:', jupiterQuote);
-    console.log('   Jupiter effective price:', jupiterQuote?.effectivePriceLamports);
-    console.log('   DexScreener price:', Number(currentPrice));
-    console.log('   Using entry price:', entryPrice);
+    // Validation: Jupiter price should always be available
+    if (!jupiterPrice) {
+      console.warn('⚠️ MISSING JUPITER PRICE - Falling back to DexScreener:', dexScreenerPrice);
+    }
+    
+    console.log('🛒 BUY TRANSACTION STARTING');
+    console.log('   Jupiter effective price (swap):', jupiterPrice, `(${jupiterPrice ? (jupiterPrice / 1_000_000_000).toFixed(9) : 'N/A'} SOL/token)`);
+    console.log('   DexScreener market price:', dexScreenerPrice, `(${(dexScreenerPrice / 1_000_000_000).toFixed(9)} SOL/token)`);
+    console.log('   USING as entry price:', entryPrice, `(${(entryPrice / 1_000_000_000).toFixed(9)} SOL/token)`);
     console.log('   SOL amount:', data.solAmount);
+    console.log('   Full Jupiter Quote:', jupiterQuote);
     
     if (entryPrice <= 0) {
       toast({
