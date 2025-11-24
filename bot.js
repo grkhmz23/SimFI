@@ -1205,8 +1205,8 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
   await showMainMenu(ctx);
 });
 
-// Manual polling implementation - bypasses bot.launch() which hangs in Replit environment
-console.log('🚀 Starting bot with manual polling...');
+// Use Telegraf's built-in polling with explicit configuration
+console.log('🚀 Starting bot with Telegraf polling...');
 
 (async () => {
   try {
@@ -1214,109 +1214,36 @@ console.log('🚀 Starting bot with manual polling...');
     const botInfo = await bot.telegram.getMe();
     console.log(`✅ Bot token valid: @${botInfo.username} (${botInfo.first_name})`);
     
-    // Delete webhook if set (ensures we can use polling)
+    // Fully clear webhook - try both methods
     try {
       await bot.telegram.deleteWebhook({ drop_pending_updates: true });
-      console.log('📡 Webhook removed (if any was set)');
+      console.log('📡 Webhook removed');
     } catch (err) {
-      console.log('📡 No webhook to remove (expected)');
+      console.log('📡 No webhook to remove');
     }
     
-    console.log('📡 Starting manual polling loop...');
-    console.log(`📡 API Base URL: ${API_BASE_URL}`);
+    // Also set webhook to empty (more aggressive clearing)
+    try {
+      await bot.telegram.setWebhook('');
+      console.log('📡 Webhook set to empty');
+    } catch (err) {
+      console.log('📡 Could not set webhook to empty (expected)');
+    }
     
-    let offset = 0;
-    let consecutiveErrors = 0;
-    const MAX_ERRORS = 5;
-    const processedUpdates = new Set(); // Track processed update IDs to prevent duplicates
+    console.log('📡 Starting Telegraf polling...');
     
-    // Manual polling loop with proper safeguards
-    const poll = async () => {
-      console.log('[POLL] Starting polling loop...');
-      
-      while (true) {
-        try {
-          // Get updates from Telegram with 30s timeout
-          const updates = await bot.telegram.getUpdates({
-            offset,
-            limit: 10, // Reduced from 100 to prevent batching too many messages
-            timeout: 30,
-            allowed_updates: ['message', 'callback_query']
-          });
-          
-          // Reset error counter on successful poll
-          if (consecutiveErrors > 0) {
-            console.log('✅ Polling recovered');
-            consecutiveErrors = 0;
-          }
-          
-          // Log polling status
-          if (updates.length === 0) {
-            console.log(`[POLL] No updates received (offset: ${offset})`);
-          } else {
-            console.log(`[POLL] Got ${updates.length} updates from Telegram`);
-          }
-          
-          // Process each update with deduplication
-          for (const update of updates) {
-            // Skip if we've already processed this update ID
-            if (processedUpdates.has(update.update_id)) {
-              console.log(`⏭️  Skipping duplicate update ${update.update_id}`);
-              offset = update.update_id + 1;
-              continue;
-            }
-            
-            try {
-              const updateType = update.message ? 'message' : update.callback_query ? 'callback_query' : update.edited_message ? 'edited_message' : 'unknown';
-              console.log(`[POLL] Processing update ${update.update_id}: ${updateType}`);
-              
-              // Log raw update structure for debugging (first 500 chars)
-              const updateStr = JSON.stringify(update).substring(0, 500);
-              console.log(`[POLL] Update data: ${updateStr}...`);
-              
-              // Track this update as processed
-              processedUpdates.add(update.update_id);
-              
-              // Clean up old processed updates (keep only last 1000)
-              if (processedUpdates.size > 1000) {
-                const first = [...processedUpdates][0];
-                processedUpdates.delete(first);
-              }
-              
-              console.log(`[POLL] Calling bot.handleUpdate()...`);
-              await bot.handleUpdate(update);
-              offset = update.update_id + 1;
-              
-              console.log(`[POLL] ✅ Processed update ${update.update_id} successfully`);
-            } catch (updateErr) {
-              console.error(`[POLL] ❌ Error handling update ${update.update_id}:`, updateErr.message);
-              console.error(`[POLL] Error stack:`, updateErr.stack);
-              offset = update.update_id + 1; // Still advance offset on error
-            }
-          }
-          
-          // Add small delay between polls to prevent CPU spinning
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-        } catch (err) {
-          consecutiveErrors++;
-          console.error(`[POLL] ❌ Polling error (${consecutiveErrors}/${MAX_ERRORS}):`, err.message);
-          
-          if (consecutiveErrors >= MAX_ERRORS) {
-            console.error('[POLL] ❌ Too many consecutive polling errors. Stopping bot.');
-            process.exit(1);
-          }
-          
-          // Wait before retrying on error
-          await new Promise(resolve => setTimeout(resolve, 3000));
-        }
-      }
-    };
-    
-    // Start polling in background (don't await)
-    poll().catch(err => {
-      console.error('❌ Fatal polling error:', err);
-      process.exit(1);
+    // Use Telegraf's built-in polling which handles everything properly
+    await bot.launch({
+      polling: {
+        timeout: 30,
+        limit: 100,
+        relativeTimeout: true,
+        stopCallback: () => {
+          console.log('📡 Polling stopped');
+        },
+      },
+      allowedUpdates: [],  // Empty array = accept all update types
+      dropPendingUpdates: true,
     });
     
     console.log('✅ Telegram bot polling started!');
@@ -1327,8 +1254,22 @@ console.log('🚀 Starting bot with manual polling...');
     console.error('❌ Failed to initialize bot:');
     console.error('Error:', err.message);
     if (err.code) console.error('Code:', err.code);
-    if (err.stack) console.error('Stack:', err.stack);
-    process.exit(1);
+    if (err.response) console.error('Response:', err.response);
+    if (err.stack) console.error('Stack:', err.stack.substring(0, 500));
+    
+    // Retry with fallback polling
+    console.error('🔄 Attempting fallback polling...');
+    setTimeout(() => {
+      try {
+        bot.launch().catch(retryErr => {
+          console.error('❌ Fallback polling failed:', retryErr.message);
+          process.exit(1);
+        });
+      } catch (retryErr) {
+        console.error('❌ Fatal error starting bot:', retryErr.message);
+        process.exit(1);
+      }
+    }, 2000);
   }
 })();
 
