@@ -15,8 +15,9 @@ import {
 import { TradeModal } from '@/components/TradeModal';
 import { useAuth } from '@/lib/auth-context';
 import { useSolPrice } from '@/lib/price-context';
+import { Link } from 'wouter';
 import { formatSol, lamportsToSol, toBigInt, formatTokenAmount, formatPricePerTokenUSD } from '@/lib/lamports';
-import { TrendingUp, TrendingDown, Package, LogIn } from 'lucide-react';
+import { TrendingUp, TrendingDown, Package, LogIn, ExternalLink } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import type { Position } from '@shared/schema';
@@ -28,7 +29,7 @@ export default function Portfolio() {
   const [selectedPosition, setSelectedPosition] = useState<Position & { currentPrice: number } | null>(null);
   const { toast } = useToast();
 
-  const { data: positionsData, isLoading } = useQuery<{ positions: Position[] }>({
+  const { data: positionsData, isLoading, isError, error } = useQuery<{ positions: Position[] }>({
     queryKey: ['/api/trades/positions'],
     enabled: isAuthenticated,
     refetchInterval: 2500, // Auto-refresh every 2.5 seconds to get latest prices
@@ -211,15 +212,52 @@ export default function Portfolio() {
         <div className="p-6">
           <h2 className="text-2xl font-bold text-foreground mb-6">Open Positions</h2>
           
+          {isError && (
+            <div className="bg-destructive/10 border border-destructive/30 rounded-md p-4 mb-6">
+              <p className="text-destructive font-semibold">Error loading positions</p>
+              <p className="text-sm text-destructive/80">{error?.message || 'Failed to load positions'}</p>
+            </div>
+          )}
+          
           {isLoading ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">Loading positions...</p>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Token</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Entry Price</TableHead>
+                    <TableHead className="text-right">Current Price</TableHead>
+                    <TableHead className="text-right">Invested</TableHead>
+                    <TableHead className="text-right">Current Value</TableHead>
+                    <TableHead className="text-right">P/L</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[1, 2, 3].map((i) => (
+                    <TableRow key={i} className="animate-pulse">
+                      <TableCell><div className="h-8 bg-muted rounded w-24" /></TableCell>
+                      <TableCell><div className="h-8 bg-muted rounded w-20 ml-auto" /></TableCell>
+                      <TableCell><div className="h-8 bg-muted rounded w-24 ml-auto" /></TableCell>
+                      <TableCell><div className="h-8 bg-muted rounded w-24 ml-auto" /></TableCell>
+                      <TableCell><div className="h-8 bg-muted rounded w-20 ml-auto" /></TableCell>
+                      <TableCell><div className="h-8 bg-muted rounded w-20 ml-auto" /></TableCell>
+                      <TableCell><div className="h-8 bg-muted rounded w-20 ml-auto" /></TableCell>
+                      <TableCell><div className="h-8 bg-muted rounded w-20 ml-auto" /></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           ) : positions.length === 0 ? (
             <div className="text-center py-12">
               <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <p className="text-xl text-muted-foreground mb-2">No open positions</p>
-              <p className="text-sm text-muted-foreground">Start trading to see your positions here</p>
+              <p className="text-xl text-muted-foreground mb-2" data-testid="text-no-positions">No open positions</p>
+              <p className="text-sm text-muted-foreground mb-6">Start trading to see your positions here</p>
+              <Link href="/">
+                <Button data-testid="button-start-trading">Start Trading</Button>
+              </Link>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -250,45 +288,52 @@ export default function Portfolio() {
                     return (
                       <TableRow key={position.id} data-testid={`row-position-${position.id}`}>
                         <TableCell>
-                          <button
-                            onClick={() => setLocation(`/token/${position.tokenAddress}`)}
-                            className="text-left hover-elevate rounded-md p-2 -ml-2 active-elevate-2"
-                            data-testid={`button-view-token-${position.id}`}
-                          >
-                            <p className="font-semibold text-foreground">{position.tokenSymbol}</p>
-                            <p className="text-sm text-muted-foreground truncate max-w-[200px]">
-                              {position.tokenName}
-                            </p>
-                            {isFirstOfMultiple && (
-                              <Badge variant="secondary" className="mt-1 text-xs">
-                                {tokenPositions.length} positions
-                              </Badge>
-                            )}
-                          </button>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              <p className="font-semibold text-foreground" data-testid={`text-token-symbol-${position.id}`}>{position.tokenSymbol}</p>
+                              <p className="text-sm text-muted-foreground truncate max-w-[200px]" data-testid={`text-token-name-${position.id}`}>
+                                {position.tokenName}
+                              </p>
+                              {isFirstOfMultiple && (
+                                <Badge variant="secondary" className="mt-1 text-xs">
+                                  {tokenPositions.length} positions
+                                </Badge>
+                              )}
+                            </div>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              onClick={() => setLocation(`/token/${position.tokenAddress}`)}
+                              data-testid={`button-view-token-${position.id}`}
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
-                        <TableCell className="text-right font-mono">
+                        <TableCell className="text-right font-mono" data-testid={`text-amount-${position.id}`}>
                           {formatTokenAmount(position.amount, 2, position.decimals || 6)}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
+                        <TableCell className="text-right font-mono text-sm" data-testid={`text-entry-price-${position.id}`}>
                           {formatPricePerTokenUSD(position.entryPrice, 6, solPrice)}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
+                        <TableCell className="text-right font-mono text-sm" data-testid={`text-current-price-${position.id}`}>
                           {formatPricePerTokenUSD(positionWithPrice.currentPrice, 6, solPrice)}
                         </TableCell>
-                        <TableCell className="text-right font-mono">
+                        <TableCell className="text-right font-mono" data-testid={`text-invested-${position.id}`}>
                           {formatSol(position.solSpent)}
                         </TableCell>
-                        <TableCell className="text-right font-mono">
+                        <TableCell className="text-right font-mono" data-testid={`text-value-${position.id}`}>
                           {formatSol(currentValueBigInt)}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex flex-col items-end">
-                            <span className={`font-mono font-semibold ${plBigInt >= 0n ? 'text-success' : 'text-destructive'}`}>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={`font-mono font-semibold ${plBigInt >= 0n ? 'text-success' : 'text-destructive'}`} data-testid={`text-pnl-${position.id}`}>
                               {plBigInt >= 0n ? '+' : ''}{formatSol(plBigInt)}
                             </span>
                             <Badge 
                               variant={plBigInt >= 0n ? 'default' : 'destructive'}
                               className="text-xs"
+                              data-testid={`badge-pnl-percent-${position.id}`}
                             >
                               {plBigInt >= 0n ? '+' : ''}{plPercent.toFixed(2)}%
                             </Badge>
@@ -296,6 +341,14 @@ export default function Portfolio() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex flex-col gap-2">
+                            <Button
+                              size="sm"
+                              variant="default"
+                              onClick={() => setSelectedPosition(positionWithPrice)}
+                              data-testid={`button-buy-more-${position.id}`}
+                            >
+                              Buy More
+                            </Button>
                             <Button
                               size="sm"
                               variant="destructive"
