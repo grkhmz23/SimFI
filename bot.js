@@ -1205,111 +1205,45 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
   await showMainMenu(ctx);
 });
 
-// Manual polling - proper implementation for Replit environment
-console.log('🚀 Starting bot with manual polling...');
+// Use Telegraf built-in polling - the most reliable method
+console.log('🚀 Starting Telegram bot with polling...');
 
 (async () => {
   try {
-    // Test token first
+    // Test token
     const botInfo = await bot.telegram.getMe();
     console.log(`✅ Bot token valid: @${botInfo.username} (${botInfo.first_name})`);
     
-    // Fully clear webhook - try both methods
+    // CRITICAL: Fully disable webhooks before polling
     try {
-      await bot.telegram.deleteWebhook({ drop_pending_updates: false });
-      console.log('📡 Webhook removed');
+      await bot.telegram.deleteWebhook();
+      console.log('📡 Webhook deleted successfully');
     } catch (err) {
-      console.log('📡 No webhook to remove');
+      console.log('📡 No active webhook');
     }
     
-    // Also try setting webhook to empty
-    try {
-      await bot.telegram.setWebhook('');
-      console.log('📡 Webhook set to empty');
-    } catch (err) {
-      // Expected
-    }
-    
-    console.log('📡 Starting manual polling loop...');
-    
-    let offset = 0;
-    let pollCount = 0;
-    let hasReceivedUpdates = false;
-    const processedUpdates = new Set();
-    
-    // The polling loop runs non-blocking in the background
-    const startPolling = async () => {
-      console.log('[POLL] Polling loop started');
-      
-      while (true) {
-        try {
-          pollCount++;
-          
-          // Get updates - CRITICAL: do NOT send allowed_updates parameter
-          // Only send the minimal required parameters
-          const updates = await bot.telegram.getUpdates({
-            offset,
-            limit: 100,
-            timeout: 25,
-          });
-          
-          if (updates.length > 0) {
-            if (!hasReceivedUpdates) {
-              console.log('✅ UPDATES RECEIVED! Bot is working!');
-              hasReceivedUpdates = true;
-            }
-            console.log(`[POLL #${pollCount}] Got ${updates.length} update(s) from Telegram API`);
-            
-            for (const update of updates) {
-              if (processedUpdates.has(update.update_id)) {
-                offset = Math.max(offset, update.update_id + 1);
-                continue;
-              }
-              
-              try {
-                processedUpdates.add(update.update_id);
-                console.log(`[POLL] Processing update_id=${update.update_id} (type=${update.message ? 'message' : update.callback_query ? 'callback' : 'other'})`);
-                
-                // Handle the update
-                await bot.handleUpdate(update);
-                offset = update.update_id + 1;
-              } catch (err) {
-                console.error(`[POLL] Error handling update ${update.update_id}:`, err.message);
-                offset = update.update_id + 1;
-              }
-            }
-          } else {
-            // No updates - this is OK, just wait
-            if (pollCount % 10 === 0) {
-              console.log(`[POLL #${pollCount}] No updates (offset=${offset})`);
-            }
-          }
-          
-          // Wait 100ms before next poll
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-        } catch (err) {
-          console.error('[POLL] Polling error:', err.message);
-          // Continue polling even on error
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-    };
-    
-    // Start polling in background (do NOT await - it runs forever)
-    startPolling().catch(err => {
-      console.error('[POLL] Fatal polling error:', err.message);
-      process.exit(1);
-    });
+    // Start polling - non-blocking with proper error handling
+    console.log('📡 Starting polling...');
+    bot.startPolling();
     
     console.log('✅ Telegram bot polling started!');
     console.log('🎯 Bot is now listening for messages');
     console.log(`📱 Try sending /start to @${botInfo.username}`);
     
+    // Log when first update is received
+    bot.on('message', async (ctx) => {
+      if (!ctx.message) return;
+      console.log(`📩 Message received from user ${ctx.from.id}: "${ctx.message.text}"`);
+    });
+    
+    bot.on('callback_query', async (ctx) => {
+      console.log(`📩 Callback received from user ${ctx.from.id}: "${ctx.callbackQuery.data}"`);
+    });
+    
   } catch (err) {
-    console.error('❌ Failed to initialize bot:');
+    console.error('❌ Failed to start bot:');
     console.error('Error:', err.message);
-    console.error('Stack:', err.stack ? err.stack.substring(0, 300) : 'N/A');
+    if (err.code) console.error('Code:', err.code);
     process.exit(1);
   }
 })();
