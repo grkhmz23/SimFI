@@ -25,25 +25,13 @@ const userSessions = new Map();
 const userStates = new Map();
 const pendingOperations = new Map(); // Track pending operations to prevent concurrent trades
 
-// Add error handlers BEFORE any handlers are registered
+// Global error handler for unhandled errors
 bot.catch((err, ctx) => {
-  console.error('❌ Bot error in context:', {
-    updateId: ctx.update.update_id,
-    error: err.message,
-    stack: err.stack
-  });
-});
-
-// Handle middleware errors
-bot.use(async (ctx, next) => {
+  console.error('❌ Telegraf error:', err.message);
   try {
-    await next();
-  } catch (error) {
-    console.error('❌ Middleware error:', {
-      message: error.message,
-      stack: error.stack,
-      update: ctx.update.update_id
-    });
+    ctx.reply('❌ An error occurred. Please try again or use /start to restart.');
+  } catch (e) {
+    console.error('Failed to send error message to user:', e);
   }
 });
 
@@ -1058,47 +1046,35 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
   await showMainMenu(ctx);
 });
 
-// Start bot with explicit polling configuration
+// Start bot with polling - using async/await for better error handling
 console.log('🚀 Starting bot with polling...');
-console.log(`📝 Registered handlers:`);
-console.log(`   - 1x bot.start`);
-console.log(`   - 2x register (command + action)`);
-console.log(`   - 2x login (command + action)`);
-console.log(`   - 20+ actions and handlers`);
-console.log(`   - 1x text handler for state machine`);
 
-let botStartTimeout = null;
-
-// Add startup timeout to detect hanging
-botStartTimeout = setTimeout(() => {
-  console.error('❌ Bot launch timeout - promise never resolved after 5 seconds');
-  console.error('This indicates one of the handlers is blocking or crashing');
-  process.exit(1);
-}, 5000);
-
-bot.launch({
-  polling: {
-    interval: 300,
-    timeout: 30,
-    allowedUpdates: ['message', 'callback_query']
+(async () => {
+  try {
+    // Test token first
+    const botInfo = await bot.telegram.getMe();
+    console.log(`✅ Bot token valid: @${botInfo.username} (${botInfo.first_name})`);
+    
+    // Launch bot
+    await bot.launch({
+      allowedUpdates: ['message', 'callback_query'],
+      dropPendingUpdates: true  // Drop pending updates on restart
+    });
+    
+    console.log('✅ Telegram bot is running!');
+    console.log(`📡 API Base URL: ${API_BASE_URL}`);
+    console.log('🎯 Bot is listening for messages...');
+    console.log('📲 Try /start to begin!');
+  } catch (err) {
+    console.error('❌ Failed to start bot:');
+    console.error('Error:', err.message);
+    console.error('Code:', err.code);
+    if (err.response) {
+      console.error('Response:', JSON.stringify(err.response.body || err.response));
+    }
+    process.exit(1);
   }
-}).then(() => {
-  clearTimeout(botStartTimeout);
-  console.log('✅ Telegram bot is running!');
-  console.log(`📡 API Base URL: ${API_BASE_URL}`);
-  console.log('🎯 Bot is listening for messages...');
-  console.log('📲 Try /start to begin!');
-}).catch((err) => {
-  clearTimeout(botStartTimeout);
-  console.error('❌ Failed to start bot:', err.message || err);
-  console.error('Error details:', {
-    name: err.name,
-    message: err.message,
-    code: err.code,
-    stack: err.stack
-  });
-  process.exit(1);
-});
+})();
 
 // Enable graceful shutdown
 process.once('SIGINT', () => {
