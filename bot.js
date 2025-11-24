@@ -1,5 +1,10 @@
+// CRITICAL: Log immediately before any imports to ensure bot.js is executing
+console.log('[BOT] ✅ bot.js file is executing');
+
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
+
+console.log('[BOT] ✅ Imports completed');
 
 // Use dev token in development, production token in production
 const BOT_TOKEN = process.env.NODE_ENV === 'development' 
@@ -7,6 +12,11 @@ const BOT_TOKEN = process.env.NODE_ENV === 'development'
   : process.env.TELEGRAM_BOT_TOKEN;
 
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:5000';
+
+console.log(`[BOT] NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`[BOT] Dev token present: ${!!process.env.TELEGRAM_BOT_TOKEN_DEV}`);
+console.log(`[BOT] Prod token present: ${!!process.env.TELEGRAM_BOT_TOKEN}`);
+console.log(`[BOT] BOT_TOKEN selected: ${!!BOT_TOKEN}`);
 
 if (!BOT_TOKEN) {
   console.error('❌ TELEGRAM_BOT_TOKEN is required in environment variables');
@@ -19,7 +29,16 @@ if (!BOT_TOKEN) {
 console.log(`🤖 Starting bot in ${process.env.NODE_ENV} mode`);
 console.log(`🔑 Using ${process.env.NODE_ENV === 'development' ? 'DEVELOPMENT' : 'PRODUCTION'} bot token`);
 
-const bot = new Telegraf(BOT_TOKEN);
+console.log('[BOT] ✅ Creating Telegraf instance...');
+let bot;
+try {
+  bot = new Telegraf(BOT_TOKEN);
+  console.log('[BOT] ✅ Telegraf instance created successfully');
+} catch (err) {
+  console.error('[BOT] ❌ Failed to create Telegraf instance:', err.message);
+  console.error('[BOT] Stack:', err.stack);
+  process.exit(1);
+}
 
 const userSessions = new Map();
 const userStates = new Map();
