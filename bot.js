@@ -43,6 +43,8 @@ try {
 const userSessions = new Map();
 const userStates = new Map();
 const pendingOperations = new Map(); // Track pending operations to prevent concurrent trades
+let cachedSolPrice = 0;
+let solPriceLastUpdated = 0;
 
 // Global error handler for unhandled errors
 bot.catch((err, ctx) => {
@@ -108,6 +110,29 @@ const formatTokenAmount = (lamports, decimals = 6) => {
   return tokens.toFixed(2);
 };
 
+// Convert lamports (SOL) to USD
+const formatSolToUsd = (lamports, solPrice = cachedSolPrice) => {
+  const sol = Number(lamports) / 1_000_000_000;
+  const usd = sol * solPrice;
+  return `$${usd.toFixed(2)}`;
+};
+
+// Get current SOL price - cached for 5 seconds to avoid repeated API calls
+const getSolPrice = async (token) => {
+  const now = Date.now();
+  if (cachedSolPrice > 0 && (now - solPriceLastUpdated) < 5000) {
+    return cachedSolPrice;
+  }
+  
+  const result = await apiRequest('/api/solana/price', 'GET', null, token);
+  if (result.success && result.data.price) {
+    cachedSolPrice = result.data.price;
+    solPriceLastUpdated = now;
+    return result.data.price;
+  }
+  return cachedSolPrice || 138; // Fallback to last known price
+};
+
 // Helper function to detect Solana token addresses
 const isSolanaAddress = (text) => {
   // Solana addresses are base58 encoded, typically 32-44 characters
@@ -135,7 +160,7 @@ const apiRequest = async (endpoint, method = 'GET', data = null, token = null, i
       url: `${API_BASE_URL}${endpoint}`,
       headers,
       withCredentials: false,
-      timeout: 30000 // 30 second timeout for all requests (Bug #25)
+      timeout: 15000 // 15 second timeout for faster responses
     };
 
     if (data) {
