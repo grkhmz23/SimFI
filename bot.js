@@ -1205,8 +1205,8 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
   await showMainMenu(ctx);
 });
 
-// Use Telegraf's built-in polling with explicit configuration
-console.log('🚀 Starting bot with Telegraf polling...');
+// Manual polling - proper implementation for Replit environment
+console.log('🚀 Starting bot with manual polling...');
 
 (async () => {
   try {
@@ -1216,34 +1216,90 @@ console.log('🚀 Starting bot with Telegraf polling...');
     
     // Fully clear webhook - try both methods
     try {
-      await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+      await bot.telegram.deleteWebhook({ drop_pending_updates: false });
       console.log('📡 Webhook removed');
     } catch (err) {
       console.log('📡 No webhook to remove');
     }
     
-    // Also set webhook to empty (more aggressive clearing)
+    // Also try setting webhook to empty
     try {
       await bot.telegram.setWebhook('');
       console.log('📡 Webhook set to empty');
     } catch (err) {
-      console.log('📡 Could not set webhook to empty (expected)');
+      // Expected
     }
     
-    console.log('📡 Starting Telegraf polling...');
+    console.log('📡 Starting manual polling loop...');
     
-    // Use Telegraf's built-in polling which handles everything properly
-    await bot.launch({
-      polling: {
-        timeout: 30,
-        limit: 100,
-        relativeTimeout: true,
-        stopCallback: () => {
-          console.log('📡 Polling stopped');
-        },
-      },
-      allowedUpdates: [],  // Empty array = accept all update types
-      dropPendingUpdates: true,
+    let offset = 0;
+    let pollCount = 0;
+    let hasReceivedUpdates = false;
+    const processedUpdates = new Set();
+    
+    // The polling loop runs non-blocking in the background
+    const startPolling = async () => {
+      console.log('[POLL] Polling loop started');
+      
+      while (true) {
+        try {
+          pollCount++;
+          
+          // Get updates - CRITICAL: do NOT send allowed_updates parameter
+          // Only send the minimal required parameters
+          const updates = await bot.telegram.getUpdates({
+            offset,
+            limit: 100,
+            timeout: 25,
+          });
+          
+          if (updates.length > 0) {
+            if (!hasReceivedUpdates) {
+              console.log('✅ UPDATES RECEIVED! Bot is working!');
+              hasReceivedUpdates = true;
+            }
+            console.log(`[POLL #${pollCount}] Got ${updates.length} update(s) from Telegram API`);
+            
+            for (const update of updates) {
+              if (processedUpdates.has(update.update_id)) {
+                offset = Math.max(offset, update.update_id + 1);
+                continue;
+              }
+              
+              try {
+                processedUpdates.add(update.update_id);
+                console.log(`[POLL] Processing update_id=${update.update_id} (type=${update.message ? 'message' : update.callback_query ? 'callback' : 'other'})`);
+                
+                // Handle the update
+                await bot.handleUpdate(update);
+                offset = update.update_id + 1;
+              } catch (err) {
+                console.error(`[POLL] Error handling update ${update.update_id}:`, err.message);
+                offset = update.update_id + 1;
+              }
+            }
+          } else {
+            // No updates - this is OK, just wait
+            if (pollCount % 10 === 0) {
+              console.log(`[POLL #${pollCount}] No updates (offset=${offset})`);
+            }
+          }
+          
+          // Wait 100ms before next poll
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+        } catch (err) {
+          console.error('[POLL] Polling error:', err.message);
+          // Continue polling even on error
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    };
+    
+    // Start polling in background (do NOT await - it runs forever)
+    startPolling().catch(err => {
+      console.error('[POLL] Fatal polling error:', err.message);
+      process.exit(1);
     });
     
     console.log('✅ Telegram bot polling started!');
@@ -1253,23 +1309,8 @@ console.log('🚀 Starting bot with Telegraf polling...');
   } catch (err) {
     console.error('❌ Failed to initialize bot:');
     console.error('Error:', err.message);
-    if (err.code) console.error('Code:', err.code);
-    if (err.response) console.error('Response:', err.response);
-    if (err.stack) console.error('Stack:', err.stack.substring(0, 500));
-    
-    // Retry with fallback polling
-    console.error('🔄 Attempting fallback polling...');
-    setTimeout(() => {
-      try {
-        bot.launch().catch(retryErr => {
-          console.error('❌ Fallback polling failed:', retryErr.message);
-          process.exit(1);
-        });
-      } catch (retryErr) {
-        console.error('❌ Fatal error starting bot:', retryErr.message);
-        process.exit(1);
-      }
-    }, 2000);
+    console.error('Stack:', err.stack ? err.stack.substring(0, 300) : 'N/A');
+    process.exit(1);
   }
 })();
 
