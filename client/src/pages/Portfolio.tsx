@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/table';
 import { TradeModal } from '@/components/TradeModal';
 import { useAuth } from '@/lib/auth-context';
+import { useSolPrice } from '@/lib/price-context';
 import { formatSol, lamportsToSol, toBigInt, formatTokenAmount } from '@/lib/lamports';
 import { TrendingUp, TrendingDown, Package, LogIn } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -23,6 +24,7 @@ import type { Position } from '@shared/schema';
 export default function Portfolio() {
   const { isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
+  const solPrice = useSolPrice(); // Get current SOL price from context
   const [selectedPosition, setSelectedPosition] = useState<Position & { currentPrice: number } | null>(null);
   const { toast } = useToast();
 
