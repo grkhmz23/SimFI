@@ -270,16 +270,10 @@ export default function Portfolio() {
                           {formatTokenAmount(position.amount, 2, position.decimals || 6)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm">
-                          <div>{formatSol(position.entryPrice, 8)}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatPricePerTokenUSD(position.entryPrice, 6, solPrice)}
-                          </div>
+                          {formatPricePerTokenUSD(position.entryPrice, 6, solPrice)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm">
-                          <div>{formatSol(positionWithPrice.currentPrice, 8)}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatPricePerTokenUSD(positionWithPrice.currentPrice, 6, solPrice)}
-                          </div>
+                          {formatPricePerTokenUSD(positionWithPrice.currentPrice, 6, solPrice)}
                         </TableCell>
                         <TableCell className="text-right font-mono">
                           {formatSol(position.solSpent)}
