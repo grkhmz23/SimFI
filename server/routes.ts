@@ -518,22 +518,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Telegram login endpoint
+  // Telegram login endpoint - supports both email AND username
   app.post('/api/telegram/auth/login', verifyBotSecret, async (req, res) => {
     try {
-      const { email, password } = req.body;
+      const { email, username, password } = req.body;
+      const identifier = email || username; // Support both email and username
       
-      console.log(`🔐 Telegram login attempt for: ${email}`);
+      console.log(`🔐 Telegram login attempt for: ${identifier}`);
       
-      if (!email || !password) {
-        console.warn('Missing email or password in login request');
-        return res.status(400).json({ error: 'Email and password are required' });
+      if (!identifier || !password) {
+        console.warn('Missing email/username or password in login request');
+        return res.status(400).json({ error: 'Email or username and password are required' });
       }
 
-      // Find user by email
-      const user = await storage.getUserByEmail(email);
+      // Try to find user by email first, then by username
+      let user = await storage.getUserByEmail(identifier);
+      
+      if (!user && !identifier.includes('@')) {
+        // If it doesn't look like an email and we didn't find it by email, try username
+        console.log(`🔍 Email lookup failed, trying username: ${identifier}`);
+        user = await storage.getUserByUsername(identifier);
+      }
+      
       if (!user) {
-        console.warn(`❌ No user found with email: ${email}`);
+        console.warn(`❌ No user found with email or username: ${identifier}`);
         return res.status(400).json({ error: 'Invalid credentials - user not found' });
       }
 
