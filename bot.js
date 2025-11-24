@@ -717,8 +717,8 @@ bot.action(/^sell_pct:(\d+)$/, async (ctx) => {
   }
 });
 
-bot.action('positions', async (ctx) => {
-  await ctx.answerCbQuery();
+// Helper function to display positions list with refresh button
+const showPositionsList = async (ctx, isRefresh = false) => {
   const session = userSessions.get(ctx.from.id);
   if (!session) {
     return ctx.reply('Please /start to login first.');
@@ -731,12 +731,17 @@ bot.action('positions', async (ctx) => {
 
   const positions = result.data.positions || [];
   if (positions.length === 0) {
-    return ctx.reply(
-      '📊 You have no open positions.',
-      Markup.inlineKeyboard([
-        [Markup.button.callback('⬅️ Back', 'main_menu')]
-      ])
-    );
+    const message = '📊 You have no open positions.';
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('⬅️ Back', 'main_menu')]
+    ]);
+
+    if (isRefresh) {
+      await ctx.editMessageText(message, { ...keyboard });
+    } else {
+      await ctx.reply(message, keyboard);
+    }
+    return;
   }
 
   const buttons = positions.map(pos => [
@@ -745,15 +750,36 @@ bot.action('positions', async (ctx) => {
       `view_position:${pos.id}`
     )
   ]);
+  buttons.push([Markup.button.callback('🔄 Refresh', 'refresh_positions_list')]);
   buttons.push([Markup.button.callback('⬅️ Back', 'main_menu')]);
 
-  await ctx.reply(
-    '📊 *Your Positions:*\n\nSelect a position to view details:',
-    {
+  const message = 
+    `📊 *Your Positions${isRefresh ? ' (Refreshed)' : ''}:*\n\n` +
+    `Select a position to view details:`;
+
+  const keyboard = Markup.inlineKeyboard(buttons);
+
+  if (isRefresh) {
+    await ctx.editMessageText(message, {
       parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard(buttons)
-    }
-  );
+      ...keyboard
+    });
+  } else {
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      ...keyboard
+    });
+  }
+};
+
+bot.action('positions', async (ctx) => {
+  await ctx.answerCbQuery();
+  await showPositionsList(ctx, false);
+});
+
+bot.action('refresh_positions_list', async (ctx) => {
+  await ctx.answerCbQuery('🔄 Refreshing...');
+  await showPositionsList(ctx, true);
 });
 
 // Helper function to display position details with refresh button
