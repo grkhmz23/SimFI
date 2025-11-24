@@ -758,74 +758,98 @@ const showPositionDetails = async (ctx, positionId, isRefresh = false) => {
     return ctx.reply('Please /start to login first.');
   }
 
-  // Fetch all positions to find the one we want
-  const positionsResult = await apiRequest('/api/trades/positions', 'GET', null, session.token);
-  if (!positionsResult.success) {
-    return ctx.reply('❌ Error fetching positions: ' + positionsResult.error);
-  }
+  try {
+    // PARALLEL API CALLS - Fetch all data at the same time for MASSIVE speed boost
+    const [positionsResult, profileResult] = await Promise.all([
+      apiRequest('/api/trades/positions', 'GET', null, session.token),
+      apiRequest('/api/auth/profile', 'GET', null, session.token)
+    ]);
 
-  const position = positionsResult.data.positions?.find(p => p.id === positionId);
-  if (!position) {
-    return ctx.reply('❌ Position not found.');
-  }
+    // Check position fetch
+    if (!positionsResult.success) {
+      return ctx.reply('❌ Error fetching positions: ' + positionsResult.error);
+    }
 
-  // Fetch current user balance
-  const profileResult = await apiRequest('/api/auth/profile', 'GET', null, session.token);
-  if (!profileResult.success) {
-    return ctx.reply('❌ Error fetching profile: ' + profileResult.error);
-  }
+    // Check profile fetch
+    if (!profileResult.success) {
+      return ctx.reply('❌ Error fetching profile: ' + profileResult.error);
+    }
 
-  const user = profileResult.data;
+    const position = positionsResult.data.positions?.find(p => p.id === positionId);
+    if (!position) {
+      return ctx.reply('❌ Position not found.');
+    }
 
-  // Fetch current token price
-  const tokenResult = await apiRequest(`/api/tokens/${position.tokenAddress}`, 'GET', null, session.token);
-  if (!tokenResult.success) {
-    return ctx.reply('❌ Error fetching token price: ' + tokenResult.error);
-  }
+    const user = profileResult.data;
 
-  const currentPrice = BigInt(tokenResult.data.token.price);
-  const positionAmount = BigInt(position.amount);
-  const entryPrice = BigInt(position.entryPrice);
-  const solSpent = BigInt(position.solSpent);
-  const decimals = position.decimals || 6;
+    // NOW fetch token price (need position.tokenAddress from above)
+    const tokenResult = await apiRequest(`/api/tokens/${position.tokenAddress}`, 'GET', null, session.token);
+    if (!tokenResult.success) {
+      return ctx.reply('❌ Error fetching token price: ' + tokenResult.error);
+    }
 
-  // Calculate current value: (amount * currentPrice) / 10^decimals
-  const decimalDivisor = BigInt(10 ** decimals);
-  const currentValue = (positionAmount * currentPrice) / decimalDivisor;
-  
-  // Calculate P&L: currentValue - solSpent
-  const profitLoss = currentValue - solSpent;
-  const profitLossPercent = solSpent > 0n 
-    ? (Number(profitLoss) / Number(solSpent)) * 100 
-    : 0;
+    // Get SOL price for USD conversion (cached for speed)
+    const solPrice = await getSolPrice(session.token);
 
-  const message = 
-    `📊 *Position Details${isRefresh ? ' (Refreshed)' : ''}*\n\n` +
-    `🪙 *${position.tokenSymbol}* (${position.tokenName})\n\n` +
-    `💼 Amount: *${formatTokenAmount(position.amount, decimals)}*\n` +
-    `💰 Balance: *${formatSol(user.balance)} SOL*\n\n` +
-    `📈 Entry Price: *${formatSol(position.entryPrice)} SOL*\n` +
-    `📊 Current Price: *${formatSol(currentPrice.toString())} SOL*\n\n` +
-    `💸 Spent: *${formatSol(position.solSpent)} SOL*\n` +
-    `💎 Current Value: *${formatSol(currentValue.toString())} SOL*\n\n` +
-    `${profitLoss >= 0n ? '📈' : '📉'} P&L: *${formatSol(profitLoss.toString())} SOL* (${profitLossPercent >= 0 ? '+' : ''}${profitLossPercent.toFixed(2)}%)`;
+    const currentPrice = BigInt(tokenResult.data.token.price);
+    const positionAmount = BigInt(position.amount);
+    const entryPrice = BigInt(position.entryPrice);
+    const solSpent = BigInt(position.solSpent);
+    const decimals = position.decimals || 6;
 
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('🔄 Refresh', `refresh_position:${positionId}`)],
-    [Markup.button.callback('⬅️ Back to Positions', 'positions')],
-    [Markup.button.callback('🏠 Main Menu', 'main_menu')]
-  ]);
+    // Calculate current value: (amount * currentPrice) / 10^decimals
+    const decimalDivisor = BigInt(10 ** decimals);
+    const currentValue = (positionAmount * currentPrice) / decimalDivisor;
+    
+    // Calculate P&L: currentValue - solSpent
+    const profitLoss = currentValue - solSpent;
+    const profitLossPercent = solSpent > 0n 
+      ? (Number(profitLoss) / Number(solSpent)) * 100 
+      : 0;
 
-  if (isRefresh) {
-    await ctx.editMessageText(message, {
-      parse_mode: 'Markdown',
-      ...keyboard
-    });
-  } else {
-    await ctx.reply(message, {
-      parse_mode: 'Markdown',
-      ...keyboard
-    });
+    // Format all values in BOTH SOL and USD
+    const entryPriceSol = formatSol(position.entryPrice);
+    const entryPriceUsd = formatSolToUsd(position.entryPrice, solPrice);
+    const currentPriceSol = formatSol(currentPrice.toString());
+    const currentPriceUsd = formatSolToUsd(currentPrice.toString(), solPrice);
+    const spentSol = formatSol(position.solSpent);
+    const spentUsd = formatSolToUsd(position.solSpent, solPrice);
+    const valueSol = formatSol(currentValue.toString());
+    const valueUsd = formatSolToUsd(currentValue.toString(), solPrice);
+    const plSol = formatSol(profitLoss.toString());
+    const plUsd = formatSolToUsd(profitLoss.toString(), solPrice);
+
+    const message = 
+      `📊 *Position Details${isRefresh ? ' (Refreshed)' : ''}*\n\n` +
+      `🪙 *${position.tokenSymbol}* (${position.tokenName})\n\n` +
+      `💼 Amount: *${formatTokenAmount(position.amount, decimals)}*\n` +
+      `💰 Balance: *${formatSol(user.balance)} SOL* ${formatSolToUsd(user.balance, solPrice)}\n\n` +
+      `📈 Entry Price: *${entryPriceSol} SOL* (${entryPriceUsd})\n` +
+      `📊 Current Price: *${currentPriceSol} SOL* (${currentPriceUsd})\n\n` +
+      `💸 Spent: *${spentSol} SOL* (${spentUsd})\n` +
+      `💎 Current Value: *${valueSol} SOL* (${valueUsd})\n\n` +
+      `${profitLoss >= 0n ? '📈' : '📉'} P&L: *${plSol} SOL* (${plUsd}) • ${profitLossPercent >= 0 ? '+' : ''}${profitLossPercent.toFixed(2)}%`;
+
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('🔄 Refresh', `refresh_position:${positionId}`)],
+      [Markup.button.callback('⬅️ Back to Positions', 'positions')],
+      [Markup.button.callback('🏠 Main Menu', 'main_menu')]
+    ]);
+
+    if (isRefresh) {
+      await ctx.editMessageText(message, {
+        parse_mode: 'Markdown',
+        ...keyboard
+      });
+    } else {
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        ...keyboard
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error in showPositionDetails:', error.message);
+    return ctx.reply('❌ An error occurred while fetching position details. Please try again.');
   }
 };
 
