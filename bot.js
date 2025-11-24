@@ -925,7 +925,7 @@ bot.on('text', async (ctx) => {
     } catch (error) {
       userStates.delete(userId);
       console.error('❌ Bot login exception:', error);
-      ctx.reply(
+      await ctx.reply(
         '❌ An unexpected error occurred during login.\n\n' +
         '💡 Please use /start to try again, or contact support if the problem persists.'
       );
