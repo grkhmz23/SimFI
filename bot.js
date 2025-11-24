@@ -628,10 +628,15 @@ bot.action(/^sell_token:(.+)$/, async (ctx) => {
     lastActivity: Date.now()
   });
 
+  // Get current SOL price for USD conversion
+  const solPrice = await getSolPrice(session.token);
+  const entryPriceSol = formatSol(position.entryPrice);
+  const entryPriceUsd = formatSolToUsd(position.entryPrice, solPrice);
+
   await ctx.reply(
     `📉 *Selling ${position.tokenSymbol}*\n\n` +
     `You hold: *${formatTokenAmount(position.amount, position.decimals || 6)} ${position.tokenSymbol}*\n` +
-    `Entry Price: *${formatSol(position.entryPrice)} SOL*\n\n` +
+    `Entry Price: *${entryPriceSol} SOL* (${entryPriceUsd})\n\n` +
     `Select how much to sell:`,
     {
       parse_mode: 'Markdown',
