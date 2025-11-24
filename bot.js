@@ -1178,8 +1178,8 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
   await showMainMenu(ctx);
 });
 
-// Start bot with polling - don't wait for launch to complete
-console.log('🚀 Starting bot with polling...');
+// Manual polling implementation - bypasses bot.launch() which hangs in Replit environment
+console.log('🚀 Starting bot with manual polling...');
 
 (async () => {
   try {
@@ -1187,30 +1187,79 @@ console.log('🚀 Starting bot with polling...');
     const botInfo = await bot.telegram.getMe();
     console.log(`✅ Bot token valid: @${botInfo.username} (${botInfo.first_name})`);
     
-    console.log('📡 Launching bot (async - not waiting for completion)...');
+    // Delete webhook if set (ensures we can use polling)
+    try {
+      await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+      console.log('📡 Webhook removed (if any was set)');
+    } catch (err) {
+      console.log('📡 No webhook to remove (expected)');
+    }
     
-    // Launch bot without waiting - it will connect in the background
-    // This is necessary because Telegraf's polling can take time to establish
-    bot.launch({
-      allowedUpdates: ['message', 'callback_query'],
-      dropPendingUpdates: true
-    }).then(() => {
-      console.log('✅ Telegram bot polling established!');
-      console.log('🎯 Bot is now listening for messages');
-    }).catch((err) => {
-      console.error('❌ Bot launch failed:', err.message);
-      if (err.code) console.error('Code:', err.code);
+    console.log('📡 Starting manual polling loop...');
+    console.log(`📡 API Base URL: ${API_BASE_URL}`);
+    
+    let offset = 0;
+    let consecutiveErrors = 0;
+    const MAX_ERRORS = 5;
+    
+    // Manual polling loop
+    const poll = async () => {
+      while (consecutiveErrors < MAX_ERRORS) {
+        try {
+          // Get updates from Telegram
+          const updates = await bot.telegram.getUpdates({
+            offset,
+            limit: 100,
+            timeout: 30,
+            allowed_updates: ['message', 'callback_query']
+          });
+          
+          // Reset error counter on successful poll
+          if (consecutiveErrors > 0) {
+            console.log('✅ Polling recovered');
+            consecutiveErrors = 0;
+          }
+          
+          // Process each update
+          for (const update of updates) {
+            try {
+              await bot.handleUpdate(update);
+              offset = update.update_id + 1;
+            } catch (updateErr) {
+              console.error('❌ Error handling update:', updateErr.message);
+            }
+          }
+          
+        } catch (err) {
+          consecutiveErrors++;
+          console.error(`❌ Polling error (${consecutiveErrors}/${MAX_ERRORS}):`, err.message);
+          
+          if (consecutiveErrors >= MAX_ERRORS) {
+            console.error('❌ Too many consecutive polling errors. Stopping bot.');
+            process.exit(1);
+          }
+          
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      }
+    };
+    
+    // Start polling
+    poll().catch(err => {
+      console.error('❌ Fatal polling error:', err);
+      process.exit(1);
     });
     
-    // Don't wait for launch - just report success after token validation
-    console.log('✅ Telegram bot starting (connecting to Telegram...)');
-    console.log(`📡 API Base URL: ${API_BASE_URL}`);
-    console.log('📲 Bot will be ready shortly - try /start!');
+    console.log('✅ Telegram bot polling started!');
+    console.log('🎯 Bot is now listening for messages');
+    console.log(`📱 Try sending /start to @${botInfo.username}`);
     
   } catch (err) {
     console.error('❌ Failed to initialize bot:');
     console.error('Error:', err.message);
     if (err.code) console.error('Code:', err.code);
+    if (err.stack) console.error('Stack:', err.stack);
     process.exit(1);
   }
 })();
