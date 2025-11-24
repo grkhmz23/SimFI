@@ -35,6 +35,24 @@ bot.catch((err, ctx) => {
   }
 });
 
+// Debug middleware to log all updates
+bot.use(async (ctx, next) => {
+  const updateType = ctx.updateType;
+  const userId = ctx.from?.id;
+  const username = ctx.from?.username || ctx.from?.first_name;
+  
+  console.log(`📨 Received update: ${updateType} from user ${userId} (@${username})`);
+  
+  if (ctx.message?.text) {
+    console.log(`   Text: "${ctx.message.text}"`);
+  }
+  if (ctx.callbackQuery) {
+    console.log(`   Callback: "${ctx.callbackQuery.data}"`);
+  }
+  
+  await next();
+});
+
 // Cleanup old sessions and states every 30 minutes
 setInterval(() => {
   const now = Date.now();
@@ -1046,7 +1064,7 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
   await showMainMenu(ctx);
 });
 
-// Start bot with polling - using async/await for better error handling
+// Start bot with polling - don't wait for launch to complete
 console.log('🚀 Starting bot with polling...');
 
 (async () => {
@@ -1055,23 +1073,30 @@ console.log('🚀 Starting bot with polling...');
     const botInfo = await bot.telegram.getMe();
     console.log(`✅ Bot token valid: @${botInfo.username} (${botInfo.first_name})`);
     
-    // Launch bot
-    await bot.launch({
+    console.log('📡 Launching bot (async - not waiting for completion)...');
+    
+    // Launch bot without waiting - it will connect in the background
+    // This is necessary because Telegraf's polling can take time to establish
+    bot.launch({
       allowedUpdates: ['message', 'callback_query'],
-      dropPendingUpdates: true  // Drop pending updates on restart
+      dropPendingUpdates: true
+    }).then(() => {
+      console.log('✅ Telegram bot polling established!');
+      console.log('🎯 Bot is now listening for messages');
+    }).catch((err) => {
+      console.error('❌ Bot launch failed:', err.message);
+      if (err.code) console.error('Code:', err.code);
     });
     
-    console.log('✅ Telegram bot is running!');
+    // Don't wait for launch - just report success after token validation
+    console.log('✅ Telegram bot starting (connecting to Telegram...)');
     console.log(`📡 API Base URL: ${API_BASE_URL}`);
-    console.log('🎯 Bot is listening for messages...');
-    console.log('📲 Try /start to begin!');
+    console.log('📲 Bot will be ready shortly - try /start!');
+    
   } catch (err) {
-    console.error('❌ Failed to start bot:');
+    console.error('❌ Failed to initialize bot:');
     console.error('Error:', err.message);
-    console.error('Code:', err.code);
-    if (err.response) {
-      console.error('Response:', JSON.stringify(err.response.body || err.response));
-    }
+    if (err.code) console.error('Code:', err.code);
     process.exit(1);
   }
 })();
