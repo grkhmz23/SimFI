@@ -383,6 +383,141 @@ bot.command('logout', async (ctx) => {
   await ctx.reply('✅ Logged out successfully. Use /start to login again.');
 });
 
+// Buy command
+bot.command('buy', async (ctx) => {
+  const session = userSessions.get(ctx.from.id);
+  
+  if (!session) {
+    return ctx.reply('❌ Please /start to login first.');
+  }
+  
+  userStates.set(ctx.from.id, { state: 'awaiting_buy_token', lastActivity: Date.now() });
+  await ctx.reply(
+    '🔍 Enter the token contract address you want to buy:',
+    Markup.inlineKeyboard([
+      [Markup.button.callback('⬅️ Back', 'main_menu')]
+    ])
+  );
+});
+
+// Sell command
+bot.command('sell', async (ctx) => {
+  const session = userSessions.get(ctx.from.id);
+  if (!session) {
+    return ctx.reply('❌ Please /start to login first.');
+  }
+
+  const result = await apiRequest('/api/trades/positions', 'GET', null, session.token);
+  if (!result.success) {
+    return ctx.reply('❌ Error fetching positions: ' + result.error);
+  }
+
+  const positions = result.data.positions || [];
+  if (positions.length === 0) {
+    return ctx.reply(
+      '📉 You have no open positions to sell.',
+      Markup.inlineKeyboard([
+        [Markup.button.callback('⬅️ Back', 'main_menu')]
+      ])
+    );
+  }
+
+  const buttons = positions.map(pos => [
+    Markup.button.callback(
+      `${pos.tokenSymbol} (${formatTokenAmount(pos.amount, pos.decimals || 6)})`,
+      `sell_token:${pos.tokenAddress}`
+    )
+  ]);
+  buttons.push([Markup.button.callback('⬅️ Back', 'main_menu')]);
+
+  await ctx.reply(
+    '📉 Select a position to sell:',
+    Markup.inlineKeyboard(buttons)
+  );
+});
+
+// Positions command
+bot.command('positions', async (ctx) => {
+  const session = userSessions.get(ctx.from.id);
+  if (!session) {
+    return ctx.reply('❌ Please /start to login first.');
+  }
+
+  const result = await apiRequest('/api/trades/positions', 'GET', null, session.token);
+  if (!result.success) {
+    return ctx.reply('❌ Error: ' + result.error);
+  }
+
+  const positions = result.data.positions || [];
+  if (positions.length === 0) {
+    return ctx.reply(
+      '📊 You have no open positions.',
+      Markup.inlineKeyboard([
+        [Markup.button.callback('⬅️ Back', 'main_menu')]
+      ])
+    );
+  }
+
+  const buttons = positions.map(pos => [
+    Markup.button.callback(
+      `${pos.tokenSymbol} (${formatTokenAmount(pos.amount, pos.decimals || 6)})`,
+      `view_position:${pos.id}`
+    )
+  ]);
+  buttons.push([Markup.button.callback('⬅️ Back', 'main_menu')]);
+
+  await ctx.reply(
+    '📊 *Your Positions:*\n\nSelect a position to view details:',
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard(buttons)
+    }
+  );
+});
+
+// Leaderboard command
+bot.command('leaderboard', async (ctx) => {
+  const session = userSessions.get(ctx.from.id);
+  if (!session) {
+    return ctx.reply('❌ Please /start to login first.');
+  }
+
+  const result = await apiRequest('/api/leaderboard', 'GET', null, session.token);
+  if (!result.success) {
+    return ctx.reply('❌ Error fetching leaderboard: ' + result.error);
+  }
+
+  const leaders = result.data.leaders || [];
+  if (leaders.length === 0) {
+    return ctx.reply(
+      '🏆 No leaderboard data available yet. Try again later.',
+      Markup.inlineKeyboard([
+        [Markup.button.callback('🔄 Refresh', 'leaderboard_refresh')],
+        [Markup.button.callback('⬅️ Back', 'main_menu')]
+      ])
+    );
+  }
+
+  const medals = ['🥇', '🥈', '🥉'];
+  const leaderboardText = leaders
+    .map((leader, idx) => {
+      const medal = medals[idx] || `${idx + 1}.`;
+      return `${medal} ${leader.username} - +${formatSol(leader.totalProfit)} SOL`;
+    })
+    .join('\n');
+
+  await ctx.reply(
+    `🏆 *Leaderboard (6-Hour Period)*\n\n${leaderboardText}`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('🔄 Refresh', 'leaderboard_refresh')],
+        [Markup.button.callback('⬅️ Back', 'main_menu')]
+      ])
+    }
+  );
+});
+
 bot.action('noop', (ctx) => ctx.answerCbQuery());
 
 bot.action('buy', async (ctx) => {
