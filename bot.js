@@ -6,7 +6,7 @@ const BOT_TOKEN = process.env.NODE_ENV === 'development'
   ? process.env.TELEGRAM_BOT_TOKEN_DEV 
   : process.env.TELEGRAM_BOT_TOKEN;
 
-const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:5000';
 
 if (!BOT_TOKEN) {
   console.error('❌ TELEGRAM_BOT_TOKEN is required in environment variables');
@@ -117,7 +117,7 @@ const showMainMenu = async (ctx) => {
     return ctx.reply('Please /start to login first.');
   }
 
-  const result = await apiRequest('/auth/profile', 'GET', null, session.token);
+  const result = await apiRequest('/api/auth/profile', 'GET', null, session.token);
   if (!result.success) {
     userSessions.delete(ctx.from.id);
     return ctx.reply('Session expired. Please /start to login again.');
@@ -143,7 +143,7 @@ const showMainMenu = async (ctx) => {
 const showBuyMenu = async (ctx, tokenAddress, session) => {
   const userId = ctx.from.id;
   
-  const result = await apiRequest(`/tokens/${tokenAddress}`, 'GET', null, session.token);
+  const result = await apiRequest(`/api/tokens/${tokenAddress}`, 'GET', null, session.token);
   if (!result.success) {
     if (result.error.includes('expired') || result.error.includes('auth')) {
       userSessions.delete(userId);
@@ -191,7 +191,7 @@ bot.start(async (ctx) => {
   const telegramUserId = ctx.from.id.toString();
   
   // Check if user has an existing session
-  const sessionResult = await apiRequest(`/telegram/session/${telegramUserId}`, 'GET', null, null, true);
+  const sessionResult = await apiRequest(`/api/telegram/session/${telegramUserId}`, 'GET', null, null, true);
   
   if (sessionResult.success && sessionResult.data.session) {
     const session = sessionResult.data.session;
@@ -255,7 +255,7 @@ bot.command('logout', async (ctx) => {
   const telegramUserId = ctx.from.id.toString();
   
   // Delete session from database
-  await apiRequest(`/telegram/session/${telegramUserId}`, 'DELETE', null, null, true);
+  await apiRequest(`/api/telegram/session/${telegramUserId}`, 'DELETE', null, null, true);
   
   // Delete from memory
   userSessions.delete(ctx.from.id);
@@ -290,7 +290,7 @@ bot.action('sell', async (ctx) => {
     return ctx.reply('Please /start to login first.');
   }
 
-  const result = await apiRequest('/trades/positions', 'GET', null, session.token);
+  const result = await apiRequest('/api/trades/positions', 'GET', null, session.token);
   if (!result.success) {
     return ctx.reply('❌ Error fetching positions: ' + result.error);
   }
@@ -328,7 +328,7 @@ bot.action(/^sell_token:(.+)$/, async (ctx) => {
     return ctx.reply('Please /start to login first.');
   }
   
-  const result = await apiRequest('/trades/positions', 'GET', null, session.token);
+  const result = await apiRequest('/api/trades/positions', 'GET', null, session.token);
   
   if (!result.success) {
     userSessions.delete(ctx.from.id);
@@ -397,7 +397,7 @@ bot.action(/^sell_pct:(\d+)$/, async (ctx) => {
     const sellAmountLamports = (BigInt(state.position.amount) * BigInt(percentage)) / BigInt(100);
     
     // Fetch current token price for exit price
-    const tokenResult = await apiRequest(`/tokens/${state.tokenAddress}`, 'GET', null, session.token);
+    const tokenResult = await apiRequest(`/api/tokens/${state.tokenAddress}`, 'GET', null, session.token);
     if (!tokenResult.success) {
       return ctx.reply('❌ Error fetching token price: ' + tokenResult.error);
     }
@@ -405,7 +405,7 @@ bot.action(/^sell_pct:(\d+)$/, async (ctx) => {
     // token.price is already in lamports, don't convert again!
     const currentPriceLamports = BigInt(Math.floor(tokenResult.data.token.price));
 
-    const result = await apiRequest('/trades/sell', 'POST', {
+    const result = await apiRequest('/api/trades/sell', 'POST', {
       positionId: state.position.id,
       amountLamports: sellAmountLamports.toString(),  // Already in lamports from position.amount
       exitPriceLamports: currentPriceLamports.toString()
@@ -439,7 +439,7 @@ bot.action('positions', async (ctx) => {
     return ctx.reply('Please /start to login first.');
   }
 
-  const result = await apiRequest('/trades/positions', 'GET', null, session.token);
+  const result = await apiRequest('/api/trades/positions', 'GET', null, session.token);
   if (!result.success) {
     return ctx.reply('❌ Error: ' + result.error);
   }
@@ -479,7 +479,7 @@ const showPositionDetails = async (ctx, positionId, isRefresh = false) => {
   }
 
   // Fetch all positions to find the one we want
-  const positionsResult = await apiRequest('/trades/positions', 'GET', null, session.token);
+  const positionsResult = await apiRequest('/api/trades/positions', 'GET', null, session.token);
   if (!positionsResult.success) {
     return ctx.reply('❌ Error fetching positions: ' + positionsResult.error);
   }
@@ -490,7 +490,7 @@ const showPositionDetails = async (ctx, positionId, isRefresh = false) => {
   }
 
   // Fetch current user balance
-  const profileResult = await apiRequest('/auth/profile', 'GET', null, session.token);
+  const profileResult = await apiRequest('/api/auth/profile', 'GET', null, session.token);
   if (!profileResult.success) {
     return ctx.reply('❌ Error fetching profile: ' + profileResult.error);
   }
@@ -498,7 +498,7 @@ const showPositionDetails = async (ctx, positionId, isRefresh = false) => {
   const user = profileResult.data;
 
   // Fetch current token price
-  const tokenResult = await apiRequest(`/tokens/${position.tokenAddress}`, 'GET', null, session.token);
+  const tokenResult = await apiRequest(`/api/tokens/${position.tokenAddress}`, 'GET', null, session.token);
   if (!tokenResult.success) {
     return ctx.reply('❌ Error fetching token price: ' + tokenResult.error);
   }
@@ -568,7 +568,7 @@ bot.action('leaderboard', async (ctx) => {
     return ctx.reply('Please /start to login first.');
   }
 
-  const result = await apiRequest('/leaderboard/current', 'GET', null, session.token);
+  const result = await apiRequest('/api/leaderboard/current', 'GET', null, session.token);
   if (!result.success) {
     return ctx.reply('❌ Error: ' + result.error);
   }
@@ -613,7 +613,7 @@ bot.action('logout', async (ctx) => {
   const telegramUserId = ctx.from.id.toString();
   
   // Delete session from database
-  await apiRequest(`/telegram/session/${telegramUserId}`, 'DELETE', null, null, true);
+  await apiRequest(`/api/telegram/session/${telegramUserId}`, 'DELETE', null, null, true);
   
   // Delete from memory
   userSessions.delete(ctx.from.id);
@@ -720,7 +720,7 @@ bot.on('text', async (ctx) => {
       
       console.log(`📝 Bot registration attempt:`, { email: state.email, username: state.username });
       
-      const result = await apiRequest('/telegram/auth/register', 'POST', {
+      const result = await apiRequest('/api/telegram/auth/register', 'POST', {
         email: state.email,
         username: state.username,
         password: state.password,
@@ -766,7 +766,7 @@ bot.on('text', async (ctx) => {
 
       // Save session to database
       const telegramUserId = userId.toString();
-      await apiRequest('/telegram/session', 'POST', {
+      await apiRequest('/api/telegram/session', 'POST', {
         telegramUserId,
         userId: user.id,
         token,
@@ -837,7 +837,7 @@ bot.on('text', async (ctx) => {
         loginData.username = state.identifier;
       }
       
-      const result = await apiRequest('/telegram/auth/login', 'POST', loginData, null, true);
+      const result = await apiRequest('/api/telegram/auth/login', 'POST', loginData, null, true);
 
       console.log(`📊 Bot login result:`, { success: result.success, error: result.error });
 
@@ -882,7 +882,7 @@ bot.on('text', async (ctx) => {
 
       // Save session to database
       const telegramUserId = userId.toString();
-      const sessionResult = await apiRequest('/telegram/session', 'POST', {
+      const sessionResult = await apiRequest('/api/telegram/session', 'POST', {
         telegramUserId,
         userId: user.id,
         token,
@@ -943,7 +943,7 @@ bot.on('text', async (ctx) => {
     // token.price is already in lamports, don't convert again!
     const priceLamports = BigInt(Math.floor(state.token.price));
 
-    const result = await apiRequest('/trades/buy', 'POST', {
+    const result = await apiRequest('/api/trades/buy', 'POST', {
       tokenAddress: state.tokenAddress,
       tokenName: state.token.name,
       tokenSymbol: state.token.symbol,
@@ -992,7 +992,7 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
   // token.price is already in lamports, don't convert again!
   const priceLamports = BigInt(Math.floor(state.token.price));
 
-  const result = await apiRequest('/trades/buy', 'POST', {
+  const result = await apiRequest('/api/trades/buy', 'POST', {
     tokenAddress: state.tokenAddress,
     tokenName: state.token.name,
     tokenSymbol: state.token.symbol,
