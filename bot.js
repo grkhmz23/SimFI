@@ -61,8 +61,9 @@ const apiRequest = async (endpoint, method = 'GET', data = null, token = null, i
   try {
     const headers = {};
     
+    // Use standard Bearer token authentication (not Cookie)
     if (token) {
-      headers['Cookie'] = `token=${token}`;
+      headers['Authorization'] = `Bearer ${token}`;
     }
     
     // Add bot secret for telegram session endpoints
@@ -74,7 +75,7 @@ const apiRequest = async (endpoint, method = 'GET', data = null, token = null, i
       method,
       url: `${API_BASE_URL}${endpoint}`,
       headers,
-      withCredentials: true
+      withCredentials: false
     };
 
     if (data) {
