@@ -230,17 +230,25 @@ bot.action('register_start', async (ctx) => {
   await ctx.reply('📝 *Registration*\n\nEnter your email address:', { parse_mode: 'Markdown' });
 });
 
-// Login command/action
+// Login command/action - supports both email AND username
 bot.command('login', async (ctx) => {
   await ctx.answerCbQuery?.();
-  userStates.set(ctx.from.id, { state: 'login_email' });
-  await ctx.reply('🔐 *Login*\n\nEnter your email address:', { parse_mode: 'Markdown' });
+  userStates.set(ctx.from.id, { state: 'login_identifier' });
+  await ctx.reply(
+    '🔐 *Login*\n\n' +
+    'Enter your *email* or *username*:',
+    { parse_mode: 'Markdown' }
+  );
 });
 
 bot.action('login_start', async (ctx) => {
   await ctx.answerCbQuery();
-  userStates.set(ctx.from.id, { state: 'login_email' });
-  await ctx.reply('🔐 *Login*\n\nEnter your email address:', { parse_mode: 'Markdown' });
+  userStates.set(ctx.from.id, { state: 'login_identifier' });
+  await ctx.reply(
+    '🔐 *Login*\n\n' +
+    'Enter your *email* or *username*:',
+    { parse_mode: 'Markdown' }
+  );
 });
 
 bot.command('logout', async (ctx) => {
@@ -620,11 +628,11 @@ bot.on('text', async (ctx) => {
   const text = ctx.message.text;
   const session = userSessions.get(userId);
 
-  // Auth flow states
+  // Auth flow states - updated to use 'login_identifier' instead of 'login_email'
   const isAuthState = state && (
     state.state === 'register_email' || state.state === 'register_username' || 
     state.state === 'register_password' || state.state === 'register_wallet' ||
-    state.state === 'login_email' || state.state === 'login_password'
+    state.state === 'login_identifier' || state.state === 'login_password'
   );
   
   // Auto-detect Solana token addresses (but not during auth flow)
@@ -645,28 +653,49 @@ bot.on('text', async (ctx) => {
 
   // REGISTRATION FLOW
   if (state.state === 'register_email') {
-    if (!text.includes('@')) {
-      return ctx.reply('❌ Invalid email. Please enter a valid email address:');
+    const email = text.toLowerCase().trim();
+    if (!email.includes('@') || !email.includes('.')) {
+      return ctx.reply(
+        '❌ Invalid email format. Please enter a valid email address:\n' +
+        '(e.g., user@example.com)'
+      );
     }
-    userStates.set(userId, { state: 'register_username', email: text });
-    return ctx.reply('Choose a *username* (3-20 characters, letters/numbers/_/-):', { parse_mode: 'Markdown' });
+    userStates.set(userId, { state: 'register_username', email });
+    return ctx.reply(
+      '✅ Email saved!\n\n' +
+      'Choose a *username* (3-20 characters, letters/numbers/_/-):\n' +
+      '(e.g., john_doe, player-123)',
+      { parse_mode: 'Markdown' }
+    );
   }
 
   if (state.state === 'register_username') {
     if (!/^[a-zA-Z0-9_-]{3,20}$/.test(text)) {
-      return ctx.reply('❌ Invalid username. Use 3-20 characters: letters, numbers, _, -');
+      return ctx.reply(
+        '❌ Invalid username! Must be 3-20 characters with letters, numbers, dash, or underscore.\n' +
+        'Please try again:'
+      );
     }
     userStates.set(userId, { ...state, username: text, state: 'register_password' });
-    return ctx.reply('Create a *password* (minimum 6 characters):', { parse_mode: 'Markdown' });
+    return ctx.reply(
+      '✅ Username saved!\n\n' +
+      'Create a *password* (minimum 6 characters):',
+      { parse_mode: 'Markdown' }
+    );
   }
 
   if (state.state === 'register_password') {
     if (text.length < 6) {
-      return ctx.reply('❌ Password too short. Minimum 6 characters:');
+      return ctx.reply(
+        '❌ Password too short! Must be at least 6 characters.\n' +
+        'Please try again:'
+      );
     }
     userStates.set(userId, { ...state, password: text, state: 'register_wallet' });
     return ctx.reply(
-      'Enter your *Solana wallet address*:\n(or type `/skip` to use default wallet)',
+      '✅ Password saved!\n\n' +
+      'Enter your *Solana wallet address*:\n' +
+      '(or type `/skip` to use default wallet)',
       { parse_mode: 'Markdown' }
     );
   }
@@ -674,15 +703,20 @@ bot.on('text', async (ctx) => {
   if (state.state === 'register_wallet') {
     let walletAddress = 'So11111111111111111111111111111111111111112'; // Default WSOL
     
-    if (text !== '/skip' && text !== 'skip') {
-      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(text)) {
-        return ctx.reply('❌ Invalid Solana wallet. Please enter a valid address:');
+    if (text !== '/skip' && text.toLowerCase() !== 'skip') {
+      const trimmedWallet = text.trim();
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmedWallet)) {
+        return ctx.reply(
+          '❌ Invalid Solana wallet address!\n' +
+          'Wallet must be 32-44 characters.\n\n' +
+          'Try again or type `/skip` to use default:'
+        );
       }
-      walletAddress = text;
+      walletAddress = trimmedWallet;
     }
 
     try {
-      await ctx.reply('⏳ Creating account...');
+      const loadingMsg = await ctx.reply('⏳ Creating your account...');
       
       console.log(`📝 Bot registration attempt:`, { email: state.email, username: state.username });
       
@@ -697,7 +731,26 @@ bot.on('text', async (ctx) => {
 
       if (!result.success) {
         userStates.delete(userId);
-        return ctx.reply('❌ Registration failed: ' + (result.error || 'Unknown error') + '\n\nPlease /start to try again.');
+        const errorMsg = result.error || 'Unknown error';
+        
+        // Provide specific error messages
+        if (errorMsg.includes('already registered') || errorMsg.includes('Email already')) {
+          return ctx.reply(
+            `❌ Registration failed: This email is already registered!\n\n` +
+            `💡 Use /login if you already have an account.`
+          );
+        }
+        if (errorMsg.includes('already taken') || errorMsg.includes('Username already')) {
+          return ctx.reply(
+            `❌ Registration failed: This username is already taken!\n\n` +
+            `💡 Try a different username or use /login if this is your account.`
+          );
+        }
+        
+        return ctx.reply(
+          `❌ Registration failed: ${errorMsg}\n\n` +
+          `💡 Please check your information and try again, or use /start to restart.`
+        );
       }
 
       const user = result.data.user;
@@ -721,61 +774,99 @@ bot.on('text', async (ctx) => {
       }, null, true);
 
       userStates.delete(userId);
+      try {
+        await ctx.deleteMessage(loadingMsg.message_id);
+      } catch (e) {
+        // Message may have already been deleted
+      }
+      
       await ctx.reply(
         `✅ *Account created successfully!*\n\n` +
-        `Username: ${user.username}\n` +
-        `Email: ${user.email}\n` +
-        `Balance: 10 SOL`,
+        `👤 Username: ${user.username}\n` +
+        `📧 Email: ${user.email}\n` +
+        `💰 Starting Balance: 10 SOL\n\n` +
+        `Welcome to SimFi! 🎉`,
         { parse_mode: 'Markdown' }
       );
       await showMainMenu(ctx);
     } catch (error) {
       userStates.delete(userId);
       console.error('❌ Bot registration exception:', error);
-      ctx.reply('❌ Error during registration: ' + (error.message || 'Unknown error') + '. Please /start to try again.');
+      ctx.reply(
+        '❌ An unexpected error occurred during registration.\n\n' +
+        '💡 Please use /start to try again, or contact support if the problem persists.'
+      );
     }
   }
 
-  // LOGIN FLOW
-  if (state.state === 'login_email') {
-    if (!text.includes('@')) {
-      return ctx.reply('❌ Invalid email. Please enter a valid email address:');
+  // LOGIN FLOW - supports both email AND username
+  if (state.state === 'login_identifier') {
+    const identifier = text.trim().toLowerCase();
+    
+    // Validate identifier (email or username)
+    if (!identifier || identifier.length < 3) {
+      return ctx.reply(
+        '❌ Invalid input! Email or username must be at least 3 characters.\n\n' +
+        'Please try again:'
+      );
     }
-    userStates.set(userId, { state: 'login_password', email: text });
-    return ctx.reply('Enter your *password*:', { parse_mode: 'Markdown' });
+    
+    userStates.set(userId, { state: 'login_password', identifier });
+    return ctx.reply(
+      '✅ Got it!\n\n' +
+      'Now enter your *password*:',
+      { parse_mode: 'Markdown' }
+    );
   }
 
   if (state.state === 'login_password') {
     try {
-      await ctx.reply('⏳ Logging in...');
+      const loadingMsg = await ctx.reply('⏳ Logging in...');
       
-      console.log(`🔐 Bot login attempt for email: ${state.email}`);
+      console.log(`🔐 Bot login attempt for: ${state.identifier}`);
       
-      const result = await apiRequest('/telegram/auth/login', 'POST', {
-        email: state.email,
+      // Try login - backend will use identifier as email first, then username if needed
+      // Actually, we should send it as 'email' parameter and let backend handle both
+      const loginData = {
+        email: state.identifier, // Backend will try this as email or username
         password: text
-      }, null, true);
+      };
+      
+      // If identifier looks like username (no @), add a flag for backend
+      if (!state.identifier.includes('@')) {
+        loginData.username = state.identifier;
+      }
+      
+      const result = await apiRequest('/telegram/auth/login', 'POST', loginData, null, true);
 
       console.log(`📊 Bot login result:`, { success: result.success, error: result.error });
 
       if (!result.success) {
         userStates.delete(userId);
+        const errorMsg = result.error || 'Unknown error';
         
-        // Better error messages
-        let errorMsg = result.error || 'Unknown error';
-        if (errorMsg.includes('Invalid credentials')) {
+        // Provide specific error messages
+        if (errorMsg.includes('Invalid credentials') || errorMsg.includes('not found')) {
           return ctx.reply(
-            `❌ Login failed: Email or password is incorrect.\n\n` +
-            `💡 Make sure you:\n` +
-            `1. Registered via /register on this bot (not on website)\n` +
-            `2. Entered your email correctly\n\n` +
-            `Need to register? Use /register`
+            `❌ Login failed: Email/username or password is incorrect.\n\n` +
+            `💡 Please check:\n` +
+            `• Email or username is correct\n` +
+            `• Password is correct (case-sensitive)\n` +
+            `• You registered on this bot (use /register if you haven't)\n\n` +
+            `Try again or use /start to restart.`
           );
         }
         if (errorMsg.includes('Invalid bot secret') || errorMsg.includes('Forbidden')) {
           return ctx.reply('❌ Bot authentication failed. Please contact support.');
         }
-        return ctx.reply(`❌ Login failed: ${errorMsg}\n\nPlease /start to try again.`);
+        if (errorMsg.includes('Server error') || errorMsg.includes('500')) {
+          return ctx.reply('❌ Server error. Please try again in a moment.');
+        }
+        
+        return ctx.reply(
+          `❌ Login failed: ${errorMsg}\n\n` +
+          `Use /start to try again.`
+        );
       }
 
       const user = result.data.user;
@@ -791,20 +882,37 @@ bot.on('text', async (ctx) => {
 
       // Save session to database
       const telegramUserId = userId.toString();
-      await apiRequest('/telegram/session', 'POST', {
+      const sessionResult = await apiRequest('/telegram/session', 'POST', {
         telegramUserId,
         userId: user.id,
         token,
         balance: user.balance.toString()
       }, null, true);
 
+      if (!sessionResult.success) {
+        console.warn('⚠️ Warning: Could not save telegram session:', sessionResult.error);
+      }
+
       userStates.delete(userId);
-      await ctx.reply(`✅ *Welcome back, ${user.username}!*`, { parse_mode: 'Markdown' });
+      try {
+        await ctx.deleteMessage(loadingMsg.message_id);
+      } catch (e) {
+        // Message may have already been deleted
+      }
+      
+      await ctx.reply(
+        `✅ *Welcome back, ${user.username}!*\n\n` +
+        `💰 Balance: ${formatSol(user.balance)} SOL`,
+        { parse_mode: 'Markdown' }
+      );
       await showMainMenu(ctx);
     } catch (error) {
       userStates.delete(userId);
       console.error('❌ Bot login exception:', error);
-      ctx.reply('❌ Error during login. Please /start to try again.');
+      ctx.reply(
+        '❌ An unexpected error occurred during login.\n\n' +
+        '💡 Please use /start to try again, or contact support if the problem persists.'
+      );
     }
   }
 
