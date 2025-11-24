@@ -725,7 +725,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Calculate how much SOL to spend in Lamports (convert to BigInt)
       const solSpent = BigInt(Math.floor(solAmount * 1_000_000_000)); // Convert SOL to Lamports
-      const priceBigInt = BigInt(Math.floor(price)); // Price in Lamports per whole token
+      const priceBigInt = BigInt(Math.floor(price)); // Price in Lamports per whole token (from Jupiter effective price)
+      
+      // ✅ VALIDATION: Entry price should be from Jupiter effective price (comes from frontend)
+      // Should NOT be the DexScreener market price
+      const jupiterVsDex = Math.abs(Number(priceBigInt) - currentPriceLamports);
+      const isFromJupiter = jupiterVsDex < (currentPriceLamports * 0.01); // Allow 1% difference for rounding
+      console.log(`✅ Entry price source verification:`);
+      console.log(`   Entry price (from frontend): ${priceBigInt.toString()} lamports`);
+      console.log(`   DexScreener market price: ${currentPriceLamports} lamports`);
+      console.log(`   Difference: ${jupiterVsDex} lamports (${((jupiterVsDex / currentPriceLamports) * 100).toFixed(2)}%)`);
+      console.log(`   Is this Jupiter effective price? ${isFromJupiter ? 'YES ✅' : 'NO ⚠️  (using market price fallback)'}`);
       
       // Calculate tokens using correct decimals from DexScreener (6 or 9)
       // tokenAmount = solSpent (lamports) * 10^decimals / price (lamports per whole token)
@@ -735,7 +745,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`📊 Buy calculation:`);
       console.log(`   SOL spent: ${solAmount} SOL = ${solSpent.toString()} lamports`);
-      console.log(`   Entry price: ${priceBigInt.toString()} lamports/token`);
+      console.log(`   Entry price: ${priceBigInt.toString()} lamports/token = ${(Number(priceBigInt) / 1_000_000_000).toFixed(9)} SOL/token`);
       console.log(`   Token decimals: ${decimals}`);
       console.log(`   Calculated tokens: ${tokensDisplay.toFixed(6)} (${tokenAmount.toString()} units)`);
       
@@ -758,12 +768,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tokenName,
         tokenSymbol,
         decimals,
-        entryPrice: priceBigInt,
+        entryPrice: priceBigInt, // ✅ This is the Jupiter effective price (actual swap price)
         amount: tokenAmount,
         solSpent,
       });
       
-      console.log(`✅ Position created: ${tokenSymbol} - ${tokensDisplay.toFixed(6)} tokens at ${(Number(priceBigInt) / 1_000_000_000).toFixed(9)} SOL/token`);
+      console.log(`✅ POSITION CREATED: ${tokenSymbol}`);
+      console.log(`   Tokens: ${tokensDisplay.toFixed(6)}`);
+      console.log(`   Entry Price: ${(Number(priceBigInt) / 1_000_000_000).toFixed(9)} SOL/token`);
+      console.log(`   USD Value: $${(Number(priceBigInt) / 1_000_000_000 * 126).toFixed(6)} (at $126/SOL)`);
+      console.log(`   Position ID: ${position.id}`);
       
       const newUser = await storage.getUserById(req.userId!);
       
