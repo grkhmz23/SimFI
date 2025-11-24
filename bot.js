@@ -60,16 +60,24 @@ bot.use(async (ctx, next) => {
   const userId = ctx.from?.id;
   const username = ctx.from?.username || ctx.from?.first_name;
   
-  console.log(`📨 Received update: ${updateType} from user ${userId} (@${username})`);
+  console.log(`[MIDDLEWARE] 📨 Received update: ${updateType} from user ${userId} (@${username})`);
+  console.log(`[MIDDLEWARE] Context keys: ${Object.keys(ctx).join(', ').substring(0, 200)}`);
   
   if (ctx.message?.text) {
-    console.log(`   Text: "${ctx.message.text}"`);
+    console.log(`[MIDDLEWARE]    Message text: "${ctx.message.text}"`);
   }
   if (ctx.callbackQuery) {
-    console.log(`   Callback: "${ctx.callbackQuery.data}"`);
+    console.log(`[MIDDLEWARE]    Callback data: "${ctx.callbackQuery.data}"`);
   }
   
-  await next();
+  try {
+    console.log(`[MIDDLEWARE] ↳ Calling next middleware...`);
+    await next();
+    console.log(`[MIDDLEWARE] ✅ Finished processing ${updateType}`);
+  } catch (err) {
+    console.error(`[MIDDLEWARE] ❌ Middleware error:`, err.message);
+    throw err;
+  }
 });
 
 // Cleanup old sessions and states every 30 minutes
@@ -1242,6 +1250,13 @@ console.log('🚀 Starting bot with manual polling...');
             consecutiveErrors = 0;
           }
           
+          // Log polling status
+          if (updates.length === 0) {
+            console.log(`[POLL] No updates received (offset: ${offset})`);
+          } else {
+            console.log(`[POLL] Got ${updates.length} updates from Telegram`);
+          }
+          
           // Process each update with deduplication
           for (const update of updates) {
             // Skip if we've already processed this update ID
@@ -1252,7 +1267,12 @@ console.log('🚀 Starting bot with manual polling...');
             }
             
             try {
-              console.log(`[POLL] Processing update ${update.update_id}: ${update.message ? 'message' : update.callback_query ? 'callback' : 'other'}`);
+              const updateType = update.message ? 'message' : update.callback_query ? 'callback_query' : update.edited_message ? 'edited_message' : 'unknown';
+              console.log(`[POLL] Processing update ${update.update_id}: ${updateType}`);
+              
+              // Log raw update structure for debugging (first 500 chars)
+              const updateStr = JSON.stringify(update).substring(0, 500);
+              console.log(`[POLL] Update data: ${updateStr}...`);
               
               // Track this update as processed
               processedUpdates.add(update.update_id);
@@ -1263,12 +1283,14 @@ console.log('🚀 Starting bot with manual polling...');
                 processedUpdates.delete(first);
               }
               
+              console.log(`[POLL] Calling bot.handleUpdate()...`);
               await bot.handleUpdate(update);
               offset = update.update_id + 1;
               
-              console.log(`[POLL] ✅ Processed update ${update.update_id}`);
+              console.log(`[POLL] ✅ Processed update ${update.update_id} successfully`);
             } catch (updateErr) {
               console.error(`[POLL] ❌ Error handling update ${update.update_id}:`, updateErr.message);
+              console.error(`[POLL] Error stack:`, updateErr.stack);
               offset = update.update_id + 1; // Still advance offset on error
             }
           }
