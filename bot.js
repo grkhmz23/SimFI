@@ -107,7 +107,8 @@ const apiRequest = async (endpoint, method = 'GET', data = null, token = null, i
       method,
       url: `${API_BASE_URL}${endpoint}`,
       headers,
-      withCredentials: false
+      withCredentials: false,
+      timeout: 30000 // 30 second timeout for all requests (Bug #25)
     };
 
     if (data) {
@@ -115,16 +116,51 @@ const apiRequest = async (endpoint, method = 'GET', data = null, token = null, i
     }
 
     const response = await axios(config);
+    
+    // Validate response has data (Bug #18)
+    if (response.data === undefined || response.data === null) {
+      console.warn(`⚠️ API returned empty response for ${endpoint}`);
+    }
+    
     return { 
       success: true, 
       data: response.data,
       headers: response.headers 
     };
   } catch (error) {
+    // Better error handling for network vs API errors (Bug #14)
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT') {
+      console.error('❌ Network Error:', error.code, error.message);
+      return {
+        success: false,
+        error: 'Network error - cannot reach server. Please try again.'
+      };
+    }
+    
+    // Handle timeout errors
+    if (error.code === 'ECONNABORTED') {
+      console.error('❌ Request timeout:', endpoint);
+      return {
+        success: false,
+        error: 'Request timeout - server took too long to respond.'
+      };
+    }
+    
     console.error('API Error:', error.response?.data || error.message);
+    
+    // Robust error message extraction (Bug #13)
+    let errorMessage = 'Unknown error occurred';
+    if (error.response?.data?.error) {
+      errorMessage = error.response.data.error;
+    } else if (error.response?.data?.message) {
+      errorMessage = error.response.data.message;
+    } else if (typeof error.message === 'string') {
+      errorMessage = error.message;
+    }
+    
     return { 
       success: false, 
-      error: error.response?.data?.error || error.message 
+      error: errorMessage
     };
   }
 };
@@ -199,10 +235,13 @@ const showBuyMenu = async (ctx, tokenAddress, session) => {
     lastActivity: Date.now()
   });
 
+  // Format market cap safely (Bug #16)
+  const marketCapStr = token.marketCap ? `$${token.marketCap.toLocaleString()}` : 'N/A';
+
   await ctx.reply(
     `📈 *${token.name} (${token.symbol})*\n\n` +
     `Price: *${formatSol(token.price)} SOL*\n` +
-    `Market Cap: *$${token.marketCap.toLocaleString()}*\n\n` +
+    `Market Cap: *${marketCapStr}*\n\n` +
     `How much SOL do you want to spend?`,
     {
       parse_mode: 'Markdown',
@@ -229,15 +268,34 @@ bot.start(async (ctx) => {
   
   if (sessionResult.success && sessionResult.data.session) {
     const session = sessionResult.data.session;
-    userSessions.set(ctx.from.id, {
-      username: session.username,
-      token: session.token,
-      balance: BigInt(session.balance)
-    });
     
-    await ctx.reply('👋 Welcome back! Your session has been restored.');
-    await showMainMenu(ctx);
-    return;
+    // Validate token is still valid by testing with profile endpoint (Bug #11)
+    const profileTest = await apiRequest('/api/auth/profile', 'GET', null, session.token);
+    
+    if (profileTest.success) {
+      // Safe BigInt conversion - check type first (Bug #7)
+      let balanceValue;
+      if (typeof session.balance === 'bigint') {
+        balanceValue = session.balance;
+      } else if (typeof session.balance === 'string' || typeof session.balance === 'number') {
+        balanceValue = BigInt(session.balance);
+      } else {
+        balanceValue = BigInt(0);
+      }
+      
+      userSessions.set(ctx.from.id, {
+        username: session.username,
+        token: session.token,
+        balance: balanceValue
+      });
+      
+      await ctx.reply('👋 Welcome back! Your session has been restored.');
+      await showMainMenu(ctx);
+      return;
+    } else {
+      // Token expired or invalid, delete the session
+      await apiRequest(`/api/telegram/session/${telegramUserId}`, 'DELETE', null, null, true);
+    }
   }
   
   // No existing session, show auth options
@@ -621,7 +679,9 @@ bot.action('leaderboard', async (ctx) => {
   let message = '🏆 *Leaderboard (Top 5):*\n\n';
   rankings.slice(0, 5).forEach((entry, i) => {
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-    message += `${medal} *${entry.username}*\n`;
+    // Validate username exists (Bug #22)
+    const username = entry.username || 'Unknown';
+    message += `${medal} *${username}*\n`;
     message += `   Profit: ${formatSol(entry.totalProfit)} SOL\n\n`;
   });
 
@@ -642,6 +702,7 @@ bot.action('main_menu', async (ctx) => {
   await showMainMenu(ctx);
 });
 
+// Logout action handler (command handler exists above)
 bot.action('logout', async (ctx) => {
   await ctx.answerCbQuery();
   
@@ -688,14 +749,17 @@ bot.on('text', async (ctx) => {
 
   // REGISTRATION FLOW
   if (state.state === 'register_email') {
-    const email = text.toLowerCase().trim();
+    // Don't lowercase email - preserve original case (Bug #8)
+    const email = text.trim();
     if (!email.includes('@') || !email.includes('.')) {
       return ctx.reply(
         '❌ Invalid email format. Please enter a valid email address:\n' +
         '(e.g., user@example.com)'
       );
     }
-    userStates.set(userId, { state: 'register_username', email, lastActivity: Date.now() });
+    // Validate state exists before spreading (Bug #27)
+    const currentState = state || {};
+    userStates.set(userId, { ...currentState, state: 'register_username', email, lastActivity: Date.now() });
     return ctx.reply(
       '✅ Email saved!\n\n' +
       'Choose a *username* (3-20 characters, letters/numbers/_/-):\n' +
@@ -705,13 +769,16 @@ bot.on('text', async (ctx) => {
   }
 
   if (state.state === 'register_username') {
-    if (!/^[a-zA-Z0-9_-]{3,20}$/.test(text)) {
+    const username = text.trim();
+    if (!/^[a-zA-Z0-9_-]{3,20}$/.test(username)) {
       return ctx.reply(
         '❌ Invalid username! Must be 3-20 characters with letters, numbers, dash, or underscore.\n' +
         'Please try again:'
       );
     }
-    userStates.set(userId, { ...state, username: text, state: 'register_password', lastActivity: Date.now() });
+    // Validate state exists before spreading (Bug #27)
+    const currentState = state || {};
+    userStates.set(userId, { ...currentState, username, state: 'register_password', lastActivity: Date.now() });
     return ctx.reply(
       '✅ Username saved!\n\n' +
       'Create a *password* (minimum 6 characters):',
@@ -720,13 +787,16 @@ bot.on('text', async (ctx) => {
   }
 
   if (state.state === 'register_password') {
-    if (text.length < 6) {
+    const password = text.trim();
+    if (password.length < 6) {
       return ctx.reply(
         '❌ Password too short! Must be at least 6 characters.\n' +
         'Please try again:'
       );
     }
-    userStates.set(userId, { ...state, password: text, state: 'register_wallet', lastActivity: Date.now() });
+    // Validate state exists before spreading (Bug #27)
+    const currentState = state || {};
+    userStates.set(userId, { ...currentState, password, state: 'register_wallet', lastActivity: Date.now() });
     return ctx.reply(
       '✅ Password saved!\n\n' +
       'Enter your *Solana wallet address*:\n' +
@@ -788,15 +858,34 @@ bot.on('text', async (ctx) => {
         );
       }
 
+      // Validate API response structure (Bug #28)
+      if (!result.data || !result.data.user || !result.data.token) {
+        console.error('❌ Invalid registration response structure:', result.data);
+        userStates.delete(userId);
+        return ctx.reply(
+          '❌ Unexpected server response. Please try again or contact support.'
+        );
+      }
+
       const user = result.data.user;
       const token = result.data.token;
 
       console.log(`✅ Bot user registered:`, user.username);
 
+      // Safe BigInt conversion - check type first (Bug #7)
+      let balanceValue;
+      if (typeof user.balance === 'bigint') {
+        balanceValue = user.balance;
+      } else if (typeof user.balance === 'string' || typeof user.balance === 'number') {
+        balanceValue = BigInt(user.balance);
+      } else {
+        balanceValue = BigInt(0);
+      }
+
       userSessions.set(userId, {
         username: user.username,
         token,
-        balance: BigInt(user.balance)
+        balance: balanceValue
       });
 
       // Save session to database
@@ -819,13 +908,14 @@ bot.on('text', async (ctx) => {
           await ctx.deleteMessage(loadingMsg.message_id);
         }
       } catch (e) {
-        // Message may have already been deleted
+        // Log deletion errors for debugging (Bug #24)
+        console.log('ℹ️ Could not delete loading message (registration):', e.message);
       }
       
       await ctx.reply(
         `✅ *Account created successfully!*\n\n` +
         `👤 Username: ${user.username}\n` +
-        `📧 Email: ${user.email}\n` +
+        `📧 Email: ${user.email || 'N/A'}\n` +
         `💰 Starting Balance: 10 SOL\n\n` +
         `Welcome to SimFi! 🎉`,
         { parse_mode: 'Markdown' }
@@ -843,7 +933,8 @@ bot.on('text', async (ctx) => {
 
   // LOGIN FLOW - supports both email AND username
   if (state.state === 'login_identifier') {
-    const identifier = text.trim().toLowerCase();
+    // Don't lowercase - preserve case for backend matching (Bug #8)
+    const identifier = text.trim();
     
     // Validate identifier (email or username)
     if (!identifier || identifier.length < 3) {
@@ -853,7 +944,9 @@ bot.on('text', async (ctx) => {
       );
     }
     
-    userStates.set(userId, { state: 'login_password', identifier, lastActivity: Date.now() });
+    // Validate state exists before spreading (Bug #27)
+    const currentState = state || {};
+    userStates.set(userId, { ...currentState, state: 'login_password', identifier, lastActivity: Date.now() });
     return ctx.reply(
       '✅ Got it!\n\n' +
       'Now enter your *password*:',
@@ -867,17 +960,18 @@ bot.on('text', async (ctx) => {
       
       console.log(`🔐 Bot login attempt for: ${state.identifier}`);
       
-      // Try login - backend will use identifier as email first, then username if needed
-      // Actually, we should send it as 'email' parameter and let backend handle both
-      const loginData = {
-        email: state.identifier, // Backend will try this as email or username
-        password: text
-      };
-      
-      // If identifier looks like username (no @), add a flag for backend
-      if (!state.identifier.includes('@')) {
-        loginData.username = state.identifier;
+      // Validate password length (Bug #26)
+      const password = text.trim();
+      if (password.length < 1) {
+        return ctx.reply('❌ Password cannot be empty. Please try again:');
       }
+      
+      // Clean login data construction (Bug #9)
+      // Send identifier as 'email' - backend will handle both email and username
+      const loginData = {
+        email: state.identifier,
+        password: password
+      };
       
       const result = await apiRequest('/api/telegram/auth/login', 'POST', loginData, null, true);
 
@@ -911,15 +1005,34 @@ bot.on('text', async (ctx) => {
         );
       }
 
+      // Validate API response structure (Bug #28)
+      if (!result.data || !result.data.user || !result.data.token) {
+        console.error('❌ Invalid login response structure:', result.data);
+        userStates.delete(userId);
+        return ctx.reply(
+          '❌ Unexpected server response. Please try again or contact support.'
+        );
+      }
+
       const user = result.data.user;
       const token = result.data.token;
 
       console.log(`✅ Bot user ${user.username} logged in successfully`);
 
+      // Safe BigInt conversion - check type first (Bug #7)
+      let balanceValue;
+      if (typeof user.balance === 'bigint') {
+        balanceValue = user.balance;
+      } else if (typeof user.balance === 'string' || typeof user.balance === 'number') {
+        balanceValue = BigInt(user.balance);
+      } else {
+        balanceValue = BigInt(0);
+      }
+
       userSessions.set(userId, {
         username: user.username,
         token,
-        balance: BigInt(user.balance)
+        balance: balanceValue
       });
 
       // Save session to database
@@ -941,7 +1054,8 @@ bot.on('text', async (ctx) => {
           await ctx.deleteMessage(loadingMsg.message_id);
         }
       } catch (e) {
-        // Message may have already been deleted
+        // Log deletion errors for debugging (Bug #24)
+        console.log('ℹ️ Could not delete loading message (login):', e.message);
       }
       
       await ctx.reply(
