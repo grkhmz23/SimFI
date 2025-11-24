@@ -15,7 +15,7 @@ import {
 import { TradeModal } from '@/components/TradeModal';
 import { useAuth } from '@/lib/auth-context';
 import { useSolPrice } from '@/lib/price-context';
-import { formatSol, lamportsToSol, toBigInt, formatTokenAmount } from '@/lib/lamports';
+import { formatSol, lamportsToSol, toBigInt, formatTokenAmount, formatPricePerTokenUSD } from '@/lib/lamports';
 import { TrendingUp, TrendingDown, Package, LogIn } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -270,10 +270,16 @@ export default function Portfolio() {
                           {formatTokenAmount(position.amount, 2, position.decimals || 6)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm">
-                          {formatSol(position.entryPrice, 8)}
+                          <div>{formatSol(position.entryPrice, 8)}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatPricePerTokenUSD(position.entryPrice, 6, solPrice)}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm">
-                          {formatSol(positionWithPrice.currentPrice, 8)}
+                          <div>{formatSol(positionWithPrice.currentPrice, 8)}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatPricePerTokenUSD(positionWithPrice.currentPrice, 6, solPrice)}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right font-mono">
                           {formatSol(position.solSpent)}
