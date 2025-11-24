@@ -1220,15 +1220,18 @@ console.log('🚀 Starting bot with manual polling...');
     let offset = 0;
     let consecutiveErrors = 0;
     const MAX_ERRORS = 5;
+    const processedUpdates = new Set(); // Track processed update IDs to prevent duplicates
     
-    // Manual polling loop
+    // Manual polling loop with proper safeguards
     const poll = async () => {
-      while (consecutiveErrors < MAX_ERRORS) {
+      console.log('[POLL] Starting polling loop...');
+      
+      while (true) {
         try {
-          // Get updates from Telegram
+          // Get updates from Telegram with 30s timeout
           const updates = await bot.telegram.getUpdates({
             offset,
-            limit: 100,
+            limit: 10, // Reduced from 100 to prevent batching too many messages
             timeout: 30,
             allowed_updates: ['message', 'callback_query']
           });
@@ -1239,32 +1242,56 @@ console.log('🚀 Starting bot with manual polling...');
             consecutiveErrors = 0;
           }
           
-          // Process each update
+          // Process each update with deduplication
           for (const update of updates) {
+            // Skip if we've already processed this update ID
+            if (processedUpdates.has(update.update_id)) {
+              console.log(`⏭️  Skipping duplicate update ${update.update_id}`);
+              offset = update.update_id + 1;
+              continue;
+            }
+            
             try {
+              console.log(`[POLL] Processing update ${update.update_id}: ${update.message ? 'message' : update.callback_query ? 'callback' : 'other'}`);
+              
+              // Track this update as processed
+              processedUpdates.add(update.update_id);
+              
+              // Clean up old processed updates (keep only last 1000)
+              if (processedUpdates.size > 1000) {
+                const first = [...processedUpdates][0];
+                processedUpdates.delete(first);
+              }
+              
               await bot.handleUpdate(update);
               offset = update.update_id + 1;
+              
+              console.log(`[POLL] ✅ Processed update ${update.update_id}`);
             } catch (updateErr) {
-              console.error('❌ Error handling update:', updateErr.message);
+              console.error(`[POLL] ❌ Error handling update ${update.update_id}:`, updateErr.message);
+              offset = update.update_id + 1; // Still advance offset on error
             }
           }
           
+          // Add small delay between polls to prevent CPU spinning
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
         } catch (err) {
           consecutiveErrors++;
-          console.error(`❌ Polling error (${consecutiveErrors}/${MAX_ERRORS}):`, err.message);
+          console.error(`[POLL] ❌ Polling error (${consecutiveErrors}/${MAX_ERRORS}):`, err.message);
           
           if (consecutiveErrors >= MAX_ERRORS) {
-            console.error('❌ Too many consecutive polling errors. Stopping bot.');
+            console.error('[POLL] ❌ Too many consecutive polling errors. Stopping bot.');
             process.exit(1);
           }
           
-          // Wait before retrying
+          // Wait before retrying on error
           await new Promise(resolve => setTimeout(resolve, 3000));
         }
       }
     };
     
-    // Start polling
+    // Start polling in background (don't await)
     poll().catch(err => {
       console.error('❌ Fatal polling error:', err);
       process.exit(1);
