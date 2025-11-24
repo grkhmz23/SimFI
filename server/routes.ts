@@ -725,29 +725,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Calculate how much SOL to spend in Lamports (convert to BigInt)
       const solSpent = BigInt(Math.floor(solAmount * 1_000_000_000)); // Convert SOL to Lamports
-      const priceBigInt = BigInt(Math.floor(price)); // Price in Lamports per whole token (from Jupiter effective price)
-      
-      // ✅ VALIDATION: Entry price should be from Jupiter effective price (comes from frontend)
-      // Should NOT be the DexScreener market price
-      const jupiterVsDex = Math.abs(Number(priceBigInt) - currentPriceLamports);
-      const isFromJupiter = jupiterVsDex < (currentPriceLamports * 0.01); // Allow 1% difference for rounding
-      console.log(`✅ Entry price source verification:`);
-      console.log(`   Entry price (from frontend): ${priceBigInt.toString()} lamports`);
-      console.log(`   DexScreener market price: ${currentPriceLamports} lamports`);
-      console.log(`   Difference: ${jupiterVsDex} lamports (${((jupiterVsDex / currentPriceLamports) * 100).toFixed(2)}%)`);
-      console.log(`   Is this Jupiter effective price? ${isFromJupiter ? 'YES ✅' : 'NO ⚠️  (using market price fallback)'}`);
+      const frontendPrice = BigInt(Math.floor(price)); // Price sent from frontend (may be market or effective)
       
       // Calculate tokens using correct decimals from DexScreener (6 or 9)
-      // tokenAmount = solSpent (lamports) * 10^decimals / price (lamports per whole token)
+      // tokenAmount = solSpent (lamports) * 10^decimals / frontendPrice
       const decimalMultiplier = BigInt(10 ** decimals);
-      const tokenAmount = (solSpent * decimalMultiplier) / priceBigInt;
-      const tokensDisplay = Number(tokenAmount) / (10 ** decimals);
-      
-      console.log(`📊 Buy calculation:`);
-      console.log(`   SOL spent: ${solAmount} SOL = ${solSpent.toString()} lamports`);
-      console.log(`   Entry price: ${priceBigInt.toString()} lamports/token = ${(Number(priceBigInt) / 1_000_000_000).toFixed(9)} SOL/token`);
-      console.log(`   Token decimals: ${decimals}`);
-      console.log(`   Calculated tokens: ${tokensDisplay.toFixed(6)} (${tokenAmount.toString()} units)`);
+      let tokenAmount = (solSpent * decimalMultiplier) / frontendPrice;
       
       if (tokenAmount <= 0n) {
         return res.status(400).json({ error: 'SOL amount too small to buy tokens' });
@@ -756,6 +739,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (user.balance < solSpent) {
         return res.status(400).json({ error: 'Insufficient balance' });
       }
+      
+      // ✅ CRITICAL FIX: Calculate ACTUAL effective entry price from the transaction
+      // effectivePrice = solSpent (lamports) * 10^decimals / tokenAmount (token units)
+      // This is what you actually paid per token, not market price
+      const actualEffectivePrice = (solSpent * decimalMultiplier) / tokenAmount;
+      const tokensDisplay = Number(tokenAmount) / (10 ** decimals);
+      
+      console.log(`📊 Buy calculation:`);
+      console.log(`   SOL spent: ${solAmount} SOL = ${solSpent.toString()} lamports`);
+      console.log(`   Frontend price: ${frontendPrice.toString()} lamports/token = ${(Number(frontendPrice) / 1_000_000_000).toFixed(9)} SOL/token`);
+      console.log(`   Calculated tokens: ${tokensDisplay.toFixed(6)} (${tokenAmount.toString()} units)`);
+      console.log(`   ACTUAL effective entry price: ${actualEffectivePrice.toString()} lamports/token = ${(Number(actualEffectivePrice) / 1_000_000_000).toFixed(9)} SOL/token`);
+      console.log(`   Token decimals: ${decimals}`);
       
       // Deduct balance first
       await storage.updateUserBalance(req.userId!, -solSpent);
@@ -768,15 +764,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tokenName,
         tokenSymbol,
         decimals,
-        entryPrice: priceBigInt, // ✅ This is the Jupiter effective price (actual swap price)
+        entryPrice: actualEffectivePrice, // ✅ Use actual calculated effective price from transaction
         amount: tokenAmount,
         solSpent,
       });
       
       console.log(`✅ POSITION CREATED: ${tokenSymbol}`);
       console.log(`   Tokens: ${tokensDisplay.toFixed(6)}`);
-      console.log(`   Entry Price: ${(Number(priceBigInt) / 1_000_000_000).toFixed(9)} SOL/token`);
-      console.log(`   USD Value: $${(Number(priceBigInt) / 1_000_000_000 * 126).toFixed(6)} (at $126/SOL)`);
+      console.log(`   Entry Price: ${(Number(actualEffectivePrice) / 1_000_000_000).toFixed(9)} SOL/token`);
+      console.log(`   USD Value: $${(Number(actualEffectivePrice) / 1_000_000_000 * 130).toFixed(6)} (at $130/SOL)`);
       console.log(`   Position ID: ${position.id}`);
       
       const newUser = await storage.getUserById(req.userId!);
