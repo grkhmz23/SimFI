@@ -121,7 +121,7 @@ class HeliusService {
         this.getTokenSupply(mintAddress),
       ]);
 
-      const tokenInfo = (metadata as any)?.[0];
+      const tokenInfo = metadata?.[0];
       const onChainInfo = tokenInfo?.onChainAccountInfo?.accountInfo?.data?.parsed?.info;
       
       // Get price and market data from DexScreener
@@ -147,7 +147,7 @@ class HeliusService {
       
       // Security analysis
       const securityFlags = [];
-      const supplyValue = (supply as any)?.value?.uiAmount || 0;
+      const supplyValue = supply?.value?.uiAmount || 0;
       const hasMintAuthority = !!onChainInfo?.mintAuthority;
       const hasFreezeAuthority = !!onChainInfo?.freezeAuthority;
       
@@ -239,7 +239,7 @@ class HeliusService {
           try {
             // Fetch token metadata
             const metadata = await this.getTokenMetadata(token.mint);
-            const tokenInfo = (metadata as any)?.[0];
+            const tokenInfo = metadata?.[0];
             
             // Calculate actual balance using decimals
             const actualBalance = token.amount / Math.pow(10, token.decimals);
@@ -341,7 +341,7 @@ class HeliusService {
       const parsed = await this.getParsedTransaction(signature);
       return {
         signature,
-        transaction: (parsed as any)?.[0] || null,
+        transaction: parsed?.[0] || null,
         timestamp: Date.now(),
       };
     } catch (error) {
@@ -412,7 +412,7 @@ class HeliusService {
       }
 
       // Check if it's a token mint
-      const owner = (accountInfo as any)?.value?.owner;
+      const owner = accountInfo.value?.owner;
       if (owner === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') {
         return {
           type: 'token',

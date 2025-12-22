@@ -3,6 +3,7 @@ import type { Server as HTTPServer } from 'http';
 import axios from 'axios';
 import type { Token } from '@shared/schema';
 import { solToLamports } from '@shared/schema';
+import { getCachedSolPrice } from './solPrice';
 
 let newTokens: Token[] = [];
 let graduatingTokens: Token[] = [];
@@ -30,7 +31,7 @@ async function fetchDexScreenerProfiles(): Promise<any[]> {
       headers: { 'Accept': '*/*' },
       timeout: 5000,
     });
-    
+
     if (response.data && Array.isArray(response.data)) {
       dexScreenerCache = response.data;
       lastDexScreenerFetch = now;
@@ -40,38 +41,38 @@ async function fetchDexScreenerProfiles(): Promise<any[]> {
   } catch (err: any) {
     console.warn(`⚠️  DexScreener API error: ${err.message}`);
   }
-  
+
   return dexScreenerCache;
 }
 
 // Get token metadata from DexScreener by address
 async function getTokenMetadataFromDexScreener(tokenAddress: string): Promise<{ name: string; symbol: string } | null> {
   const profiles = await fetchDexScreenerProfiles();
-  
+
   // Find Solana token matching the address
   const profile = profiles.find(
     p => p.chainId === 'solana' && p.tokenAddress?.toLowerCase() === tokenAddress.toLowerCase()
   );
-  
+
   if (profile) {
     // Extract name from description or URL
     const name = profile.description?.split('\n')[0]?.trim() || profile.url?.split('/').pop() || 'Unknown';
     const symbol = tokenAddress.slice(0, 4).toUpperCase();
     return { name, symbol };
   }
-  
+
   return null;
 }
 
 export function initializePumpPortal(server: HTTPServer) {
   wss = new WebSocketServer({ server, path: '/ws' });
-  
+
   wss.on('connection', (ws) => {
     console.log('🔌 Frontend client connected to WebSocket');
-    
+
     // Send initial token data
     ws.send(JSON.stringify({ type: 'init', payload: { new: newTokens, graduating: graduatingTokens, graduated: graduatedTokens } }));
-    
+
     ws.on('close', () => console.log('👋 Frontend client disconnected'));
   });
 
@@ -86,7 +87,7 @@ function connectToPumpPortal() {
     pumpPortalWs.close();
     pumpPortalWs = null;
   }
-  
+
   // Clear old timers but track which tokens need rescheduling
   const tokensToReschedule: Array<{ address: string; startTime: number }> = [];
   graduationTimers.forEach((data, address) => {
@@ -94,14 +95,14 @@ function connectToPumpPortal() {
     tokensToReschedule.push({ address, startTime: data.startTime });
   });
   graduationTimers.clear();
-  
+
   // Reschedule graduation timers for tokens still in graduatingTokens
   tokensToReschedule.forEach(({ address, startTime }) => {
     const token = graduatingTokens.find(t => t.tokenAddress === address);
     if (token) {
       const elapsed = Date.now() - startTime;
       const remaining = Math.max(0, 60000 - elapsed);
-      
+
       const timer = setTimeout(() => {
         graduatingTokens = graduatingTokens.filter(t => t.tokenAddress !== address);
         graduatedTokens.unshift(token);
@@ -110,24 +111,24 @@ function connectToPumpPortal() {
         broadcast({ type: 'graduated', payload: token });
         graduationTimers.delete(address);
       }, remaining);
-      
+
       graduationTimers.set(address, { timer, startTime });
     }
   });
-  
+
   const ws = new WebSocket('wss://pumpportal.fun/api/data');
   pumpPortalWs = ws;
 
   ws.on('open', () => {
     console.log('✅ Connected to PumpPortal WebSocket');
-    
+
     // Send subscriptions separately as recommended by PumpPortal docs
     const subscribeNewToken = { method: "subscribeNewToken" };
     const subscribeMigration = { method: "subscribeMigration" };
-    
+
     ws.send(JSON.stringify(subscribeNewToken));
     console.log('📡 Sent subscription: subscribeNewToken');
-    
+
     ws.send(JSON.stringify(subscribeMigration));
     console.log('📡 Sent subscription: subscribeMigration');
   });
@@ -135,18 +136,18 @@ function connectToPumpPortal() {
   ws.on('message', async (data) => {
     try {
       const message = JSON.parse(data.toString());
-      
+
       // Ignore subscription confirmation messages
       if (message.message) {
         console.log('✅', message.message);
         return;
       }
-      
+
       // Ignore trade events (skip if it has traderPublicKey but txType is NOT create or migrate)
       if (message.traderPublicKey && message.txType !== 'create' && message.txType !== 'migrate') {
         return;
       }
-      
+
       let token: Token;
 
       // Detect newToken events by txType === "create"
@@ -155,7 +156,7 @@ function connectToPumpPortal() {
         const shortMint = `${message.mint.slice(0, 4)}...${message.mint.slice(-4)}`;
         let name = shortMint;
         let symbol = shortMint;
-        
+
         const metadata = await getTokenMetadataFromDexScreener(message.mint);
         if (metadata) {
           name = metadata.name;
@@ -164,10 +165,16 @@ function connectToPumpPortal() {
         }
         // Market cap from PumpPortal is in SOL
         const marketCapSOL = message.marketCapSol || message.vSolInBondingCurve || 0;
-        const marketCapUSD = marketCapSOL * 150; // Approximate conversion to USD
+        const solPrice = getCachedSolPrice();
+        // ✅ FIX: Handle null price gracefully - skip if no price available
+        if (solPrice === null) {
+          console.warn(`⚠️ Skipping token ${message.mint.slice(0, 8)}... - no SOL price available`);
+          return;
+        }
+        const marketCapUSD = marketCapSOL * solPrice;
         const pricePerToken = marketCapSOL / 1e9; // 1B token supply
         const priceLamports = solToLamports(pricePerToken);
-        
+
         token = {
           tokenAddress: message.mint,
           name,
@@ -188,7 +195,7 @@ function connectToPumpPortal() {
         const shortMint = `${message.mint.slice(0, 4)}...${message.mint.slice(-4)}`;
         let name = shortMint;
         let symbol = shortMint;
-        
+
         const metadata = await getTokenMetadataFromDexScreener(message.mint);
         if (metadata) {
           name = metadata.name;
@@ -197,10 +204,16 @@ function connectToPumpPortal() {
         }
         // Estimate market cap (migration happens around $69k-$90k typically)
         const marketCapUSD = 75000; // Typical graduation market cap
-        const marketCapSOL = marketCapUSD / 150;
+        const solPriceMigrate = getCachedSolPrice();
+        // ✅ FIX: Handle null price gracefully
+        if (solPriceMigrate === null) {
+          console.warn(`⚠️ Skipping migration ${message.mint.slice(0, 8)}... - no SOL price available`);
+          return;
+        }
+        const marketCapSOL = marketCapUSD / solPriceMigrate;
         const pricePerToken = marketCapSOL / 1e9;
         const priceLamports = solToLamports(pricePerToken);
-        
+
         token = {
           tokenAddress: message.mint,
           name,
@@ -210,7 +223,7 @@ function connectToPumpPortal() {
           creator: 'N/A',
           timestamp: new Date().toISOString()
         };
-        
+
         newTokens = newTokens.filter(t => t.tokenAddress !== message.mint);
         graduatingTokens.unshift(token);
         if (graduatingTokens.length > MAX_TOKENS) graduatingTokens.pop();
@@ -220,7 +233,7 @@ function connectToPumpPortal() {
         // Clear any existing graduation timer for this token
         const existingData = graduationTimers.get(message.mint);
         if (existingData) clearTimeout(existingData.timer);
-        
+
         // Set new graduation timer and track start time
         const startTime = Date.now();
         const timer = setTimeout(() => {
@@ -231,7 +244,7 @@ function connectToPumpPortal() {
           broadcast({ type: 'graduated', payload: token });
           graduationTimers.delete(message.mint);
         }, 60000);
-        
+
         graduationTimers.set(message.mint, { timer, startTime });
       } else if (message.signature) {
         // Likely a trade event, skip silently

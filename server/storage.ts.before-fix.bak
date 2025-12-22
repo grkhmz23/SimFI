@@ -482,6 +482,8 @@ class DbStorage implements IStorage {
       });
     }
 
+    });
+  }
 }
 
 export const storage: IStorage = new DbStorage();
