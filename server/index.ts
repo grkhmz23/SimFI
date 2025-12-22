@@ -7,6 +7,9 @@ import { leaderboardService } from "./leaderboardService";
 
 const app = express();
 
+// ✅ Remove X-Powered-By header (information disclosure)
+app.disable('x-powered-by');
+
 // ✅ CRITICAL: Trust first proxy for correct client IP detection
 // Required for rate limiting to work correctly behind Nginx/Cloudflare/Render/Fly
 app.set('trust proxy', 1);
@@ -30,10 +33,13 @@ app.use((req, res, next) => {
   // Permissions Policy - restrict browser features
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
-  // HSTS - force HTTPS (only in production)
-  if (process.env.NODE_ENV === 'production') {
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  }
+  // HSTS - Only set if not already set by hosting provider (Google Frontend, Cloudflare, etc.)
+  // Check if HSTS is already present to avoid duplicates
+  // Most cloud providers (Google Cloud Run, Cloudflare, etc.) already add HSTS
+  // Uncomment below ONLY if your hosting doesn't add HSTS:
+  // if (process.env.NODE_ENV === 'production') {
+  //   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  // }
 
   // Content Security Policy - prevent XSS and data injection
   // This is a moderate policy - adjust based on your needs
