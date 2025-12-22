@@ -5,163 +5,15 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
-import rateLimit from "express-rate-limit";
 import { db } from "./db";
 import { positions, tradeHistory } from "@shared/schema";
 import { storage } from "./storage";
 import { authenticateToken } from "./middleware/auth";
 import { fetchDexScreenerProfiles } from "./pumpportal";
 import { leaderboardService } from "./leaderboardService";
+import { heliusService as oldHeliusService } from "./helius";
 import { heliusService } from "./helius-enhanced";
 import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest } from "@shared/schema";
-
-// ============================================================================
-// RATE LIMITING WITH REDIS STORE (for multi-instance deployments)
-// ============================================================================
-
-// Skip function to exclude health checks from rate limiting
-const skipHealthCheck = (req: any) => req.path === '/api/health';
-
-// Redis store for rate limiting (shared across instances)
-// Falls back to in-memory if Redis unavailable
-let rateLimitStore: any = undefined; // undefined = use default MemoryStore
-
-async function initializeRateLimitStore() {
-  const redisUrl = process.env.REDIS_URL;
-
-  if (!redisUrl) {
-    console.log('ℹ️  REDIS_URL not set - using in-memory rate limiting');
-    console.log('   ⚠️  Rate limits will NOT be shared across instances');
-    return;
-  }
-
-  try {
-    // Dynamic import to avoid requiring redis packages in dev/test
-    // These packages are optional - install with: npm install ioredis rate-limit-redis
-    // Using Function constructor to bypass TypeScript module resolution
-    const dynamicImport = new Function('modulePath', 'return import(modulePath)');
-
-    let RedisStore: any;
-    let Redis: any;
-
-    try {
-      const RedisStoreModule = await dynamicImport('rate-limit-redis');
-      const IoRedisModule = await dynamicImport('ioredis');
-      RedisStore = RedisStoreModule.default;
-      Redis = IoRedisModule.default || IoRedisModule.Redis;
-    } catch (importError) {
-      console.warn('⚠️  Redis packages not installed. Run: npm install ioredis rate-limit-redis');
-      console.log('   Falling back to in-memory rate limiting');
-      return;
-    }
-
-    const redisClient = new Redis(redisUrl, {
-      maxRetriesPerRequest: 1,
-      enableReadyCheck: false,
-      retryStrategy: (times: number) => {
-        if (times > 3) {
-          console.warn('⚠️  Redis connection failed - falling back to in-memory rate limiting');
-          return null; // Stop retrying
-        }
-        return Math.min(times * 100, 1000);
-      },
-    });
-
-    redisClient.on('error', (err: Error) => {
-      console.warn('⚠️  Redis error:', err.message);
-    });
-
-    redisClient.on('connect', () => {
-      console.log('✅ Redis connected for rate limiting');
-    });
-
-    // Test connection
-    await redisClient.ping();
-
-    rateLimitStore = new RedisStore({
-      sendCommand: (...args: string[]) => redisClient.call(...args),
-      prefix: 'simfi:rl:', // Prefix for rate limit keys
-    });
-
-    console.log('✅ Rate limiting using Redis store (shared across instances)');
-  } catch (error: any) {
-    console.warn('⚠️  Failed to initialize Redis store:', error.message);
-    console.log('   Falling back to in-memory rate limiting');
-    console.log('   ⚠️  Rate limits will NOT be shared across instances');
-  }
-}
-
-// Initialize Redis store (non-blocking)
-initializeRateLimitStore().catch(console.error);
-
-// ✅ FIX: Two-tier rate limiting with shared store
-// Tier 1: IP-based backstop (runs first, catches abuse before auth)
-// Tier 2: User-based (runs after auth, for granular per-user limits)
-
-// Helper to create rate limiters with optional Redis store
-// Store is added dynamically after initialization
-function createRateLimiter(options: Parameters<typeof rateLimit>[0]) {
-  return rateLimit({
-    ...options,
-    // Store is undefined initially (uses MemoryStore), then Redis once connected
-    // This is safe because express-rate-limit handles undefined gracefully
-    store: rateLimitStore,
-  });
-}
-
-// IP-based backstop limiter - prevents auth spam and general abuse
-const ipBackstopLimiter = createRateLimiter({
-  windowMs: 60 * 1000, // 1 minute
-  max: 60, // 60 requests per minute per IP (generous, but stops floods)
-  message: { error: 'Too many requests from this IP' },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: skipHealthCheck,
-});
-
-const authLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // 20 attempts per window for login/register
-  message: { error: 'Too many attempts, please try again in 15 minutes' },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: skipHealthCheck,
-});
-
-// Per-user trade limiter - requires auth to run first
-const userTradeLimiter = createRateLimiter({
-  windowMs: 60 * 1000, // 1 minute
-  max: 30, // 30 trades per minute per user
-  message: { error: 'Too many trade requests, please slow down' },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: skipHealthCheck,
-  keyGenerator: (req: any) => {
-    // This runs AFTER auth, so userId should be set
-    if (req.userId) return `user:${req.userId}`;
-    // Fallback: use a generic key (IP handled by default if no keyGenerator)
-    return 'anon';
-  },
-});
-
-const searchLimiter = createRateLimiter({
-  windowMs: 60 * 1000, // 1 minute  
-  max: 20, // 20 searches per minute (protect external APIs)
-  message: { error: 'Too many search requests, please slow down' },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: skipHealthCheck,
-});
-
-// Bot endpoints - keyed by bot secret header
-const botLimiter = createRateLimiter({
-  windowMs: 60 * 1000, // 1 minute
-  max: 200, // 200 requests per minute for bot
-  message: { error: 'Too many bot requests' },
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req: any) => `bot:${req.headers['x-bot-secret'] || 'unknown'}`,
-});
 
 // Require JWT_SECRET or SESSION_SECRET environment variable
 const JWT_SECRET: string = (() => {
@@ -172,189 +24,13 @@ const JWT_SECRET: string = (() => {
   return secret;
 })();
 
-// ✅ PRECISION FIX: Parse SOL string to lamports without floating-point math
-// This avoids issues like 0.1 * 1e9 = 99999999.99999999
-function parseSolToLamports(solAmount: string | number): bigint {
-  // Convert to string if number was passed
-  const solStr = String(solAmount);
-
-  // Validate format: only digits, optional decimal, optional leading minus
-  if (!/^-?\d*\.?\d+$/.test(solStr)) {
-    throw new Error('Invalid SOL amount format');
-  }
-
-  // Split on decimal point
-  const parts = solStr.split('.');
-  const wholePart = parts[0] || '0';
-  let fracPart = parts[1] || '';
-
-  // Pad or truncate fractional part to exactly 9 digits (lamports precision)
-  if (fracPart.length > 9) {
-    fracPart = fracPart.slice(0, 9); // Truncate excess precision
-  } else {
-    fracPart = fracPart.padEnd(9, '0'); // Pad with zeros
-  }
-
-  // Combine and parse as BigInt
-  const lamportsStr = wholePart + fracPart;
-  const lamports = BigInt(lamportsStr);
-
-  return lamports;
-}
-
-// Input validation for trade amounts
-const MIN_TRADE_LAMPORTS = 1_000_000n; // 0.001 SOL minimum
-const MAX_TRADE_LAMPORTS = 100_000_000_000n; // 100 SOL maximum
-
-function validateTradeAmount(lamports: bigint): void {
-  if (lamports <= 0n) {
-    throw new Error('Trade amount must be positive');
-  }
-  if (lamports < MIN_TRADE_LAMPORTS) {
-    throw new Error('Trade amount too small (minimum 0.001 SOL)');
-  }
-  if (lamports > MAX_TRADE_LAMPORTS) {
-    throw new Error('Trade amount too large (maximum 100 SOL)');
-  }
-}
-
-// Validate Solana address format
-function isValidSolanaAddress(address: string): boolean {
-  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
-}
-
-// ✅ PRECISION FIX: Parse decimal price string to lamports without float math
-// Handles strings like "0.000000123" from DexScreener API
-// Returns integer lamports (minimum 1 for valid prices)
-function parseDecimalToLamports(decimalString: string): number {
-  if (!decimalString || decimalString === '0') return 0;
-
-  // Remove any whitespace
-  const str = decimalString.trim();
-
-  // Validate format
-  if (!/^\d*\.?\d+$/.test(str)) {
-    console.warn(`Invalid price format: ${str}`);
-    return 0;
-  }
-
-  // Split on decimal point
-  const parts = str.split('.');
-  const wholePart = parts[0] || '0';
-  let fracPart = parts[1] || '';
-
-  // Lamports = 9 decimal places
-  // Pad or truncate fractional part to exactly 9 digits
-  if (fracPart.length > 9) {
-    fracPart = fracPart.slice(0, 9);
-  } else {
-    fracPart = fracPart.padEnd(9, '0');
-  }
-
-  // Remove leading zeros from whole part (but keep at least one digit)
-  const cleanWhole = wholePart.replace(/^0+/, '') || '0';
-
-  // Combine and parse
-  const lamportsStr = cleanWhole + fracPart;
-  const lamports = parseInt(lamportsStr, 10);
-
-  // Return at least 1 for any valid non-zero price (sub-lamport tokens)
-  if (isNaN(lamports)) return 0;
-  if (lamports > 0) return lamports;
-  // If we parsed 0 but input wasn't "0", return 1 (sub-lamport price)
-  return str !== '0' && parseFloat(str) > 0 ? 1 : 0;
-}
-
-// ============================================================================
-// EXTERNAL API PROTECTION: Timeouts + Circuit Breaker
-// ============================================================================
-
-// Circuit breaker state for each API
-interface CircuitState {
-  failures: number;
-  lastFailure: number;
-  isOpen: boolean;
-  successCount: number;
-}
-
-const circuitBreakers = new Map<string, CircuitState>();
-
-// Circuit breaker config
-const CIRCUIT_CONFIG = {
-  failureThreshold: 5,      // Open circuit after 5 failures
-  resetTimeMs: 30_000,      // Try again after 30 seconds
-  successThreshold: 2,      // Close circuit after 2 successes
-};
-
-function getCircuitState(apiName: string): CircuitState {
-  let state = circuitBreakers.get(apiName);
-  if (!state) {
-    state = { failures: 0, lastFailure: 0, isOpen: false, successCount: 0 };
-    circuitBreakers.set(apiName, state);
-  }
-  return state;
-}
-
-function recordSuccess(apiName: string): void {
-  const state = getCircuitState(apiName);
-  state.successCount++;
-  if (state.isOpen && state.successCount >= CIRCUIT_CONFIG.successThreshold) {
-    console.log(`✅ Circuit CLOSED for ${apiName} after ${state.successCount} successes`);
-    state.isOpen = false;
-    state.failures = 0;
-    state.successCount = 0;
-  }
-}
-
-function recordFailure(apiName: string): void {
-  const state = getCircuitState(apiName);
-  state.failures++;
-  state.lastFailure = Date.now();
-  state.successCount = 0;
-
-  if (state.failures >= CIRCUIT_CONFIG.failureThreshold && !state.isOpen) {
-    state.isOpen = true;
-    console.warn(`⚠️ Circuit OPEN for ${apiName} after ${state.failures} failures`);
-  }
-}
-
-function isCircuitOpen(apiName: string): boolean {
-  const state = getCircuitState(apiName);
-
-  if (!state.isOpen) return false;
-
-  // Check if reset time has passed
-  if (Date.now() - state.lastFailure > CIRCUIT_CONFIG.resetTimeMs) {
-    console.log(`🔄 Circuit HALF-OPEN for ${apiName} - allowing test request`);
-    return false; // Allow a test request
-  }
-
-  return true;
-}
-
-// Default timeouts for different API types
-const API_TIMEOUTS = {
-  dexscreener: 5000,    // 5s - primary price source
-  birdeye: 3000,        // 3s - metadata fallback
-  jupiter: 8000,        // 8s - quote API (can be slow)
-  coingecko: 5000,      // 5s - OHLCV data
-  helius: 5000,         // 5s - RPC calls
-};
-
-// Enhanced fetch with timeout and circuit breaker
-async function fetchWithTimeout(
-  url: string, 
-  timeoutMs: number = 5000,
-  options: RequestInit = {}
-): Promise<Response> {
+// Helper function for fetch with timeout
+async function fetchWithTimeout(url: string, timeoutMs: number = 5000): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
+  
   try {
-    const response = await fetch(url, { 
-      ...options,
-      signal: controller.signal,
-    });
+    const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
     return response;
   } catch (error: any) {
@@ -364,163 +40,6 @@ async function fetchWithTimeout(
     }
     throw error;
   }
-}
-
-// Fetch with circuit breaker protection
-async function fetchWithCircuitBreaker(
-  apiName: string,
-  url: string,
-  timeoutMs: number,
-  options: RequestInit = {}
-): Promise<Response | null> {
-  // Check circuit breaker
-  if (isCircuitOpen(apiName)) {
-    console.log(`⏸️ ${apiName} circuit is OPEN - skipping request`);
-    return null;
-  }
-
-  try {
-    const response = await fetchWithTimeout(url, timeoutMs, options);
-
-    if (response.ok) {
-      recordSuccess(apiName);
-    } else if (response.status >= 500 || response.status === 429) {
-      // Server error or rate limited
-      recordFailure(apiName);
-    }
-
-    return response;
-  } catch (error: any) {
-    recordFailure(apiName);
-    console.warn(`❌ ${apiName} request failed: ${error.message}`);
-    return null;
-  }
-}
-
-// Convenience functions for each API
-async function fetchDexScreener(endpoint: string): Promise<Response | null> {
-  return fetchWithCircuitBreaker(
-    'dexscreener',
-    `https://api.dexscreener.com${endpoint}`,
-    API_TIMEOUTS.dexscreener
-  );
-}
-
-async function fetchJupiter(endpoint: string): Promise<Response | null> {
-  return fetchWithCircuitBreaker(
-    'jupiter',
-    `https://quote-api.jup.ag${endpoint}`,
-    API_TIMEOUTS.jupiter
-  );
-}
-
-async function fetchBirdeye(endpoint: string): Promise<Response | null> {
-  return fetchWithCircuitBreaker(
-    'birdeye',
-    `https://public-api.birdeye.so${endpoint}`,
-    API_TIMEOUTS.birdeye,
-    {
-      headers: {
-        'accept': 'application/json',
-        'x-chain': 'solana',
-      },
-    }
-  );
-}
-
-async function fetchCoinGecko(endpoint: string): Promise<Response | null> {
-  return fetchWithCircuitBreaker(
-    'coingecko',
-    `https://api.coingecko.com${endpoint}`,
-    API_TIMEOUTS.coingecko
-  );
-}
-
-// ============================================================================
-// IDEMPOTENCY: Prevent duplicate trades on retry
-// ============================================================================
-
-interface IdempotencyEntry {
-  response: any;
-  statusCode: number;
-  timestamp: number;
-}
-
-// Cache for idempotency keys: Map<"userId:key", IdempotencyEntry>
-const idempotencyCache = new Map<string, IdempotencyEntry>();
-
-// Idempotency config
-const IDEMPOTENCY_CONFIG = {
-  ttlMs: 5 * 60 * 1000,       // 5 minutes - keys expire after this
-  cleanupIntervalMs: 60_000,   // Clean expired entries every minute
-  maxEntries: 10_000,          // Prevent memory bloat
-};
-
-// Periodic cleanup of expired entries
-setInterval(() => {
-  const now = Date.now();
-  let cleaned = 0;
-
-  for (const [key, entry] of idempotencyCache.entries()) {
-    if (now - entry.timestamp > IDEMPOTENCY_CONFIG.ttlMs) {
-      idempotencyCache.delete(key);
-      cleaned++;
-    }
-  }
-
-  if (cleaned > 0) {
-    console.log(`🧹 Idempotency cache cleanup: removed ${cleaned} expired entries`);
-  }
-}, IDEMPOTENCY_CONFIG.cleanupIntervalMs);
-
-// Get cached response for idempotency key
-function getIdempotentResponse(userId: number | string, idempotencyKey: string): IdempotencyEntry | null {
-  if (!idempotencyKey) return null;
-
-  const cacheKey = `${userId}:${idempotencyKey}`;
-  const entry = idempotencyCache.get(cacheKey);
-
-  if (!entry) return null;
-
-  // Check if expired
-  if (Date.now() - entry.timestamp > IDEMPOTENCY_CONFIG.ttlMs) {
-    idempotencyCache.delete(cacheKey);
-    return null;
-  }
-
-  console.log(`♻️ Idempotency hit: returning cached response for key ${idempotencyKey.slice(0, 8)}...`);
-  return entry;
-}
-
-// Store response for idempotency key
-function setIdempotentResponse(
-  userId: number | string, 
-  idempotencyKey: string, 
-  response: any, 
-  statusCode: number
-): void {
-  if (!idempotencyKey) return;
-
-  // Prevent memory bloat
-  if (idempotencyCache.size >= IDEMPOTENCY_CONFIG.maxEntries) {
-    // Remove oldest entries (first 10%)
-    const toRemove = Math.floor(IDEMPOTENCY_CONFIG.maxEntries * 0.1);
-    const keys = Array.from(idempotencyCache.keys()).slice(0, toRemove);
-    keys.forEach(k => idempotencyCache.delete(k));
-    console.log(`🧹 Idempotency cache full: evicted ${toRemove} oldest entries`);
-  }
-
-  const cacheKey = `${userId}:${idempotencyKey}`;
-  idempotencyCache.set(cacheKey, {
-    response,
-    statusCode,
-    timestamp: Date.now(),
-  });
-}
-
-// Helper to extract idempotency key from request
-function getIdempotencyKey(req: any): string | null {
-  return req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || null;
 }
 
 // Helper to serialize BigInt values for JSON responses
@@ -535,161 +54,110 @@ function serializeBigInts(obj: any): any {
   );
 }
 
-// ✅ MEDIUM FIX: Use centralized SOL price module
-import { getSolPrice, getCachedSolPrice } from './solPrice';
+// Cache for SOL price to reduce API calls
+let cachedSolPrice: { price: number; timestamp: number } | null = null;
+const SOL_PRICE_CACHE_TTL = 30000; // 30 seconds
 
-// Alias for backward compatibility
-const fetchSolPrice = getSolPrice;
+// Fetch current SOL price from CoinGecko
+async function fetchSolPrice(): Promise<number> {
+  const now = Date.now();
+  
+  // Return cached price if still valid
+  if (cachedSolPrice && (now - cachedSolPrice.timestamp) < SOL_PRICE_CACHE_TTL) {
+    return cachedSolPrice.price;
+  }
+  
+  try {
+    const response = await fetchWithTimeout('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', 5000);
+    if (response.ok) {
+      const data = await response.json();
+      const price = data?.solana?.usd || 175;
+      cachedSolPrice = { price, timestamp: now };
+      console.log(`💰 Updated SOL price: $${price}`);
+      return price;
+    }
+  } catch (error) {
+    console.warn('⚠️ Failed to fetch SOL price from CoinGecko, using cached value');
+  }
+  
+  // Return cached price if available, fallback to 175
+  return cachedSolPrice?.price || 175;
+}
 
 // Helper to find the best (highest liquidity) Solana pair from DexScreener pairs array
 // This ensures we get the most accurate price from the most liquid market
 function findBestSolanaPair(pairs: any[], tokenAddress: string): any | null {
   if (!pairs || pairs.length === 0) return null;
-
+  
   // Filter for Solana pairs matching this token
   const solanaPairs = pairs.filter((pair: any) => 
     pair.chainId === 'solana' && 
     pair.baseToken?.address === tokenAddress &&
     pair.priceNative
   );
-
+  
   if (solanaPairs.length === 0) return null;
-
+  
   // Sort by liquidity (USD) descending - highest liquidity = most accurate price
   solanaPairs.sort((a: any, b: any) => {
     const liquidityA = parseFloat(a.liquidity?.usd || '0');
     const liquidityB = parseFloat(b.liquidity?.usd || '0');
     return liquidityB - liquidityA;
   });
-
+  
   return solanaPairs[0]; // Return highest liquidity pair
 }
 
-// ✅ FIX: Request coalescing for DexScreener
-// Prevents multiple concurrent requests for the same token
-interface PriceCache {
-  priceLamports: number;
-  decimals: number;
-  liquidityUsd: number;
-  volume24hUsd: number;
-  fetchedAt: number;
-}
-
-const dexScreenerCache = new Map<string, PriceCache>();
-const pendingRequests = new Map<string, Promise<PriceCache | null>>();
-const PRICE_CACHE_TTL_MS = 5000; // 5 second TTL - balance between freshness and rate limiting
-
-// Minimum liquidity for leaderboard-eligible trades (prevents manipulation)
-const MIN_LIQUIDITY_USD = 1000; // $1000 minimum liquidity
-const MIN_VOLUME_24H_USD = 500; // $500 minimum 24h volume
-
-async function fetchDexScreenerPriceInternal(tokenAddress: string): Promise<PriceCache | null> {
+// Helper to fetch current price and decimals from DexScreener
+// Returns price in lamports per token (clamped to minimum 1 for sub-lamport tokens)
+// Also returns token decimals (6 for pump.fun, 9 for other launchpads)
+async function fetchDexScreenerPrice(tokenAddress: string): Promise<{ priceLamports: number; decimals?: number } | null> {
   try {
     const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 3000);
     if (dexResponse.ok) {
       const dexData = await dexResponse.json();
       const solanaPair = findBestSolanaPair(dexData.pairs, tokenAddress);
-
+      
       if (solanaPair && solanaPair.priceNative) {
-        // ✅ PRECISION FIX: Parse without float math
-        const priceLamports = Math.max(1, parseDecimalToLamports(solanaPair.priceNative));
+        // Convert to lamports, clamp to 1 minimum (sub-lamport tokens are <$0.0000002)
+        const priceLamports = Math.max(1, Math.floor(parseFloat(solanaPair.priceNative) * 1_000_000_000));
+        
+        // Extract decimals from baseToken if available (6 or 9)
         const decimals = solanaPair.baseToken?.decimals || 6;
-        const liquidityUsd = parseFloat(solanaPair.liquidity?.usd || '0');
-        const volume24hUsd = parseFloat(solanaPair.volume?.h24 || '0');
-
-        return {
-          priceLamports,
-          decimals,
-          liquidityUsd,
-          volume24hUsd,
-          fetchedAt: Date.now(),
-        };
+        
+        return { priceLamports, decimals };
       }
     }
-    return null;
   } catch (error) {
-    console.error(`DexScreener fetch error for ${tokenAddress}:`, error);
-    return null;
+    console.log(`⚠️ DexScreener price fetch failed for ${tokenAddress}`);
   }
-}
-
-// ✅ FIX: Coalesced price fetch - one request per token per TTL
-async function fetchDexScreenerPrice(tokenAddress: string): Promise<{ 
-  priceLamports: number; 
-  decimals?: number;
-  liquidityUsd?: number;
-  volume24hUsd?: number;
-  isCached?: boolean;
-} | null> {
-  // Check cache first
-  const cached = dexScreenerCache.get(tokenAddress);
-  if (cached && (Date.now() - cached.fetchedAt) < PRICE_CACHE_TTL_MS) {
-    return { ...cached, isCached: true };
-  }
-
-  // Check if there's already a pending request for this token
-  const pending = pendingRequests.get(tokenAddress);
-  if (pending) {
-    // Wait for the pending request instead of making a new one
-    const result = await pending;
-    return result ? { ...result, isCached: false } : null;
-  }
-
-  // Create new request and store promise
-  const requestPromise = fetchDexScreenerPriceInternal(tokenAddress);
-  pendingRequests.set(tokenAddress, requestPromise);
-
-  try {
-    const result = await requestPromise;
-
-    if (result) {
-      // Update cache
-      dexScreenerCache.set(tokenAddress, result);
-    }
-
-    return result ? { ...result, isCached: false } : null;
-  } finally {
-    // Clean up pending request
-    pendingRequests.delete(tokenAddress);
-  }
-}
-
-// Helper to check if token meets minimum liquidity requirements
-function meetsLiquidityRequirements(liquidityUsd: number, volume24hUsd: number): boolean {
-  return liquidityUsd >= MIN_LIQUIDITY_USD && volume24hUsd >= MIN_VOLUME_24H_USD;
-}
-
-// Legacy function signature for backward compatibility
-async function fetchDexScreenerPriceLegacy(tokenAddress: string): Promise<{ priceLamports: number; decimals?: number } | null> {
-  const result = await fetchDexScreenerPrice(tokenAddress);
-  if (!result) return null;
-  return { priceLamports: result.priceLamports, decimals: result.decimals };
+  return null;
 }
 
 // Helper to fetch token metadata from multiple APIs with fallbacks
 async function fetchTokenMetadata(tokenAddress: string): Promise<{ icon?: string; name?: string; symbol?: string } | null> {
   let dexMetadata: { icon?: string; name?: string; symbol?: string } | null = null;
-
+  
   // Try DexScreener first (free, no API key needed)
   try {
     const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 3000);
     if (dexResponse.ok) {
       const dexData = await dexResponse.json();
       const solanaPair = findBestSolanaPair(dexData.pairs, tokenAddress);
-
+      
       if (solanaPair) {
         dexMetadata = {
           icon: solanaPair.info?.imageUrl,
           name: solanaPair.baseToken?.name,
           symbol: solanaPair.baseToken?.symbol,
         };
-
+        
         // If DexScreener has icon, return immediately
         if (dexMetadata.icon) {
           console.log(`✅ DexScreener metadata for ${tokenAddress}: icon=Yes`);
           return dexMetadata;
         }
-
+        
         console.log(`⚠️ DexScreener has metadata for ${tokenAddress} but NO icon, trying Birdeye...`);
       }
     }
@@ -700,17 +168,25 @@ async function fetchTokenMetadata(tokenAddress: string): Promise<{ icon?: string
   // Try Birdeye API v3 (free tier available, no API key required for basic calls)
   try {
     console.log(`🔍 Trying Birdeye v3 for ${tokenAddress.slice(0, 8)}...`);
-    // ✅ FIX: Use circuit breaker protected fetch
-    const birdeyeResponse = await fetchBirdeye(`/defi/v3/token/meta-data/single?address=${tokenAddress}`);
-
-    if (birdeyeResponse?.ok) {
+    const birdeyeResponse = await fetch(
+      `https://public-api.birdeye.so/defi/v3/token/meta-data/single?address=${tokenAddress}`,
+      {
+        headers: {
+          'accept': 'application/json',
+          'x-chain': 'solana',
+        },
+        signal: AbortSignal.timeout(3000),
+      }
+    );
+    
+    if (birdeyeResponse.ok) {
       const birdeyeData = await birdeyeResponse.json();
       console.log(`📊 Birdeye v3 response for ${tokenAddress.slice(0, 8)}: success=${birdeyeData.success}`);
-
+      
       if (birdeyeData.success && birdeyeData.data) {
         const birdeyeIcon = birdeyeData.data.logoURI || birdeyeData.data.icon;
         console.log(`✅ Birdeye v3 metadata for ${tokenAddress.slice(0, 8)}: icon=${birdeyeIcon ? 'Yes' : 'No'}`);
-
+        
         return {
           icon: birdeyeIcon || dexMetadata?.icon,
           name: birdeyeData.data.name || dexMetadata?.name,
@@ -725,17 +201,25 @@ async function fetchTokenMetadata(tokenAddress: string): Promise<{ icon?: string
   // Fallback to older Birdeye token_overview endpoint
   try {
     console.log(`🔍 Trying Birdeye token_overview for ${tokenAddress.slice(0, 8)}...`);
-    // ✅ FIX: Use circuit breaker protected fetch
-    const birdeyeResponse = await fetchBirdeye(`/defi/token_overview?address=${tokenAddress}`);
-
-    if (birdeyeResponse?.ok) {
+    const birdeyeResponse = await fetch(
+      `https://public-api.birdeye.so/defi/token_overview?address=${tokenAddress}`,
+      {
+        headers: {
+          'accept': 'application/json',
+          'x-chain': 'solana',
+        },
+        signal: AbortSignal.timeout(3000),
+      }
+    );
+    
+    if (birdeyeResponse.ok) {
       const birdeyeData = await birdeyeResponse.json();
       console.log(`📊 Birdeye token_overview response for ${tokenAddress.slice(0, 8)}: has data=${!!birdeyeData.data}`);
-
+      
       if (birdeyeData.data) {
         const birdeyeIcon = birdeyeData.data.logoURI || birdeyeData.data.icon;
         console.log(`✅ Birdeye token_overview metadata for ${tokenAddress.slice(0, 8)}: icon=${birdeyeIcon ? 'Yes' : 'No'}`);
-
+        
         return {
           icon: birdeyeIcon || dexMetadata?.icon,
           name: birdeyeData.data.name || dexMetadata?.name,
@@ -759,59 +243,36 @@ async function fetchTokenMetadata(tokenAddress: string): Promise<{ icon?: string
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
-  // Health Check Endpoint (for load balancers and monitoring)
-  // ============================================================================
-
-  app.get('/api/health', async (req, res) => {
-    try {
-      // Check database connectivity
-      await db.execute(sql`SELECT 1`);
-
-      // ✅ Minimal response - don't leak environment details
-      res.json({
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error: any) {
-      console.error('Health check failed:', error);
-      res.status(503).json({
-        status: 'unhealthy',
-        timestamp: new Date().toISOString(),
-      });
-    }
-  });
-
-  // ============================================================================
   // Auth Routes
   // ============================================================================
-
-  app.post('/api/auth/register', authLimiter, async (req, res) => {
+  
+  app.post('/api/auth/register', async (req, res) => {
     try {
       const data = insertUserSchema.parse(req.body);
-
+      
       // Check if user already exists
       const existingEmail = await storage.getUserByEmail(data.email);
       if (existingEmail) {
         return res.status(400).json({ error: 'Email already registered' });
       }
-
+      
       const existingUsername = await storage.getUserByUsername(data.username);
       if (existingUsername) {
         return res.status(400).json({ error: 'Username already taken' });
       }
-
+      
       // Hash password
       const hashedPassword = await bcrypt.hash(data.password, 10);
-
+      
       // Create user
       const user = await storage.createUser({
         ...data,
         password: hashedPassword,
       });
-
+      
       // Generate token
       const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
-
+      
       // Set HttpOnly cookie
       res.cookie('token', token, {
         httpOnly: true,
@@ -819,9 +280,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
       });
-
+      
       console.log('✅ User registered, cookie set for:', user.username);
-
+      
       // Return user without password
       const { password, ...userWithoutPassword } = user;
       res.status(201).json(serializeBigInts({ user: userWithoutPassword }));
@@ -831,11 +292,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/auth/login', authLimiter, async (req, res) => {
+  app.post('/api/auth/login', async (req, res) => {
     try {
       const { email, username } = req.body;
       console.log('🔐 Login attempt:', { email, username });
-
+      
       // Validate request body with Zod - accept either email OR username
       const loginSchema = z.object({
         email: z.string().optional(),
@@ -845,16 +306,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data => data.email || data.username,
         { message: 'Either email or username is required' }
       );
-
+      
       const validationResult = loginSchema.safeParse(req.body);
       if (!validationResult.success) {
         return res.status(400).json({ 
           error: validationResult.error.errors[0]?.message || 'Invalid login data' 
         });
       }
-
+      
       const { password } = validationResult.data;
-
+      
       // Try to find user by email or username
       let user;
       if (email) {
@@ -862,19 +323,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else if (username) {
         user = await storage.getUserByUsername(username);
       }
-
+      
       if (!user) {
         return res.status(400).json({ error: 'Invalid credentials' });
       }
-
+      
       const validPassword = await bcrypt.compare(password, user.password);
-
+      
       if (!validPassword) {
         return res.status(400).json({ error: 'Invalid credentials' });
       }
-
+      
       const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
-
+      
       // Set HttpOnly cookie
       res.cookie('token', token, {
         httpOnly: true,
@@ -882,9 +343,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
       });
-
+      
       console.log('✅ User logged in, cookie set for:', user.username);
-
+      
       const { password: _, ...userWithoutPassword } = user;
       res.json(serializeBigInts({ user: userWithoutPassword }));
     } catch (error: any) {
@@ -907,28 +368,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/solana/price', async (req, res) => {
     try {
       const price = await fetchSolPrice();
-
-      // ✅ FIX #6: Return proper error when price unavailable (no hardcoded fallback!)
-      if (price === null) {
-        return res.status(503).json({ 
-          error: 'SOL price temporarily unavailable',
-          available: false,
-          retryAfter: 30, // Suggest retry in 30 seconds
-        });
-      }
-
-      res.json({ 
-        price, 
-        available: true,
-        timestamp: new Date().toISOString(),
-      });
+      res.json({ price, timestamp: new Date().toISOString() });
     } catch (error: any) {
       console.error('SOL price fetch error:', error);
-      res.status(503).json({ 
-        error: 'Could not fetch SOL price',
-        available: false,
-        retryAfter: 30,
-      });
+      res.status(500).json({ error: 'Could not fetch SOL price', fallback: 175 });
     }
   });
 
@@ -938,7 +381,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
-
+      
       const { password, ...userWithoutPassword } = user;
       res.json(serializeBigInts(userWithoutPassword));
     } catch (error: any) {
@@ -951,7 +394,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { username, walletAddress, password } = req.body;
       const updates: any = {};
-
+      
       if (username) {
         if (!/^[a-zA-Z0-9_-]{3,20}$/.test(username)) {
           return res.status(400).json({ error: 'Invalid username format' });
@@ -962,25 +405,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         updates.username = username;
       }
-
+      
       if (walletAddress) {
         if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress)) {
           return res.status(400).json({ error: 'Invalid Solana wallet address' });
         }
         updates.walletAddress = walletAddress;
       }
-
+      
       if (password) {
         if (password.length < 6) {
           return res.status(400).json({ error: 'Password must be at least 6 characters' });
         }
         updates.password = await bcrypt.hash(password, 10);
       }
-
+      
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: 'No updates provided' });
       }
-
+      
       await storage.updateUserProfile(req.userId!, updates);
       res.json({ message: 'Profile updated successfully' });
     } catch (error: any) {
@@ -994,44 +437,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
 
   // Middleware to verify telegram bot requests
-  // ✅ SECURITY FIX: Never use Telegram token for internal API auth
-  // Telegram tokens leak easily (logs, screenshots, env dumps)
-  const DEV_BOT_SECRET = 'simfi-dev-bot-secret-change-in-production';
-
   const verifyBotSecret = (req: any, res: any, next: any) => {
     const botSecret = req.headers['x-bot-secret'];
-
-    let expectedSecret: string;
-
-    if (process.env.NODE_ENV === 'production') {
-      // Production: BOT_API_SECRET is required - no fallback
-      if (!process.env.BOT_API_SECRET) {
-        console.error('❌ FATAL: BOT_API_SECRET must be set in production');
-        return res.status(500).json({ error: 'Server misconfiguration - bot endpoints disabled' });
-      }
-      expectedSecret = process.env.BOT_API_SECRET;
-    } else {
-      // Development: Use BOT_API_SECRET if set, otherwise use dev-only default
-      // NEVER fall back to Telegram token
-      expectedSecret = process.env.BOT_API_SECRET || DEV_BOT_SECRET;
-
-      if (!process.env.BOT_API_SECRET) {
-        console.warn('⚠️  Using default dev bot secret. Set BOT_API_SECRET in .env for security.');
-      }
-    }
-
+    // Use dev token in development, production token in production (same as bot.js)
+    const expectedSecret = process.env.NODE_ENV === 'development' 
+      ? process.env.TELEGRAM_BOT_TOKEN_DEV 
+      : process.env.TELEGRAM_BOT_TOKEN;
+    
     if (!botSecret || botSecret !== expectedSecret) {
       return res.status(403).json({ error: 'Forbidden - Invalid bot secret' });
     }
-
+    
     next();
   };
 
   // Telegram registration endpoint
-  app.post('/api/telegram/auth/register', botLimiter, verifyBotSecret, async (req, res) => {
+  app.post('/api/telegram/auth/register', verifyBotSecret, async (req, res) => {
     try {
       const { email, username, password, walletAddress } = req.body;
-
+      
       // Validate inputs
       if (!email || !username || !password) {
         return res.status(400).json({ error: 'Email, username, and password are required' });
@@ -1095,13 +519,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Telegram login endpoint - supports both email AND username
-  app.post('/api/telegram/auth/login', botLimiter, verifyBotSecret, async (req, res) => {
+  app.post('/api/telegram/auth/login', verifyBotSecret, async (req, res) => {
     try {
       const { email, username, password } = req.body;
       const identifier = email || username; // Support both email and username
-
+      
       console.log(`🔐 Telegram login attempt for: ${identifier}`);
-
+      
       if (!identifier || !password) {
         console.warn('Missing email/username or password in login request');
         return res.status(400).json({ error: 'Email or username and password are required' });
@@ -1109,13 +533,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Try to find user by email first, then by username
       let user = await storage.getUserByEmail(identifier);
-
+      
       if (!user && !identifier.includes('@')) {
         // If it doesn't look like an email and we didn't find it by email, try username
         console.log(`🔍 Email lookup failed, trying username: ${identifier}`);
         user = await storage.getUserByUsername(identifier);
       }
-
+      
       if (!user) {
         console.warn(`❌ No user found with email or username: ${identifier}`);
         return res.status(400).json({ error: 'Invalid credentials - user not found' });
@@ -1152,21 +576,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Telegram Session Routes (Bot-Only - Protected by shared secret)
   // ============================================================================
 
-  app.post('/api/telegram/session', botLimiter, verifyBotSecret, async (req, res) => {
+  app.post('/api/telegram/session', verifyBotSecret, async (req, res) => {
     try {
       const { telegramUserId, userId, token, balance } = req.body;
-
+      
       if (!telegramUserId || !userId || !token || balance === undefined) {
         return res.status(400).json({ error: 'Missing required fields' });
       }
-
+      
       const session = await storage.saveTelegramSession(
         telegramUserId,
         userId,
         token,
         BigInt(balance)
       );
-
+      
       res.json(serializeBigInts({ session }));
     } catch (error: any) {
       console.error('Save telegram session error:', error);
@@ -1174,15 +598,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/telegram/session/:telegramUserId', botLimiter, verifyBotSecret, async (req, res) => {
+  app.get('/api/telegram/session/:telegramUserId', verifyBotSecret, async (req, res) => {
     try {
       const { telegramUserId } = req.params;
       const session = await storage.getTelegramSession(telegramUserId);
-
+      
       if (!session) {
         return res.status(404).json({ error: 'Session not found' });
       }
-
+      
       res.json(serializeBigInts({ session }));
     } catch (error: any) {
       console.error('Get telegram session error:', error);
@@ -1190,7 +614,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/telegram/session/:telegramUserId', botLimiter, verifyBotSecret, async (req, res) => {
+  app.delete('/api/telegram/session/:telegramUserId', verifyBotSecret, async (req, res) => {
     try {
       const { telegramUserId } = req.params;
       await storage.deleteTelegramSession(telegramUserId);
@@ -1204,16 +628,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
   // Trading Routes
   // ============================================================================
-
+  
   app.get('/api/trades/positions', authenticateToken, async (req, res) => {
     try {
       const positions = await storage.getUserPositions(req.userId!);
-
+      
       // Fetch current prices for all unique tokens
       const uniqueTokenAddresses = positions.map(p => p.tokenAddress);
       const uniqueTokens = Array.from(new Set(uniqueTokenAddresses));
       const priceMap = new Map<string, bigint>();
-
+      
       if (uniqueTokens.length > 0) {
         try {
           // Fetch prices from DexScreener in batches of 30
@@ -1221,23 +645,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           for (let i = 0; i < uniqueTokens.length; i += batchSize) {
             const batch = uniqueTokens.slice(i, i + batchSize);
             const addressesParam = batch.join(',');
-
+            
             const dexResponse = await fetchWithTimeout(
               `https://api.dexscreener.com/latest/dex/tokens/${addressesParam}`,
               8000
             );
-
+            
             if (dexResponse.ok) {
               const dexData = await dexResponse.json();
               const pairs = dexData.pairs || [];
-
+              
               // Build price map using best (highest liquidity) pair for each token
               for (const tokenAddr of batch) {
                 const bestPair = findBestSolanaPair(pairs, tokenAddr);
                 if (bestPair && bestPair.priceNative) {
-                  // ✅ PRECISION FIX: Parse without float math
                   // Clamp to 1 lamport minimum (sub-lamport tokens <$0.0000002 are negligible)
-                  const priceLamports = BigInt(Math.max(1, parseDecimalToLamports(bestPair.priceNative)));
+                  const priceLamports = BigInt(Math.max(1, Math.floor(parseFloat(bestPair.priceNative) * 1_000_000_000)));
                   priceMap.set(tokenAddr, priceLamports);
                 }
               }
@@ -1248,27 +671,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.warn('⚠️  Failed to fetch current prices for positions:', error);
         }
       }
-
+      
       // Enrich positions with current prices and recalculate current value
       // CRITICAL: Use fresh prices from DexScreener, never fall back to entryPrice
       const enrichedPositions = positions.map(p => {
         const freshPrice = priceMap.get(p.tokenAddress);
         const priceToUse = freshPrice || p.entryPrice; // Use entry price as fallback only
-
+        
         // ✅ Recalculate current value based on FRESH price, not stale DB value
         const decimals = p.decimals || 6;
         const divisor = BigInt(10 ** decimals);
         const amountBigInt = BigInt(p.amount);
         const priceBigInt = BigInt(priceToUse);
         const recalculatedValue = (amountBigInt * priceBigInt) / divisor;
-
+        
         return {
           ...p,
           currentPrice: priceToUse, // Fresh price (or entry as last resort)
           currentValue: recalculatedValue, // ✅ Recalculated with fresh price
         };
       });
-
+      
       // Debug logging for price freshness
       console.log(`📊 Position enrichment - ${enrichedPositions.length} positions updated with fresh prices`);
       enrichedPositions.forEach(p => {
@@ -1276,7 +699,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const priceSOL = Number(p.currentPrice) / 1_000_000_000;
         console.log(`   ${p.tokenSymbol}: fresh=${hasFreshPrice}, price=$${priceSOL.toFixed(9)}`);
       });
-
+      
       res.json(serializeBigInts({ positions: enrichedPositions }));
     } catch (error: any) {
       console.error('Get positions error:', error);
@@ -1284,323 +707,300 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ✅ FIX: Correct middleware order - IP backstop, then auth, then per-user limiter
-  app.post('/api/trades/buy', ipBackstopLimiter, authenticateToken, userTradeLimiter, async (req, res) => {
+  app.post('/api/trades/buy', authenticateToken, async (req, res) => {
     try {
-      // ✅ IDEMPOTENCY CHECK: Return cached response if this is a retry
-      const idempotencyKey = getIdempotencyKey(req);
-      if (idempotencyKey) {
-        const cached = getIdempotentResponse(req.userId!, idempotencyKey);
-        if (cached) {
-          return res.status(cached.statusCode).json(cached.response);
-        }
+      const { tokenAddress, tokenName, tokenSymbol, solAmount, price } = req.body;
+      
+      if (!tokenAddress || !tokenName || !tokenSymbol || solAmount <= 0 || price <= 0) {
+        return res.status(400).json({ error: 'Invalid trade data' });
       }
-
-      const { tokenAddress, tokenName, tokenSymbol, solAmount } = req.body;
-      // NOTE: Client 'price' is intentionally IGNORED for execution
-
-      // ✅ INPUT VALIDATION
-      if (!tokenAddress || !tokenName || !tokenSymbol) {
-        return res.status(400).json({ error: 'Missing required fields' });
-      }
-
-      if (!isValidSolanaAddress(tokenAddress)) {
-        return res.status(400).json({ error: 'Invalid token address format' });
-      }
-
-      // ✅ PRECISION FIX: Parse SOL without floating-point math
-      let solSpent: bigint;
-      try {
-        solSpent = parseSolToLamports(solAmount);
-        validateTradeAmount(solSpent);
-      } catch (e: any) {
-        return res.status(400).json({ error: e.message || 'Invalid SOL amount' });
-      }
-
+      
       const user = await storage.getUserById(req.userId!);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
-
-      // Pre-check balance (will be verified atomically in transaction too)
-      if (user.balance < solSpent) {
-        return res.status(400).json({ error: 'Insufficient balance' });
-      }
-
-      // ✅ ANTI-CHEAT: Fetch price BEFORE transaction (no external calls in tx)
+      
+      // Fetch current price AND decimals from DexScreener (validate both)
+      // This ensures we use the correct decimals (6 or 9) from the blockchain, never a default
       const currentTokenData = await fetchDexScreenerPrice(tokenAddress);
-      if (!currentTokenData || !currentTokenData.priceLamports) {
-        return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
+      if (!currentTokenData) {
+        return res.status(400).json({ error: 'Could not fetch token data from DexScreener. Try again.' });
       }
-
-      // ✅ ANTI-MANIPULATION: Check minimum liquidity requirements
-      // Low-liquidity tokens can be easily manipulated
-      const liquidityUsd = currentTokenData.liquidityUsd || 0;
-      const volume24hUsd = currentTokenData.volume24hUsd || 0;
-
-      if (!meetsLiquidityRequirements(liquidityUsd, volume24hUsd)) {
-        console.log(`⚠️ Token ${tokenSymbol} rejected: liquidity=$${liquidityUsd}, volume=$${volume24hUsd}`);
+      
+      const currentPriceLamports = currentTokenData.priceLamports;
+      const decimals = currentTokenData.decimals || 6; // Get from DexScreener, fallback to 6 only if missing
+      
+      const providedPriceLamports = Math.floor(price);
+      
+      console.log(`💰 Buy price validation:`);
+      console.log(`   Provided price: ${providedPriceLamports} lamports/token = ${(providedPriceLamports / 1_000_000_000).toFixed(9)} SOL/token`);
+      console.log(`   DexScreener price: ${currentPriceLamports} lamports/token = ${(currentPriceLamports / 1_000_000_000).toFixed(9)} SOL/token`);
+      console.log(`   Token decimals: ${decimals}`);
+      
+      // Validate price hasn't changed significantly (5% threshold)
+      const priceDiff = Math.abs(currentPriceLamports - providedPriceLamports);
+      const denominator = Math.max(currentPriceLamports, providedPriceLamports, 1);
+      const percentChange = (priceDiff * 100) / denominator;
+      
+      console.log(`   Price difference: ${percentChange.toFixed(2)}%`);
+      
+      if (percentChange > 5) {
+        console.warn(`⚠️  Price changed too much, rejecting trade`);
         return res.status(400).json({ 
-          error: `Token does not meet minimum liquidity requirements ($${MIN_LIQUIDITY_USD} liquidity, $${MIN_VOLUME_24H_USD} 24h volume)`,
-          liquidityUsd,
-          volume24hUsd,
+          error: `Price changed by ${percentChange.toFixed(2)}%. Please refresh and try again.`,
+          currentPrice: currentPriceLamports.toString(),
+          providedPrice: providedPriceLamports.toString()
         });
       }
-
-      // Server-side price is the ONLY price used for execution
-      const serverPriceLamports = BigInt(currentTokenData.priceLamports);
-      const decimals = currentTokenData.decimals || 6;
-
-      // Apply simulated slippage (0.5% for paper trading realism)
-      const SLIPPAGE_BPS = 50n; // 0.5% = 50 basis points
-      const slippageMultiplier = 10000n + SLIPPAGE_BPS;
-      const executionPriceLamports = (serverPriceLamports * slippageMultiplier) / 10000n;
-
-      console.log(`💰 Server-side execution (ANTI-CHEAT):`);
-      console.log(`   DexScreener price: ${serverPriceLamports.toString()} lamports/token`);
-      console.log(`   Execution price (+0.5% slippage): ${executionPriceLamports.toString()} lamports/token`);
-
-      // Calculate tokens received using SERVER price
+      
+      // Calculate how much SOL to spend in Lamports (convert to BigInt)
+      const solSpent = BigInt(Math.floor(solAmount * 1_000_000_000)); // Convert SOL to Lamports
+      const frontendPrice = BigInt(Math.floor(price)); // Price sent from frontend (may be market or effective)
+      
+      // Calculate tokens using correct decimals from DexScreener (6 or 9)
+      // tokenAmount = solSpent (lamports) * 10^decimals / frontendPrice
       const decimalMultiplier = BigInt(10 ** decimals);
-      const tokenAmount = (solSpent * decimalMultiplier) / executionPriceLamports;
-
+      let tokenAmount = (solSpent * decimalMultiplier) / frontendPrice;
+      
       if (tokenAmount <= 0n) {
         return res.status(400).json({ error: 'SOL amount too small to buy tokens' });
       }
-
-      const tokensDisplay = Number(tokenAmount) / (10 ** decimals);
-      console.log(`📊 Buy: ${Number(solSpent) / 1e9} SOL → ${tokensDisplay.toFixed(6)} tokens`);
-
-      // Execute atomic trade with server-side price
-      try {
-        const position = await storage.executeBuyTrade({
-          userId: req.userId!,
-          tokenAddress,
-          tokenName,
-          tokenSymbol,
-          decimals,
-          entryPrice: executionPriceLamports,
-          amount: tokenAmount,
-          solSpent,
-        });
-
-        console.log(`✅ POSITION CREATED: ${tokenSymbol} (ID: ${position.id})`);
-
-        const newUser = await storage.getUserById(req.userId!);
-
-        // ✅ IDEMPOTENCY: Cache successful response
-        const successResponse = { 
-          message: 'Position processed successfully',
-          positionId: position.id,
-          newBalance: newUser!.balance.toString(),
-          tokensReceived: tokenAmount.toString(),
-          executionPrice: executionPriceLamports.toString(),
-        };
-
-        if (idempotencyKey) {
-          setIdempotentResponse(req.userId!, idempotencyKey, successResponse, 200);
-        }
-
-        res.json(successResponse);
-      } catch (txError: any) {
-        if (txError.message === 'Insufficient balance') {
-          return res.status(400).json({ error: 'Insufficient balance' });
-        }
-        throw txError;
+      
+      if (user.balance < solSpent) {
+        return res.status(400).json({ error: 'Insufficient balance' });
       }
+      
+      // ✅ CRITICAL FIX: Calculate ACTUAL effective entry price from the transaction
+      // effectivePrice = solSpent (lamports) * 10^decimals / tokenAmount (token units)
+      // This is what you actually paid per token, not market price
+      const actualEffectivePrice = (solSpent * decimalMultiplier) / tokenAmount;
+      const tokensDisplay = Number(tokenAmount) / (10 ** decimals);
+      
+      console.log(`📊 Buy calculation:`);
+      console.log(`   SOL spent: ${solAmount} SOL = ${solSpent.toString()} lamports`);
+      console.log(`   Frontend price: ${frontendPrice.toString()} lamports/token = ${(Number(frontendPrice) / 1_000_000_000).toFixed(9)} SOL/token`);
+      console.log(`   Calculated tokens: ${tokensDisplay.toFixed(6)} (${tokenAmount.toString()} units)`);
+      console.log(`   ACTUAL effective entry price: ${actualEffectivePrice.toString()} lamports/token = ${(Number(actualEffectivePrice) / 1_000_000_000).toFixed(9)} SOL/token`);
+      console.log(`   Token decimals: ${decimals}`);
+      
+      // Deduct balance first
+      await storage.updateUserBalance(req.userId!, -solSpent);
+      
+      // Use INSERT ... ON CONFLICT to atomically create or aggregate position
+      // This prevents race conditions by using database-level conflict resolution
+      const position = await storage.createOrAggregatePosition({
+        userId: req.userId!,
+        tokenAddress,
+        tokenName,
+        tokenSymbol,
+        decimals,
+        entryPrice: actualEffectivePrice, // ✅ Use actual calculated effective price from transaction
+        amount: tokenAmount,
+        solSpent,
+      });
+      
+      console.log(`✅ POSITION CREATED: ${tokenSymbol}`);
+      console.log(`   Tokens: ${tokensDisplay.toFixed(6)}`);
+      console.log(`   Entry Price: ${(Number(actualEffectivePrice) / 1_000_000_000).toFixed(9)} SOL/token`);
+      console.log(`   USD Value: $${(Number(actualEffectivePrice) / 1_000_000_000 * 130).toFixed(6)} (at $130/SOL)`);
+      console.log(`   Position ID: ${position.id}`);
+      
+      const newUser = await storage.getUserById(req.userId!);
+      
+      res.json({ 
+        message: 'Position processed successfully',
+        positionId: position.id,
+        newBalance: newUser!.balance.toString(),
+        tokensReceived: tokenAmount.toString()
+      });
     } catch (error: any) {
       console.error('Buy error:', error);
       res.status(500).json({ error: 'Could not execute buy order' });
     }
   });
 
-  app.post('/api/trades/sell', ipBackstopLimiter, authenticateToken, userTradeLimiter, async (req, res) => {
+  app.post('/api/trades/sell', authenticateToken, async (req, res) => {
     try {
-      // ✅ IDEMPOTENCY CHECK: Return cached response if this is a retry
-      const idempotencyKey = getIdempotencyKey(req);
-      if (idempotencyKey) {
-        const cached = getIdempotentResponse(req.userId!, idempotencyKey);
-        if (cached) {
-          return res.status(cached.statusCode).json(cached.response);
-        }
+      const { positionId, amountLamports, exitPriceLamports } = req.body as any;
+      
+      if (!positionId || !exitPriceLamports) {
+        return res.status(400).json({ error: 'Invalid sell data' });
       }
-
-      const { positionId, amountLamports } = req.body as any;
-      // NOTE: Client exitPriceLamports is intentionally IGNORED
-
-      if (!positionId) {
-        return res.status(400).json({ error: 'Position ID required' });
-      }
-
+      
       const position = await storage.getPositionById(positionId);
       if (!position || position.userId !== req.userId) {
         return res.status(404).json({ error: 'Position not found' });
       }
-
-      // ✅ FIX: Determine sell type upfront
-      // If no amountLamports provided, it's a FULL SELL - use exact position amount
-      // If amountLamports provided, it's a PARTIAL SELL
-      let isFullSell = !amountLamports;
-      let sellAmount: bigint;
-
-      if (isFullSell) {
-        // Full sell: use exact position amount (client cannot influence)
-        sellAmount = position.amount;
-      } else {
-        // Partial sell: validate client-provided amount
-        try {
-          sellAmount = BigInt(amountLamports);
-        } catch {
-          return res.status(400).json({ error: 'Invalid sell amount format' });
-        }
-
-        if (sellAmount <= 0n) {
-          return res.status(400).json({ error: 'Sell amount must be positive' });
-        }
-
-        if (sellAmount >= position.amount) {
-          // If trying to sell full amount via partial endpoint, convert to full sell
-          sellAmount = position.amount;
-          isFullSell = true; // ✅ FIX: Update flag so storage layer uses exact equality
-        }
-      }
-
-      // ✅ ANTI-CHEAT: Fetch price BEFORE transaction (no external calls in tx)
+      
+      // Parse both as BigInt (sent as strings from frontend for precision)
+      const sellAmount = amountLamports ? BigInt(amountLamports) : position.amount;
+      const exitPriceBigInt = BigInt(exitPriceLamports);
+      
+      // Validate price hasn't changed significantly (5% threshold) - same as buy validation
       const currentTokenData = await fetchDexScreenerPrice(position.tokenAddress);
-      if (!currentTokenData || !currentTokenData.priceLamports) {
-        return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
+      if (currentTokenData && currentTokenData.priceLamports) {
+        const currentPriceLamports = currentTokenData.priceLamports;
+        const providedPriceLamports = Number(exitPriceBigInt); // Convert BigInt to number for comparison
+        
+        const priceDiff = Math.abs(currentPriceLamports - providedPriceLamports);
+        const denominator = Math.max(currentPriceLamports, providedPriceLamports, 1);
+        const percentChange = (priceDiff * 100) / denominator;
+        
+        if (percentChange > 5) {
+          return res.status(400).json({ 
+            error: `Price changed by ${percentChange.toFixed(2)}%. Please refresh and try again.`,
+            currentPrice: currentPriceLamports.toString(),
+            providedPrice: providedPriceLamports.toString()
+          });
+        }
       }
-
-      // Server-side price with negative slippage for sells
-      const serverPriceLamports = BigInt(currentTokenData.priceLamports);
-      const SLIPPAGE_BPS = 50n;
-      const slippageMultiplier = 10000n - SLIPPAGE_BPS;
-      const executionPriceLamports = (serverPriceLamports * slippageMultiplier) / 10000n;
-
-      // Use position's decimals
+      
+      // Use position's decimals (6 for pump.fun tokens, 9 for SOL-like tokens)
       const decimals = position.decimals || 6;
       const decimalDivisor = BigInt(10 ** decimals);
-
-      // Calculate SOL received using SERVER price
-      const solReceived = (sellAmount * executionPriceLamports) / decimalDivisor;
-
-      // Calculate profit/loss
+      
+      // Validate sell amount is positive and not zero after rounding
+      if (sellAmount <= 0n) {
+        return res.status(400).json({ error: 'Sell amount must be greater than zero' });
+      }
+      
+      if (sellAmount > position.amount) {
+        return res.status(400).json({ error: 'Sell amount exceeds position size' });
+      }
+      
+      // Use BigInt arithmetic to prevent overflow
+      // solReceived = (sellAmount * exitPrice) / 10^decimals
+      const solReceived = (sellAmount * exitPriceBigInt) / decimalDivisor;
+      
+      // proportionalCost = (solSpent * sellAmount) / totalAmount
       const proportionalCost = (position.solSpent * sellAmount) / position.amount;
       const profitLoss = solReceived - proportionalCost;
-
-      console.log(`📊 Sell (${isFullSell ? 'FULL' : 'PARTIAL'}): ${Number(sellAmount) / (10 ** decimals)} tokens → ${Number(solReceived) / 1e9} SOL`);
-
-      // Execute atomic trade with server-side price
-      await storage.executeSellTrade({
+      
+      // Update user balance and profit
+      await storage.updateUserBalance(req.userId!, solReceived);
+      await storage.updateUserTotalProfit(req.userId!, profitLoss);
+      
+      // Create trade history entry
+      await storage.createTrade({
         userId: req.userId!,
-        positionId,
-        sellAmount,
-        isFullSell, // Pass flag to storage layer
-        positionAmount: position.amount, // For validation
-        exitPrice: executionPriceLamports,
+        tokenAddress: position.tokenAddress,
+        tokenName: position.tokenName,
+        tokenSymbol: position.tokenSymbol,
+        decimals,
+        entryPrice: position.entryPrice,
+        exitPrice: exitPriceBigInt,
+        amount: sellAmount,
+        solSpent: proportionalCost,
         solReceived,
         profitLoss,
-        proportionalCost,
+        openedAt: position.openedAt,
       });
-
-      // ✅ IDEMPOTENCY: Cache successful response
-      const successResponse = {
+      
+      // Always delete position and create a new one for remaining if partial sell
+      await storage.deletePosition(positionId);
+      
+      // If partial sell, create new position with remaining amount
+      if (sellAmount < position.amount) {
+        const remainingAmount = position.amount - sellAmount;
+        const remainingCost = position.solSpent - proportionalCost;
+        
+        await storage.createPosition({
+          userId: req.userId!,
+          tokenAddress: position.tokenAddress,
+          tokenName: position.tokenName,
+          tokenSymbol: position.tokenSymbol,
+          decimals,
+          entryPrice: position.entryPrice,
+          amount: remainingAmount,
+          solSpent: remainingCost,
+        });
+      }
+      
+      res.json({
         message: 'Position closed successfully',
         profitLoss: profitLoss.toString(),
         solReceived: solReceived.toString(),
-        executionPrice: executionPriceLamports.toString(),
-      };
-
-      if (idempotencyKey) {
-        setIdempotentResponse(req.userId!, idempotencyKey, successResponse, 200);
-      }
-
-      res.json(successResponse);
+      });
     } catch (error: any) {
       console.error('Sell error:', error);
       res.status(500).json({ error: 'Could not execute sell order' });
     }
   });
 
-  app.post('/api/trades/sell-all', ipBackstopLimiter, authenticateToken, userTradeLimiter, async (req, res) => {
+  app.post('/api/trades/sell-all', authenticateToken, async (req, res) => {
     try {
-      // ✅ IDEMPOTENCY CHECK: Return cached response if this is a retry
-      const idempotencyKey = getIdempotencyKey(req);
-      if (idempotencyKey) {
-        const cached = getIdempotentResponse(req.userId!, idempotencyKey);
-        if (cached) {
-          return res.status(cached.statusCode).json(cached.response);
-        }
+      const { tokenAddress, exitPrice } = req.body;
+      
+      if (!tokenAddress || exitPrice <= 0) {
+        return res.status(400).json({ error: 'Invalid sell data' });
       }
-
-      const { tokenAddress } = req.body;
-      // NOTE: Client exitPrice is intentionally IGNORED
-
-      if (!tokenAddress) {
-        return res.status(400).json({ error: 'Invalid sell data - tokenAddress required' });
-      }
-
+      
       // Get all positions for this token and user
       const allPositions = await storage.getUserPositions(req.userId!);
       const tokenPositions = allPositions.filter(p => p.tokenAddress === tokenAddress);
-
+      
       if (tokenPositions.length === 0) {
         return res.status(404).json({ error: 'No positions found for this token' });
       }
-
-      // ✅ ANTI-CHEAT FIX: Use SERVER-SIDE price only
-      const currentTokenData = await fetchDexScreenerPrice(tokenAddress);
-      if (!currentTokenData || !currentTokenData.priceLamports) {
-        return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
-      }
-
-      // Server-side price with negative slippage for sells
-      const serverPriceLamports = BigInt(currentTokenData.priceLamports);
-      const SLIPPAGE_BPS = 50n;
-      const slippageMultiplier = 10000n - SLIPPAGE_BPS;
-      const executionPriceLamports = (serverPriceLamports * slippageMultiplier) / 10000n;
-
-      console.log(`💰 Server-side sell-all execution (ANTI-CHEAT):`);
-      console.log(`   DexScreener price: ${serverPriceLamports.toString()} lamports/token`);
-      console.log(`   Execution price (-0.5% slippage): ${executionPriceLamports.toString()} lamports/token`);
-
-      // Get decimals from first position
+      
+      // Convert to BigInt for all accumulations
+      let totalSolReceived = 0n;
+      let totalProfit = 0n;
+      let totalTokensSold = 0n;
+      
+      // Convert exitPrice to BigInt
+      const exitPriceBigInt = BigInt(Math.floor(exitPrice));
+      
+      // Get decimals from first position (all positions of same token have same decimals)
       const decimals = tokenPositions[0].decimals || 6;
-
-      // Execute atomic sell-all with server-side price
-      const result = await storage.executeSellAllTrades({
-        userId: req.userId!,
-        tokenAddress,
-        exitPrice: executionPriceLamports, // Server-side execution price
-        positionsToSell: tokenPositions.map(p => ({
-          id: p.id,
-          tokenName: p.tokenName,
-          tokenSymbol: p.tokenSymbol,
-          decimals: p.decimals || 6,
-          entryPrice: p.entryPrice,
-          amount: p.amount,
-          solSpent: p.solSpent,
-          openedAt: p.openedAt,
-        })),
-      });
-
-      const solDisplay = Number(result.totalSolReceived) / 1_000_000_000;
-      const profitDisplay = Number(result.totalProfit) / 1_000_000_000;
-      console.log(`✅ Sold all ${result.positionsClosed} positions of ${tokenAddress} for ${solDisplay.toFixed(4)} SOL (P/L: ${profitDisplay.toFixed(4)} SOL)`);
-
-      // ✅ IDEMPOTENCY: Cache successful response
-      const successResponse = {
-        message: `Successfully sold ${result.positionsClosed} position(s)`,
-        positionsClosed: result.positionsClosed,
-        totalProfit: result.totalProfit.toString(),
-        totalSolReceived: result.totalSolReceived.toString(),
-      };
-
-      if (idempotencyKey) {
-        setIdempotentResponse(req.userId!, idempotencyKey, successResponse, 200);
+      const decimalDivisor = BigInt(10 ** decimals);
+      
+      // Sell all positions
+      for (const position of tokenPositions) {
+        const sellAmount = position.amount;
+        // Use BigInt arithmetic: (sellAmount * exitPrice) / 10^decimals
+        const solReceived = (sellAmount * exitPriceBigInt) / decimalDivisor;
+        const profitLoss = solReceived - position.solSpent;
+        
+        totalSolReceived += solReceived;
+        totalProfit += profitLoss;
+        totalTokensSold += sellAmount;
+        
+        // Update user balance and profit
+        await storage.updateUserBalance(req.userId!, solReceived);
+        await storage.updateUserTotalProfit(req.userId!, profitLoss);
+        
+        // Create trade history entry
+        await storage.createTrade({
+          userId: req.userId!,
+          tokenAddress: position.tokenAddress,
+          tokenName: position.tokenName,
+          tokenSymbol: position.tokenSymbol,
+          decimals,
+          entryPrice: position.entryPrice,
+          exitPrice: exitPriceBigInt,
+          amount: sellAmount,
+          solSpent: position.solSpent,
+          solReceived,
+          profitLoss,
+          openedAt: position.openedAt,
+        });
+        
+        // Delete the position
+        await storage.deletePosition(position.id);
       }
-
-      res.json(successResponse);
+      
+      const tokensDisplay = Number(totalTokensSold) / (10 ** decimals);
+      const solDisplay = Number(totalSolReceived) / 1_000_000_000;
+      const profitDisplay = Number(totalProfit) / 1_000_000_000;
+      console.log(`✅ Sold all ${tokenPositions.length} positions of ${tokenAddress}: ${tokensDisplay.toFixed(2)} tokens for ${solDisplay.toFixed(4)} SOL (P/L: ${profitDisplay.toFixed(4)} SOL)`);
+      
+      res.json({
+        message: `Successfully sold ${tokenPositions.length} position(s)`,
+        positionsClosed: tokenPositions.length,
+        totalProfit: totalProfit.toString(),
+        totalSolReceived: totalSolReceived.toString(),
+      });
     } catch (error: any) {
       console.error('Sell all error:', error);
       res.status(500).json({ error: 'Could not execute sell all order' });
@@ -1612,12 +1012,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const page = parseInt(req.query.page as string) || 1;
       const limit = 50;
       const offset = (page - 1) * limit;
-
+      
       const [trades, totalCount] = await Promise.all([
         storage.getUserTrades(req.userId!, limit, offset),
         storage.getUserTradesCount(req.userId!)
       ]);
-
+      
       res.json(serializeBigInts({
         trades,
         pagination: {
@@ -1667,7 +1067,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Merge and score tokens (weighted by activity)
       const trendingMap = new Map<string, any>();
-
+      
       // Add buy activity
       for (const token of buyActivity) {
         const addr = token.tokenAddress;
@@ -1687,7 +1087,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const addr = item.tokenAddress;
         const existing = trendingMap.get(addr);
         const sellerCount = parseInt(item.sellerCount as string);
-
+        
         if (existing) {
           existing.sellerCount = sellerCount;
           existing.totalActivity = existing.buyerCount + sellerCount;
@@ -1712,28 +1112,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fetch current prices for trending tokens
       const trendingAddresses = trending.map(t => t.tokenAddress);
       const priceMap = new Map<string, bigint>();
-
+      
       if (trendingAddresses.length > 0) {
         try {
           const batchSize = 30;
           for (let i = 0; i < trendingAddresses.length; i += batchSize) {
             const batch = trendingAddresses.slice(i, i + batchSize);
             const addressesParam = batch.join(',');
-
+            
             const dexResponse = await fetchWithTimeout(
               `https://api.dexscreener.com/latest/dex/tokens/${addressesParam}`,
               8000
             );
-
+            
             if (dexResponse.ok) {
               const dexData = await dexResponse.json();
               const pairs = dexData.pairs || [];
-
+              
               for (const addr of batch) {
                 const bestPair = findBestSolanaPair(pairs, addr);
                 if (bestPair && bestPair.priceNative) {
-                  // ✅ PRECISION FIX: Parse without float math
-                  const priceLamports = BigInt(Math.max(1, parseDecimalToLamports(bestPair.priceNative)));
+                  const priceLamports = BigInt(Math.max(1, Math.floor(parseFloat(bestPair.priceNative) * 1_000_000_000)));
                   priceMap.set(addr, priceLamports);
                 }
               }
@@ -1757,11 +1156,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/tokens/search', searchLimiter, async (req, res) => {
+  app.get('/api/tokens/search', async (req, res) => {
     try {
       const query = req.query.q as string || '';
       const searchTerm = query.toLowerCase().trim();
-
+      
       console.log(`🔍 Search request: "${searchTerm}"`);
 
       if (!searchTerm || searchTerm.length < 3) {
@@ -1772,26 +1171,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Search DexScreener API for token results
       try {
-        // ✅ FIX: Use circuit breaker protected fetch
-        const dexResponse = await fetchDexScreener(`/latest/dex/search/?q=${encodeURIComponent(searchTerm)}`);
-        if (dexResponse?.ok) {
+        const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/search/?q=${encodeURIComponent(searchTerm)}`);
+        if (dexResponse.ok) {
           const dexData = await dexResponse.json();
-
+          
           // Filter for Solana pairs only
           const solanaPairs = dexData.pairs?.filter((pair: any) => pair.chainId === 'solana') || [];
           console.log(`📊 DexScreener returned ${solanaPairs.length} Solana pairs for "${searchTerm}"`);
-
+          
           for (const pair of solanaPairs.slice(0, 15)) {
             const tokenAddress = pair.baseToken?.address;
             if (!tokenAddress) continue;
-
+            
             // Skip if already found
             if (results.some(r => r.tokenAddress === tokenAddress)) continue;
-
+            
             // Use native price (already in SOL) instead of USD price
-            // ✅ PRECISION FIX: Parse without float math
-            const priceLamports = pair.priceNative ? parseDecimalToLamports(pair.priceNative) : 0;
-
+            const priceNative = pair.priceNative ? parseFloat(pair.priceNative) : 0;
+            const priceLamports = priceNative > 0 ? Math.floor(priceNative * 1_000_000_000) : 0;
+            
             results.push({
               tokenAddress,
               name: pair.baseToken?.name || 'Unknown',
@@ -1813,17 +1211,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Also search DexScreener profiles (for additional metadata)
       try {
         const profiles = await fetchDexScreenerProfiles();
-
+        
         for (const p of profiles) {
           if (p.chainId !== 'solana') continue;
-
+          
           const address = p.tokenAddress?.toLowerCase() || '';
           const description = p.description?.toLowerCase() || '';
           const url = p.url?.toLowerCase() || '';
-
+          
           // Skip if already found
           if (results.some(r => r.tokenAddress === p.tokenAddress)) continue;
-
+          
           if (address.includes(searchTerm) || description.includes(searchTerm) || url.includes(searchTerm)) {
             results.push({
               tokenAddress: p.tokenAddress,
@@ -1847,7 +1245,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get historical OHLCV data for charting
-  app.get('/api/tokens/:address/ohlcv', searchLimiter, async (req, res) => {
+  app.get('/api/tokens/:address/ohlcv', async (req, res) => {
     try {
       const { address } = req.params;
       const { timeframe = '1H' } = req.query;
@@ -1893,7 +1291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const ohlcvData = await geckoResponse.json();
-
+      
       // Debug: Log what we got from GeckoTerminal
       console.log(`📊 GeckoTerminal response structure for ${address}:`, {
         hasData: !!ohlcvData?.data,
@@ -1902,15 +1300,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ohlcvListLength: ohlcvData?.data?.attributes?.ohlcv_list?.length || 0,
         responseKeys: Object.keys(ohlcvData || {})
       });
-
+      
       let candles = ohlcvData?.data?.attributes?.ohlcv_list || [];
-
+      
       // Validate candles is an array and contains valid data
       if (!Array.isArray(candles)) {
         console.error(`⚠️ OHLCV candles is not an array for ${address}:`, typeof candles, candles);
         candles = [];
       }
-
+      
       // Filter out any invalid candles
       candles = candles.filter((candle: any) => {
         if (!Array.isArray(candle) || candle.length < 5) {
@@ -1955,36 +1353,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get individual token by address (must come AFTER search route)
-  app.get('/api/tokens/:address', searchLimiter, async (req, res) => {
+  app.get('/api/tokens/:address', async (req, res) => {
     try {
       const { address } = req.params;
       let token = null;
-
+      
       // Fetch token from DexScreener API
       console.log(`🔍 Fetching token ${address} from DexScreener...`);
       try {
-          // ✅ FIX: Use circuit breaker protected fetch
-          const dexResponse = await fetchDexScreener(`/latest/dex/tokens/${address}`);
-          if (dexResponse?.ok) {
+          const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
+          if (dexResponse.ok) {
             const dexData = await dexResponse.json();
-
+            
             // Find the best (highest liquidity) Solana pair for this token
             const solanaPair = findBestSolanaPair(dexData.pairs, address);
-
+            
             if (solanaPair) {
-              // ✅ PRECISION FIX: Parse price without float math
-              const priceLamports = solanaPair.priceNative ? parseDecimalToLamports(solanaPair.priceNative) : 0;
-              const priceUsd = solanaPair.priceUsd ? parseFloat(solanaPair.priceUsd) : 0; // Float OK for USD display
-
+              // Get both native (SOL) and USD prices
+              const priceNative = solanaPair.priceNative ? parseFloat(solanaPair.priceNative) : 0;
+              const priceUsd = solanaPair.priceUsd ? parseFloat(solanaPair.priceUsd) : 0;
+              
               // Validate price exists
-              if (priceLamports === 0 && priceUsd === 0) {
+              if (priceNative === 0 && priceUsd === 0) {
                 console.warn(`⚠️ Token ${address} has no price data on DexScreener`);
                 return res.status(404).json({ error: 'Token price data unavailable' });
               }
-
+              
+              // Convert SOL to Lamports (for trading calculations)
+              const priceLamports = Math.floor(priceNative * 1_000_000_000);
+              
               // Try to get enhanced metadata (icon, etc.)
               const metadata = await fetchTokenMetadata(address);
-
+              
               token = {
                 tokenAddress: address,
                 name: metadata?.name || solanaPair.baseToken?.name || 'Unknown Token',
@@ -1998,18 +1398,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 timestamp: new Date().toISOString(),
                 icon: metadata?.icon || solanaPair.info?.imageUrl,
               };
-
-              console.log(`✅ Found token ${address} on DexScreener: ${token.name} (${token.symbol}) - Price: $${priceUsd} (${priceLamports / 1_000_000_000} SOL) - MCap: $${token.marketCap} - Icon: ${token.icon ? 'Yes' : 'No'}`);
+              
+              console.log(`✅ Found token ${address} on DexScreener: ${token.name} (${token.symbol}) - Price: $${priceUsd} (${priceNative} SOL) - MCap: $${token.marketCap} - Icon: ${token.icon ? 'Yes' : 'No'}`);
             }
           }
         } catch (dexError) {
           console.error('DexScreener API error for token:', dexError);
         }
-
+      
       if (!token) {
         return res.status(404).json({ error: 'Token not found' });
       }
-
+      
       res.json({ token });
     } catch (error: any) {
       console.error('Get token error:', error);
@@ -2021,58 +1421,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/tokens/quote/buy', async (req, res) => {
     try {
       const { tokenAddress, solAmount, decimals } = req.query;
-
+      
       if (!tokenAddress || !solAmount) {
         return res.status(400).json({ error: 'tokenAddress and solAmount are required' });
       }
 
-      // ✅ PRECISION FIX: Parse without float math
-      let inputAmountLamports: number;
-      try {
-        const lamportsBigInt = parseSolToLamports(solAmount as string);
-        inputAmountLamports = Number(lamportsBigInt);
-        if (inputAmountLamports <= 0) {
-          return res.status(400).json({ error: 'Invalid SOL amount' });
-        }
-      } catch (e) {
-        return res.status(400).json({ error: 'Invalid SOL amount format' });
+      const solAmountNum = parseFloat(solAmount as string);
+      if (isNaN(solAmountNum) || solAmountNum <= 0) {
+        return res.status(400).json({ error: 'Invalid SOL amount' });
       }
-
-      const solAmountNum = inputAmountLamports / 1_000_000_000; // For display only
 
       // Use provided decimals or default to 6 for pump.fun tokens
       const TOKEN_DECIMALS = decimals ? parseInt(decimals as string) : 6;
 
+      // Convert SOL to Lamports for Jupiter API
+      const inputAmountLamports = Math.floor(solAmountNum * 1_000_000_000);
+      
       // SOL mint address (wrapped SOL)
       const SOL_MINT = 'So11111111111111111111111111111111111111112';
-
-      // Call Jupiter V6 Quote API with circuit breaker
+      
+      // Call Jupiter V6 Quote API
+      const jupiterUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${tokenAddress}&amount=${inputAmountLamports}&slippageBps=50`;
+      
       console.log(`🔮 Fetching Jupiter quote for ${solAmountNum} SOL → ${tokenAddress}`);
-
-      // ✅ FIX: Use circuit breaker protected fetch
-      const response = await fetchJupiter(`/v6/quote?inputMint=${SOL_MINT}&outputMint=${tokenAddress}&amount=${inputAmountLamports}&slippageBps=50`);
-
-      if (!response) {
-        console.error(`❌ Jupiter API unavailable (circuit breaker open or timeout)`);
-        return res.status(503).json({ error: 'Jupiter API temporarily unavailable' });
-      }
-
+      
+      const response = await fetchWithTimeout(jupiterUrl, 5000);
+      
       if (!response.ok) {
         console.error(`❌ Jupiter API error: ${response.status} ${response.statusText}`);
         return res.status(response.status).json({ error: 'Failed to get quote from Jupiter' });
       }
-
+      
       const quoteData = await response.json();
-
+      
       if (!quoteData || !quoteData.outAmount) {
         console.error('❌ Invalid Jupiter quote response:', quoteData);
         return res.status(500).json({ error: 'Invalid quote data from Jupiter' });
       }
-
+      
       // Extract quote details
       const tokenAmountOut = parseInt(quoteData.outAmount); // In token's smallest unit (already includes decimals)
       const priceImpactPct = parseFloat(quoteData.priceImpactPct || '0');
-
+      
       // ✅ FIX: Calculate effective price correctly
       // effectivePriceLamports = SOL lamports / token units (from Jupiter)
       // This gives us: SOL lamports per smallest unit of token
@@ -2080,15 +1470,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const effectivePriceLamports = tokenAmountOut > 0
         ? Math.floor((inputAmountLamports * (10 ** TOKEN_DECIMALS)) / tokenAmountOut)
         : 0;
-
+      
       // For display/logging
       const tokenAmountDecimal = tokenAmountOut / (10 ** TOKEN_DECIMALS);
       const effectivePriceSOL = effectivePriceLamports / 1_000_000_000;
-
+      
       console.log(`✅ Jupiter quote: ${solAmountNum} SOL → ${tokenAmountDecimal.toFixed(4)} tokens`);
       console.log(`   TOKEN_DECIMALS: ${TOKEN_DECIMALS}, tokenAmountOut (units): ${tokenAmountOut}`);
       console.log(`   Effective Price: ${effectivePriceLamports} lamports/token = ${effectivePriceSOL.toFixed(9)} SOL/token (impact: ${priceImpactPct}%)`);
-
+      
       res.json({
         solAmount: solAmountNum,
         solAmountLamports: inputAmountLamports,
@@ -2108,7 +1498,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/tokens/quote/sell', async (req, res) => {
     try {
       const { tokenAddress, tokenAmount, decimals } = req.query;
-
+      
       if (!tokenAddress || !tokenAmount) {
         return res.status(400).json({ error: 'tokenAddress and tokenAmount are required' });
       }
@@ -2121,44 +1511,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Use provided decimals or default to 6 for pump.fun tokens
       const TOKEN_DECIMALS = decimals ? parseInt(decimals as string) : 6;
       const inputAmountTokenUnits = Math.floor(tokenAmountNum * (10 ** TOKEN_DECIMALS));
-
+      
       // SOL mint address (wrapped SOL)
       const SOL_MINT = 'So11111111111111111111111111111111111111112';
-
+      
       // Call Jupiter V6 Quote API - now selling tokens for SOL
+      const jupiterUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${tokenAddress}&outputMint=${SOL_MINT}&amount=${inputAmountTokenUnits}&slippageBps=50`;
+      
       console.log(`🔮 Fetching Jupiter quote for ${tokenAmountNum} tokens → SOL (${tokenAddress})`);
-
-      // ✅ FIX: Use circuit breaker protected fetch
-      const response = await fetchJupiter(`/v6/quote?inputMint=${tokenAddress}&outputMint=${SOL_MINT}&amount=${inputAmountTokenUnits}&slippageBps=50`);
-
-      if (!response) {
-        console.error(`❌ Jupiter API unavailable (circuit breaker open or timeout)`);
-        return res.status(503).json({ error: 'Jupiter API temporarily unavailable' });
-      }
-
+      
+      const response = await fetchWithTimeout(jupiterUrl, 5000);
+      
       if (!response.ok) {
         console.error(`❌ Jupiter API error: ${response.status} ${response.statusText}`);
         return res.status(response.status).json({ error: 'Failed to get quote from Jupiter' });
       }
-
+      
       const quoteData = await response.json();
-
+      
       if (!quoteData || !quoteData.outAmount) {
         console.error('❌ Invalid Jupiter quote response:', quoteData);
         return res.status(500).json({ error: 'Invalid quote data from Jupiter' });
       }
-
+      
       // Extract quote details
       const solAmountOut = parseInt(quoteData.outAmount); // In Lamports
       const priceImpactPct = parseFloat(quoteData.priceImpactPct || '0');
-
+      
       // Calculate effective price: SOL received / tokens sold = SOL per token (in Lamports)
       const effectivePriceLamports = tokenAmountNum > 0 
         ? Math.floor(solAmountOut / tokenAmountNum)
         : 0;
-
+      
       console.log(`✅ Jupiter quote: ${tokenAmountNum} tokens → ${solAmountOut / 1_000_000_000} SOL (impact: ${priceImpactPct}%)`);
-
+      
       res.json({
         tokenAmount: tokenAmountNum,
         tokenAmountUnits: inputAmountTokenUnits,
@@ -2177,18 +1563,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
   // Token Analysis Routes (Helius)
   // ============================================================================
-
-  // Legacy endpoint - redirects to enhanced analysis
+  
   app.get('/api/analyze/:mintAddress', async (req, res) => {
     try {
       const { mintAddress } = req.params;
-
+      
       if (!mintAddress || mintAddress.length < 32) {
         return res.status(400).json({ error: 'Invalid mint address' });
       }
-
-      // ✅ MEDIUM FIX: Use enhanced helius service instead of legacy
-      const analysis = await heliusService.getTokenAnalysis(mintAddress);
+      
+      const analysis = await oldHeliusService.analyzeToken(mintAddress);
       res.json(analysis);
     } catch (error: any) {
       console.error('Token analysis error:', error);
@@ -2216,7 +1600,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(analysis);
     } catch (error: any) {
       console.error('Token analysis error:', error);
-
+      
       // Check if this is "not a Token mint" error (user entered a wallet address instead)
       if (error.message?.includes('not a Token mint')) {
         return res.status(400).json({ 
@@ -2224,7 +1608,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: 'This appears to be a wallet address, not a token mint address. Please use the Wallet Explorer tab instead.'
         });
       }
-
+      
       res.status(500).json({ 
         error: 'Failed to fetch token data',
         message: error.message || 'Unknown error occurred'
@@ -2248,7 +1632,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(portfolio);
     } catch (error: any) {
       console.error('Wallet portfolio error:', error);
-
+      
       // Check if this is a Helius API error
       if (error.message?.includes('500 Internal Server Error')) {
         return res.status(503).json({ 
@@ -2256,7 +1640,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: 'Helius API is having trouble fetching this wallet data. This could be due to API rate limits or the wallet being too large. Please try again in a moment.'
         });
       }
-
+      
       res.status(500).json({ 
         error: 'Failed to fetch wallet data',
         message: error.message || 'Unknown error occurred'
@@ -2286,7 +1670,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(transactions);
     } catch (error: any) {
       console.error('Transaction history error:', error);
-
+      
       // Check if this is a 401 Unauthorized (premium feature)
       if (error.message?.includes('401')) {
         return res.status(403).json({ 
@@ -2294,7 +1678,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: 'Transaction history requires a Helius premium API plan. Please upgrade your API key at https://helius.dev'
         });
       }
-
+      
       res.status(500).json({ error: 'Failed to fetch transaction history' });
     }
   });
@@ -2376,7 +1760,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
   // Leaderboard Routes
   // ============================================================================
-
+  
   app.get('/api/leaderboard/overall', async (req, res) => {
     try {
       const leaders = await storage.getTopUsersByTotalProfit(100);
@@ -2391,18 +1775,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Get the actual current period from storage
       const currentPeriod = await storage.getCurrentLeaderboardPeriod();
-
+      
       if (!currentPeriod) {
         return res.json({ leaders: [], periodStart: new Date().toISOString(), periodEnd: new Date().toISOString() });
       }
-
+      
       // Use the actual period boundaries for accurate calculations
       const leaders = await storage.getTopUsersByPeriodProfit(
         new Date(currentPeriod.startTime), 
         new Date(currentPeriod.endTime), 
         100
       );
-
+      
       res.json(serializeBigInts({ 
         leaders: leaders.map((l, i) => ({ ...l, rank: i + 1 })), 
         periodStart: currentPeriod.startTime,
@@ -2425,7 +1809,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
-
+  
   // Initialize leaderboard service for period management
   leaderboardService.start();
 

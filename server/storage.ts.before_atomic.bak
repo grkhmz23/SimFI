@@ -347,27 +347,21 @@ class DbStorage implements IStorage {
     solSpent: bigint;
   }): Promise<Position> {
     return await db.transaction(async (tx) => {
-      // 1. Deduct balance (guarded: prevents negative balances under concurrency)
-        const [user] = await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} - ${params.solSpent}` })
-          .where(and(
-            eq(users.id, params.userId),
-            sql`${users.balance} >= ${params.solSpent}`
-          ))
-          .returning();
-
-        if (!user) {
-          const [exists] = await tx
-            .select({ id: users.id })
-            .from(users)
-            .where(eq(users.id, params.userId));
-
-          if (!exists) throw new Error("User not found");
-          throw new Error("Insufficient balance");
-        }
-
-        // 2. Create or aggregate position
+      // 1. Deduct balance
+      const [user] = await tx.update(users)
+        .set({ balance: sql`${users.balance} - ${params.solSpent}` })
+        .where(eq(users.id, params.userId))
+        .returning();
+      
+      if (!user) {
+        throw new Error('User not found');
+      }
+      
+      if (user.balance < 0n) {
+        throw new Error('Insufficient balance');
+      }
+      
+      // 2. Create or aggregate position
       const [position] = await tx.insert(positions)
         .values({
           userId: params.userId,
@@ -394,94 +388,74 @@ class DbStorage implements IStorage {
   }
 
   async executeSellTrade(params: {
-      userId: string;
-      positionId: string;
-      sellAmount: bigint;
-      exitPrice: bigint;
-      solReceived: bigint;
-      profitLoss: bigint;
-      proportionalCost: bigint;
-    }): Promise<void> {
-      await db.transaction(async (tx) => {
-        // Lock the position row to prevent concurrent/double-sell
-        await tx.execute(
-          sql`SELECT 1 FROM ${positions} WHERE ${positions.id} = ${params.positionId} FOR UPDATE`
-        );
-
-        const [position] = await tx
-          .select()
-          .from(positions)
-          .where(eq(positions.id, params.positionId));
-
-        if (!position) throw new Error("Position not found");
-        if (position.userId !== params.userId) throw new Error("Unauthorized");
-
-        if (params.sellAmount <= 0n) throw new Error("Sell amount must be positive");
-        if (params.sellAmount > position.amount) throw new Error("Sell amount exceeds position size");
-
-        const decimals = position.decimals || 6;
-        const decimalDivisor = BigInt(10 ** decimals);
-
-        // Recompute server-side to avoid trusting caller-provided math
-        const solReceived = (params.sellAmount * params.exitPrice) / decimalDivisor;
-        const proportionalCost = (position.solSpent * params.sellAmount) / position.amount;
-        const profitLoss = solReceived - proportionalCost;
-
-        // Update user balance and profit
-        const [updatedUser] = await tx
-          .update(users)
-          .set({
-            balance: sql`${users.balance} + ${solReceived}`,
-            totalProfit: sql`${users.totalProfit} + ${profitLoss}`,
-          })
-          .where(eq(users.id, params.userId))
-          .returning();
-
-        if (!updatedUser) throw new Error("User not found");
-
-        // Create trade history
-        await tx.insert(tradeHistory).values({
+    userId: string;
+    positionId: string;
+    sellAmount: bigint;
+    exitPrice: bigint;
+    solReceived: bigint;
+    profitLoss: bigint;
+    proportionalCost: bigint;
+  }): Promise<void> {
+    await db.transaction(async (tx) => {
+      // 1. Get position to validate and get details
+      const [position] = await tx.select()
+        .from(positions)
+        .where(eq(positions.id, params.positionId));
+      
+      if (!position) {
+        throw new Error('Position not found');
+      }
+      
+      if (position.userId !== params.userId) {
+        throw new Error('Unauthorized');
+      }
+      
+      // 2. Update user balance and profit
+      await tx.update(users)
+        .set({
+          balance: sql`${users.balance} + ${params.solReceived}`,
+          totalProfit: sql`${users.totalProfit} + ${params.profitLoss}`,
+        })
+        .where(eq(users.id, params.userId));
+      
+      // 3. Create trade history
+      await tx.insert(tradeHistory).values({
+        userId: params.userId,
+        tokenAddress: position.tokenAddress,
+        tokenName: position.tokenName,
+        tokenSymbol: position.tokenSymbol,
+        decimals: position.decimals || 6,
+        entryPrice: position.entryPrice,
+        exitPrice: params.exitPrice,
+        amount: params.sellAmount,
+        solSpent: params.proportionalCost,
+        solReceived: params.solReceived,
+        profitLoss: params.profitLoss,
+        openedAt: position.openedAt,
+      });
+      
+      // 4. Delete position
+      await tx.delete(positions)
+        .where(eq(positions.id, params.positionId));
+      
+      // 5. If partial sell, create new position with remaining
+      if (params.sellAmount < position.amount) {
+        const remainingAmount = position.amount - params.sellAmount;
+        const remainingCost = position.solSpent - params.proportionalCost;
+        
+        await tx.insert(positions).values({
           userId: params.userId,
           tokenAddress: position.tokenAddress,
           tokenName: position.tokenName,
           tokenSymbol: position.tokenSymbol,
-          decimals,
+          decimals: position.decimals || 6,
           entryPrice: position.entryPrice,
-          exitPrice: params.exitPrice,
-          amount: params.sellAmount,
-          solSpent: proportionalCost,
-          solReceived,
-          profitLoss,
-          openedAt: position.openedAt,
+          amount: remainingAmount,
+          solSpent: remainingCost,
         });
-
-        // Delete position (ensure it was actually deleted)
-        const deleted = await tx
-          .delete(positions)
-          .where(and(eq(positions.id, params.positionId), eq(positions.userId, params.userId)))
-          .returning({ id: positions.id });
-
-        if (deleted.length === 0) throw new Error("Position already closed");
-
-        // If partial sell, create new position with remaining
-        if (params.sellAmount < position.amount) {
-          const remainingAmount = position.amount - params.sellAmount;
-          const remainingCost = position.solSpent - proportionalCost;
-
-          await tx.insert(positions).values({
-            userId: params.userId,
-            tokenAddress: position.tokenAddress,
-            tokenName: position.tokenName,
-            tokenSymbol: position.tokenSymbol,
-            decimals,
-            entryPrice: position.entryPrice,
-            amount: remainingAmount,
-            solSpent: remainingCost,
-          });
-        }
-      });
-    }
-
+      }
+    });
+  }
 }
 
 export const storage: IStorage = new DbStorage();
