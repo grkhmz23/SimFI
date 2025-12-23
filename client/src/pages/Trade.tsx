@@ -34,10 +34,11 @@ export default function Trade() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // ✅ UPDATED: Use new cached market search endpoint
   const { data: searchResults, isLoading: isSearching } = useQuery<{ results: SearchResult[] }>({
-    queryKey: ['/api/tokens/search', debouncedQuery],
+    queryKey: ['/api/market/search', debouncedQuery],
     queryFn: async () => {
-      const response = await fetch(`/api/tokens/search?q=${encodeURIComponent(debouncedQuery)}`);
+      const response = await fetch(`/api/market/search?q=${encodeURIComponent(debouncedQuery)}`);
       if (!response.ok) {
         toast({
           title: 'Search Failed',
@@ -49,7 +50,7 @@ export default function Trade() {
       return response.json();
     },
     enabled: debouncedQuery.length >= 3,
-    staleTime: 30000,
+    staleTime: 30000, // Cache for 30 seconds (server also caches)
   });
 
   const handleTokenClick = (address: string) => {
@@ -285,7 +286,7 @@ export default function Trade() {
                 <h3 className="font-bold mb-1 gradient-simfi-text">SimFi</h3>
                 <p className="text-sm text-muted-foreground">Your Gateway to Risk-Free DeFi</p>
               </div>
-              
+
               <div className="flex items-center gap-3">
                 <span className="text-sm text-muted-foreground hidden sm:block">Connect with us:</span>
                 <a

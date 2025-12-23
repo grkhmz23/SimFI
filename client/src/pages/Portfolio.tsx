@@ -25,16 +25,16 @@ import type { Position } from '@shared/schema';
 export default function Portfolio() {
   const { isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
-  const solPrice = useSolPrice(); // Get current SOL price from context
+  const solPrice = useSolPrice();
   const [selectedPosition, setSelectedPosition] = useState<Position & { currentPrice: number } | null>(null);
   const { toast } = useToast();
 
   const { data: positionsData, isLoading, isError, error } = useQuery<{ positions: Position[] }>({
     queryKey: ['/api/trades/positions'],
     enabled: isAuthenticated,
-    refetchInterval: 2500, // Auto-refresh every 2.5 seconds to get latest prices
+    refetchInterval: 2500,
     refetchIntervalInBackground: true,
-    staleTime: 2000, // Consider data stale after 2 seconds
+    staleTime: 2000,
   });
 
   if (!isAuthenticated) {
@@ -80,14 +80,38 @@ export default function Portfolio() {
     return acc;
   }, new Map<string, Position[]>());
 
-  // Mutation for selling all positions of a token
+  // ✅ NEW: Mutation for selling all positions using server-authoritative quotes
   const sellAllMutation = useMutation({
-    mutationFn: async ({ tokenAddress, exitPrice }: { tokenAddress: string; exitPrice: number }) => {
-      return await apiRequest('/api/trades/sell-all', 'POST', { tokenAddress, exitPrice });
+    mutationFn: async ({ tokenAddress, totalTokens }: { tokenAddress: string; totalTokens: bigint }) => {
+      // Step 1: Get server-authoritative quote for sell-all
+      const quoteParams = new URLSearchParams({
+        token: tokenAddress,
+        side: 'sell',
+        amountTokens: totalTokens.toString(),
+      });
+
+      console.log('🔄 Getting sell-all quote from server...');
+      const quoteResponse = await fetch(`/api/quote?${quoteParams}`, {
+        credentials: 'include',
+      });
+
+      if (!quoteResponse.ok) {
+        const err = await quoteResponse.json();
+        throw new Error(err.error || 'Failed to get quote');
+      }
+
+      const quote = await quoteResponse.json();
+      console.log('✅ Got server quote for sell-all:', quote);
+
+      // Step 2: Execute sell-all with quoteId (server validates price)
+      return await apiRequest('POST', '/api/trades/sell-all', { 
+        quoteId: quote.quoteId,
+        tokenAddress,
+      });
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/trades/positions'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/user'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/profile'] });
       toast({
         title: 'All Positions Sold',
         description: data.message,
@@ -102,9 +126,12 @@ export default function Portfolio() {
     },
   });
 
-  const handleSellAll = (tokenAddress: string, currentPrice: number) => {
+  const handleSellAll = (tokenAddress: string, tokenPositions: Position[]) => {
+    // Calculate total tokens across all positions for this token
+    const totalTokens = tokenPositions.reduce((sum, p) => sum + toBigInt(p.amount), 0n);
+
     if (confirm('Are you sure you want to sell all positions of this token?')) {
-      sellAllMutation.mutate({ tokenAddress, exitPrice: currentPrice });
+      sellAllMutation.mutate({ tokenAddress, totalTokens });
     }
   };
 
@@ -113,14 +140,11 @@ export default function Portfolio() {
 
   // Keep everything in BigInt until final display to prevent precision loss
   const calculateCurrentValueBigInt = (position: Position, currentPrice: number): bigint => {
-    // position.amount is in token base units (10^decimals = 1 token)
-    // currentPrice is in Lamports per token
     const amountBigInt = toBigInt(position.amount);
     const currentPriceBigInt = BigInt(Math.floor(currentPrice));
     const decimals = position.decimals || 6;
     const decimalDivisor = BigInt(10 ** decimals);
-    
-    // Use BigInt arithmetic: (amount * currentPrice) / 10^decimals
+
     return (amountBigInt * currentPriceBigInt) / decimalDivisor;
   };
 
@@ -133,8 +157,6 @@ export default function Portfolio() {
   const calculateProfitLossPercent = (position: Position, currentPrice: number): number => {
     const pl = calculateProfitLossBigInt(position, currentPrice);
     const solSpent = toBigInt(position.solSpent);
-    // Convert to Number only for percentage calculation (division)
-    // This is safe because percentages are small numbers
     return (Number(pl) / Number(solSpent)) * 100;
   };
 
@@ -142,12 +164,12 @@ export default function Portfolio() {
   const totalInvested = positions.reduce((sum: bigint, p: Position) => {
     return sum + toBigInt(p.solSpent);
   }, 0n);
-  
+
   const totalCurrentValue = positions.reduce((sum: bigint, p: Position) => {
     const withPrice = getPositionWithPrice(p);
     return sum + calculateCurrentValueBigInt(p, withPrice.currentPrice);
   }, 0n);
-  
+
   const totalPL = totalCurrentValue - totalInvested;
 
   return (
@@ -165,60 +187,48 @@ export default function Portfolio() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Invested</p>
-              <p className="text-2xl font-bold font-mono text-foreground" data-testid="text-invested">
-                {formatSol(totalInvested)} SOL
-              </p>
+              <p className="text-2xl font-bold font-mono">{formatSol(totalInvested)} SOL</p>
             </div>
           </div>
         </Card>
 
         <Card className="p-6">
           <div className="flex items-center gap-4">
-            <div className="rounded-full bg-chart-2/10 p-3">
-              <TrendingUp className="h-6 w-6 text-chart-2" />
+            <div className="rounded-full bg-primary/10 p-3">
+              <TrendingUp className="h-6 w-6 text-primary" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Current Value</p>
-              <p className="text-2xl font-bold font-mono text-foreground" data-testid="text-current-value">
-                {formatSol(totalCurrentValue)} SOL
-              </p>
+              <p className="text-2xl font-bold font-mono">{formatSol(totalCurrentValue)} SOL</p>
             </div>
           </div>
         </Card>
 
         <Card className="p-6">
           <div className="flex items-center gap-4">
-            <div className={`rounded-full ${totalPL >= 0 ? 'bg-success/10' : 'bg-destructive/10'} p-3`}>
-              {totalPL >= 0 ? (
+            <div className={`rounded-full p-3 ${totalPL >= 0n ? 'bg-success/10' : 'bg-destructive/10'}`}>
+              {totalPL >= 0n ? (
                 <TrendingUp className="h-6 w-6 text-success" />
               ) : (
                 <TrendingDown className="h-6 w-6 text-destructive" />
               )}
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Unrealized P/L</p>
-              <p 
-                className={`text-2xl font-bold font-mono ${totalPL >= 0 ? 'text-success' : 'text-destructive'}`}
-                data-testid="text-unrealized-pl"
-              >
-                {totalPL >= 0 ? '+' : ''}{formatSol(totalPL)} SOL
+              <p className="text-sm text-muted-foreground">Total P/L</p>
+              <p className={`text-2xl font-bold font-mono ${totalPL >= 0n ? 'text-success' : 'text-destructive'}`}>
+                {totalPL >= 0n ? '+' : ''}{formatSol(totalPL)} SOL
               </p>
             </div>
           </div>
         </Card>
       </div>
 
-      <Card>
-        <div className="p-6">
-          <h2 className="text-2xl font-bold text-foreground mb-6">Open Positions</h2>
-          
-          {isError && (
-            <div className="bg-destructive/10 border border-destructive/30 rounded-md p-4 mb-6">
-              <p className="text-destructive font-semibold">Error loading positions</p>
-              <p className="text-sm text-destructive/80">{error?.message || 'Failed to load positions'}</p>
-            </div>
-          )}
-          
+      <Card className="overflow-hidden">
+        <div className="p-4 border-b border-border">
+          <h2 className="text-xl font-semibold">Open Positions</h2>
+        </div>
+
+        <div className="p-4">
           {isLoading ? (
             <div className="overflow-x-auto">
               <Table>
@@ -361,7 +371,7 @@ export default function Portfolio() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleSellAll(position.tokenAddress, positionWithPrice.currentPrice)}
+                                onClick={() => handleSellAll(position.tokenAddress, tokenPositions)}
                                 disabled={sellAllMutation.isPending}
                                 data-testid={`button-sell-all-${position.tokenAddress}`}
                               >
