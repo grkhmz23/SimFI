@@ -22,24 +22,16 @@ interface TradeModalProps {
   onClose: () => void;
 }
 
-interface JupiterQuote {
-  solAmount: number;
-  solAmountLamports: number;
-  tokenAmountOut: number;
-  tokenAmountDisplay: number;
-  effectivePriceLamports: number;
-  priceImpactPct: number;
-  slippageBps: number;
-}
-
-interface JupiterSellQuote {
-  tokenAmount: number;
-  tokenAmountUnits: number;
-  solAmountOut: number;
-  solAmountDisplay: number;
-  effectivePriceLamports: number;
-  priceImpactPct: number;
-  slippageBps: number;
+// ✅ NEW: Server quote response type
+interface ServerQuote {
+  quoteId: string;
+  tokenAddress: string;
+  side: 'buy' | 'sell';
+  priceLamports: string;
+  estimatedOutput: string;
+  expiresAt: number;
+  expiresInMs: number;
+  priceImpactBps: number;
 }
 
 const buySchema = z.object({
@@ -58,19 +50,17 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const [lastQuoteUpdate, setLastQuoteUpdate] = useState<Date>(new Date());
 
   // ALWAYS fetch fresh token data on mount to ensure consistent pricing
-  // This prevents showing stale prices when switching between buy/sell modes
   const tokenAddress = position?.tokenAddress || token?.tokenAddress || '';
   const { data: freshToken, isLoading: isFetchingFreshToken } = useQuery<Token>({
-    queryKey: [`/api/tokens/${tokenAddress}`],
-    enabled: !!tokenAddress, // Always fetch when we have an address
-    staleTime: 0, // Never use cache
-    refetchInterval: 2500, // Auto-refresh every 2.5 seconds
-    refetchOnMount: 'always', // Force refetch on modal open
-    select: (data: any) => data.token, // Unwrap { token: {...} } response
+    queryKey: [`/api/market/token/${tokenAddress}`],
+    enabled: !!tokenAddress,
+    staleTime: 0,
+    refetchInterval: 2500,
+    refetchOnMount: 'always',
+    select: (data: any) => data, // API returns token data directly now
   });
 
   // ALWAYS prioritize fresh data over stale position/token data
-  // If we have a position but no fresh token yet, use position's currentPrice as fallback
   const activeToken = freshToken || token || (position ? {
     tokenAddress: position.tokenAddress,
     name: position.tokenName,
@@ -79,8 +69,8 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     priceUsd: undefined,
     decimals: position.decimals || 6,
   } as Partial<Token> : undefined);
-  
-  const currentPrice = toBigInt(activeToken?.price || 0);
+
+  const currentPrice = toBigInt((activeToken as any)?.priceLamports || activeToken?.price || 0);
   const currentPriceUsd = activeToken?.priceUsd;
   const symbol = position?.tokenSymbol || activeToken?.symbol || '';
   const name = position?.tokenName || activeToken?.name || '';
@@ -154,96 +144,91 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const solAmount = buyForm.watch('solAmount') || 0;
   const percentage = sellForm.watch('percentage') || 100;
   const buyTokenDecimals = activeToken?.decimals || 6;
-  
-  // Fetch Jupiter quote for buying
-  const buyQuoteUrl = tokenAddress && solAmount > 0 
-    ? `/api/tokens/quote/buy?tokenAddress=${tokenAddress}&solAmount=${solAmount}&decimals=${buyTokenDecimals}` 
-    : null;
-  
-  const { data: jupiterQuote, isLoading: quoteLoading, dataUpdatedAt } = useQuery<JupiterQuote>({
-    queryKey: [buyQuoteUrl],
-    enabled: isBuying && !!buyQuoteUrl,
-    refetchOnWindowFocus: false,
-    refetchInterval: 2500, // Auto-refresh every 2.5 seconds
-    staleTime: 0, // Always fetch fresh data
-    placeholderData: (previousData) => previousData, // Keep previous data while refetching for smooth UI
-  });
 
-  // Fetch Jupiter quote for selling (keep BigInt throughout)
-  const sellTokenAddress = position?.tokenAddress || '';
+  // Calculate sell amount for display
+  const positionDecimals = position?.decimals || 6;
   const sellAmountBigInt = !isBuying && position 
     ? (toBigInt(position.amount) * BigInt(percentage)) / BigInt(100)
     : BigInt(0);
-  // Use lamportsToTokens with correct decimals for precision-safe conversion to decimal string
-  const positionDecimals = position?.decimals || 6;
   const sellTokenAmountStr = sellAmountBigInt > 0n ? lamportsToTokens(sellAmountBigInt, positionDecimals) : '0';
-  const sellQuoteUrl = sellTokenAddress && sellTokenAmountStr !== '0'
-    ? `/api/tokens/quote/sell?tokenAddress=${sellTokenAddress}&tokenAmount=${sellTokenAmountStr}&decimals=${positionDecimals}`
-    : null;
 
-  const { data: jupiterSellQuote, isLoading: sellQuoteLoading } = useQuery<JupiterSellQuote>({
-    queryKey: [sellQuoteUrl],
-    enabled: !isBuying && !!sellQuoteUrl,
-    refetchOnWindowFocus: false,
-    refetchInterval: 2500, // Auto-refresh every 2.5 seconds
-    staleTime: 0, // Always fetch fresh data
-    placeholderData: (previousData) => previousData, // Keep previous data while refetching for smooth UI
-  });
-
-  // Update last quote timestamp when Jupiter quotes change (but don't override price)
-  useEffect(() => {
-    if (jupiterQuote) {
-      setLastQuoteUpdate(new Date());
-    }
-  }, [jupiterQuote]);
-
-  useEffect(() => {
-    if (jupiterSellQuote) {
-      setLastQuoteUpdate(new Date());
-    }
-  }, [jupiterSellQuote]);
-
-  // Use Jupiter quote for estimated tokens if available, fallback to calculation with correct decimals
+  // Use market data for display estimates
   const currentPriceNumber = Number(currentPrice);
   const estimatedTokens = isBuying 
-    ? (jupiterQuote?.tokenAmountDisplay || (currentPriceNumber > 0 && isFinite(currentPriceNumber) ? (solAmount * 1_000_000_000) / currentPriceNumber : 0))
+    ? (currentPriceNumber > 0 && isFinite(currentPriceNumber) ? (solAmount * 1_000_000_000) / currentPriceNumber : 0)
     : 0;
-  
-  const priceImpact = isBuying 
-    ? (jupiterQuote?.priceImpactPct || 0)
-    : (jupiterSellQuote?.priceImpactPct || 0);
-  
-  // Use BigInt for all calculations, convert to Number only for display
-  const proportionalCostBigInt = !isBuying && position 
-    ? (toBigInt(position.solSpent) * BigInt(percentage)) / BigInt(100)
-    : BigInt(0);
-  
-  // Calculate sell value with BigInt arithmetic
-  // currentPrice is in lamports per 1.0 whole token (not per token lamport)
-  // Formula: (tokenLamports * priceLamportsPerToken) / 10^decimals = SOL lamports
-  // CRITICAL: Use token's decimals (6 for pump.fun), not SOL decimals (9)!
+
+  const priceImpact = 0; // Will be shown from quote response
+
+  // Calculate sell value with BigInt arithmetic for display
   const tokenDecimals = position?.decimals || activeToken?.decimals || 6;
   const sellValueBigInt = !isBuying 
     ? (sellAmountBigInt * currentPrice) / (BigInt(10) ** BigInt(tokenDecimals))
     : BigInt(0);
-  
+
+  const proportionalCostBigInt = !isBuying && position 
+    ? (toBigInt(position.solSpent) * BigInt(percentage)) / BigInt(100)
+    : BigInt(0);
+
   const profitLossBigInt = !isBuying ? sellValueBigInt - proportionalCostBigInt : BigInt(0);
 
+  // ✅ NEW: Trade mutation using server-authoritative quotes
   const tradeMutation = useMutation({
-    mutationFn: async (data: any) => {
-      if (isBuying) {
-        return apiRequest('POST', '/api/trades/buy', data);
+    mutationFn: async (data: { 
+      side: 'buy' | 'sell'; 
+      tokenAddress: string;
+      amountSol?: string;
+      amountTokens?: string;
+      positionId?: string;
+      tokenName?: string;
+      tokenSymbol?: string;
+    }) => {
+      // Step 1: Get server-authoritative quote
+      const quoteParams = new URLSearchParams({
+        token: data.tokenAddress,
+        side: data.side,
+      });
+
+      if (data.side === 'buy' && data.amountSol) {
+        quoteParams.set('amountSol', data.amountSol);
+      } else if (data.side === 'sell' && data.amountTokens) {
+        quoteParams.set('amountTokens', data.amountTokens);
+      }
+
+      console.log(`🔄 Getting ${data.side} quote from server...`);
+      const quoteResponse = await fetch(`/api/quote?${quoteParams}`, {
+        credentials: 'include',
+      });
+
+      if (!quoteResponse.ok) {
+        const err = await quoteResponse.json();
+        throw new Error(err.error || 'Failed to get quote');
+      }
+
+      const quote: ServerQuote = await quoteResponse.json();
+      console.log('✅ Got server quote:', quote);
+
+      // Step 2: Execute trade with quoteId (server validates price)
+      if (data.side === 'buy') {
+        return apiRequest('POST', '/api/trades/buy', {
+          quoteId: quote.quoteId,
+          tokenName: data.tokenName,
+          tokenSymbol: data.tokenSymbol,
+        });
       } else {
-        return apiRequest('POST', '/api/trades/sell', data);
+        return apiRequest('POST', '/api/trades/sell', {
+          quoteId: quote.quoteId,
+          positionId: data.positionId,
+        });
       }
     },
     onSuccess: async (response: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/auth/profile'] });
       queryClient.invalidateQueries({ queryKey: ['/api/trades/positions'] });
       queryClient.invalidateQueries({ queryKey: ['/api/trades/history'] });
-      
+
       await refreshUser();
-      
+
       const decimals = (token?.decimals || position?.decimals || 6);
       toast({
         title: isBuying ? 'Position Opened!' : 'Position Closed!',
@@ -251,7 +236,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
           ? `Bought ${formatTokenAmount(toBigInt(response.tokensReceived || 0), 2, decimals)} ${symbol} for ${solAmount} SOL`
           : `Sold ${formatTokenAmount(sellAmountBigInt, 2, decimals)} ${symbol}`,
       });
-      
+
       onClose();
     },
     onError: (error: any) => {
@@ -268,34 +253,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       console.error('Buy blocked: missing activeToken or tokenAddress');
       return;
     }
-    
-    // ✅ CRITICAL: Use Jupiter effective price as entry price (most accurate swap price)
-    // This is the ACTUAL price you get from the swap, not market price
-    const jupiterPrice = jupiterQuote?.effectivePriceLamports;
-    const dexScreenerPrice = Number(currentPrice);
-    const entryPrice = jupiterPrice || dexScreenerPrice;
-    
-    // Validation: Jupiter price should always be available
-    if (!jupiterPrice) {
-      console.warn('⚠️ MISSING JUPITER PRICE - Falling back to DexScreener:', dexScreenerPrice);
-    }
-    
-    console.log('🛒 BUY TRANSACTION STARTING');
-    console.log('   Jupiter effective price (swap):', jupiterPrice, `(${jupiterPrice ? (jupiterPrice / 1_000_000_000).toFixed(9) : 'N/A'} SOL/token)`);
-    console.log('   DexScreener market price:', dexScreenerPrice, `(${(dexScreenerPrice / 1_000_000_000).toFixed(9)} SOL/token)`);
-    console.log('   USING as entry price:', entryPrice, `(${(entryPrice / 1_000_000_000).toFixed(9)} SOL/token)`);
-    console.log('   SOL amount:', data.solAmount);
-    console.log('   Full Jupiter Quote:', jupiterQuote);
-    
-    if (entryPrice <= 0) {
-      toast({
-        title: 'Price Unavailable',
-        description: 'Token price is loading, please wait a moment and try again',
-        variant: 'destructive',
-      });
-      return;
-    }
-    
+
     const solSpentBigInt = BigInt(Math.floor(data.solAmount * 1_000_000_000));
     const userBalanceBigInt = toBigInt(user?.balance || 0);
     if (solSpentBigInt > userBalanceBigInt) {
@@ -306,34 +264,31 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       });
       return;
     }
-    
-    // ✅ Send Jupiter effective price as entry price for accurate P/L calculations
-    const tradeData = {
+
+    // ✅ NEW: Use quote-based trade (no price from client!)
+    console.log('🛒 BUY TRANSACTION STARTING (quote-based)');
+    tradeMutation.mutate({
+      side: 'buy',
       tokenAddress: tokenAddress,
+      amountSol: data.solAmount.toString(),
       tokenName: activeToken.name || name,
       tokenSymbol: activeToken.symbol || symbol,
-      solAmount: data.solAmount,
-      price: entryPrice, // ✅ Use Jupiter effective price, not market price
-      decimals: activeToken.decimals || 6, // Default to 6 for pump.fun tokens
-    };
-    
-    console.log('Submitting buy trade with Jupiter price:', tradeData);
-    tradeMutation.mutate(tradeData);
+    });
   });
 
   const onSellSubmit = sellForm.handleSubmit((data) => {
     if (!position) return;
-    
-    // Keep BigInt throughout - send lamports as string to backend
+
+    // Calculate sell amount in token units
     const sellAmountLamports = (toBigInt(position.amount) * BigInt(data.percentage)) / BigInt(100);
-    
-    // currentPrice is already a BigInt in lamports per whole token from DexScreener
-    const exitPriceLamports = currentPrice;
-    
+
+    // ✅ NEW: Use quote-based trade (no price from client!)
+    console.log('💰 SELL TRANSACTION STARTING (quote-based)');
     tradeMutation.mutate({
+      side: 'sell',
+      tokenAddress: position.tokenAddress,
+      amountTokens: sellAmountLamports.toString(),
       positionId: position.id,
-      amountLamports: sellAmountLamports.toString(),
-      exitPriceLamports: exitPriceLamports.toString(),
     });
   });
 
@@ -365,7 +320,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
           <div className="rounded-lg bg-card p-4 text-center border border-card-border">
             <p className="text-sm text-muted-foreground mb-2 flex items-center justify-center gap-1">
               Current Price
-              {(isFetchingFreshToken || (isBuying ? jupiterQuote : jupiterSellQuote)) && (
+              {isFetchingFreshToken && (
                 <RefreshCw className="h-3 w-3 text-primary animate-pulse" />
               )}
             </p>
@@ -383,9 +338,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                 }
               </p>
             )}
-            {!isFetchingFreshToken && (isBuying ? jupiterQuote : jupiterSellQuote) && (
-              <p className="text-xs text-muted-foreground mt-1">Live • Auto-updating</p>
-            )}
+            <p className="text-xs text-muted-foreground mt-1">Server-authoritative pricing</p>
           </div>
 
           {isBuying ? (
@@ -436,33 +389,14 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
 
                 <div className="rounded-lg bg-muted p-4 space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground flex items-center gap-1">
-                      Est. Tokens:
-                      {jupiterQuote && solAmount > 0 && (
-                        <RefreshCw className="h-3 w-3 text-primary animate-pulse" />
-                      )}
-                    </span>
-                    <span className="font-mono font-semibold flex items-center gap-2" data-testid="text-estimated-tokens">
-                      {quoteLoading && solAmount > 0 ? (
-                        <><Loader2 className="h-3 w-3 animate-spin" /> Loading...</>
-                      ) : (
-                        `${estimatedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${symbol}`
-                      )}
+                    <span className="text-muted-foreground">Est. Tokens:</span>
+                    <span className="font-mono font-semibold" data-testid="text-estimated-tokens">
+                      {estimatedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} {symbol}
                     </span>
                   </div>
-                  {jupiterQuote && solAmount > 0 && (
-                    <div className="text-xs text-muted-foreground text-right">
-                      Live quote • Auto-updating
-                    </div>
-                  )}
-                  {jupiterQuote && priceImpact !== 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Price Impact:</span>
-                      <span className={`font-mono text-xs ${Math.abs(priceImpact) > 5 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                        {priceImpact > 0 ? '+' : ''}{priceImpact.toFixed(2)}%
-                      </span>
-                    </div>
-                  )}
+                  <div className="text-xs text-muted-foreground text-right">
+                    Final amount determined at execution
+                  </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Your Balance:</span>
                     <span className="font-mono">{formatSol(user?.balance || 0)} SOL</span>
@@ -480,11 +414,9 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                   >
                     {tradeMutation.isPending ? 'Processing...' : 'Buy Now'}
                   </Button>
-                  {jupiterQuote && solAmount > 0 && (
-                    <p className="text-xs text-muted-foreground text-center">
-                      Trade executes at the current live quote price
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground text-center">
+                    Trade executes at server-determined price
+                  </p>
                 </div>
               </form>
             </Form>
@@ -552,30 +484,21 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Est. SOL Received:</span>
-                      <span className="font-mono font-semibold flex items-center gap-2" data-testid="text-sell-value">
-                        {sellQuoteLoading && sellAmountBigInt > 0n ? (
-                          <><Loader2 className="h-3 w-3 animate-spin" /> Loading...</>
-                        ) : (
-                          `${formatSol(sellValueBigInt)} SOL`
-                        )}
+                      <span className="font-mono font-semibold" data-testid="text-sell-value">
+                        {formatSol(sellValueBigInt)} SOL
                       </span>
                     </div>
-                    {jupiterSellQuote && priceImpact !== 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Price Impact:</span>
-                        <span className={`font-mono text-xs ${Math.abs(priceImpact) > 5 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                          {priceImpact > 0 ? '+' : ''}{priceImpact.toFixed(2)}%
-                        </span>
-                      </div>
-                    )}
                     <div className="flex justify-between text-sm pt-2 border-t border-border">
-                      <span className="text-muted-foreground">Profit/Loss:</span>
+                      <span className="text-muted-foreground">Est. Profit/Loss:</span>
                       <span 
                         className={`font-mono font-bold ${profitLossBigInt >= 0n ? 'text-success' : 'text-destructive'}`}
                         data-testid="text-profit-loss"
                       >
                         {profitLossBigInt >= 0n ? '+' : ''}{formatSol(profitLossBigInt)} SOL
                       </span>
+                    </div>
+                    <div className="text-xs text-muted-foreground text-right">
+                      Final amounts determined at execution
                     </div>
                   </div>
                 )}

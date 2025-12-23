@@ -124,6 +124,25 @@ async function gracefulShutdown(signal: string, botProcess?: any) {
 (async () => {
   const server = await registerRoutes(app);
 
+/**
+ * API: never fall through to Vite/SPA for /api routes.
+ * Must be after registerRoutes(app) and before Vite middleware/catch-all.
+ */
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
+});
+
+// API error handler (keeps API responses JSON even in dev)
+app.use((err, req, res, next) => {
+  if (req.originalUrl && req.originalUrl.startsWith('/api/')) {
+    console.error('API error:', err);
+    return res.status(err?.status || 500).json({ error: err?.message || 'Internal server error' });
+  }
+  next(err);
+});
+
+
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";

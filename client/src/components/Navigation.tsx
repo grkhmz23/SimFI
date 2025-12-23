@@ -50,11 +50,11 @@ export function Navigation() {
     }
   }, [location]);
 
-  // Search query
+  // ✅ UPDATED: Use new cached market search endpoint
   const { data: searchResults, isLoading: isSearching } = useQuery<{ results: SearchResult[] }>({
-    queryKey: ['/api/tokens/search', debouncedQuery],
+    queryKey: ['/api/market/search', debouncedQuery],
     queryFn: async () => {
-      const response = await fetch(`/api/tokens/search?q=${encodeURIComponent(debouncedQuery)}`);
+      const response = await fetch(`/api/market/search?q=${encodeURIComponent(debouncedQuery)}`);
       if (!response.ok) {
         toast({
           title: 'Search Failed',
@@ -66,7 +66,7 @@ export function Navigation() {
       return response.json();
     },
     enabled: debouncedQuery.length >= 3,
-    staleTime: 30000,
+    staleTime: 30000, // Cache for 30 seconds (server also caches)
   });
 
   const handleTokenClick = (address: string) => {
@@ -95,7 +95,7 @@ export function Navigation() {
             <Link href="/" className="flex items-center gap-2 hover-elevate rounded-md px-2 py-1" data-testid="link-home">
               <img src={logoUrl} alt="SimFi Logo" className="h-14 w-auto" />
             </Link>
-            
+
             <div className="hidden md:flex gap-1">
               {navItems.map(item => (
                 <Button

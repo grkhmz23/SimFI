@@ -17,9 +17,6 @@ import { heliusService } from "./helius-enhanced";
 import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest } from "@shared/schema";
 
 
-import { getSolPrice, getCachedSolPrice } from './solPrice';
-import { registerMarketRoutes } from "./services/marketRoutes";
-
 // ============================================================================
 // RATE LIMITING WITH REDIS STORE (for multi-instance deployments)
 // ============================================================================
@@ -541,6 +538,8 @@ function serializeBigInts(obj: any): any {
 }
 
 // ✅ MEDIUM FIX: Use centralized SOL price module
+import { getSolPrice, getCachedSolPrice } from './solPrice';
+
 // Alias for backward compatibility
 const fetchSolPrice = getSolPrice;
 
@@ -1498,6 +1497,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: req.userId!,
         positionId,
         sellAmount,
+        isFullSell, // Pass flag to storage layer
+        positionAmount: position.amount, // For validation
         exitPrice: executionPriceLamports,
         solReceived,
         profitLoss,
@@ -1524,11 +1525,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post('/api/trades/sell-all', ipBackstopLimiter, authenticateToken, userTradeLimiter, async (req, res) => {
-  return res.status(501).json({
-    error: 'sell-all temporarily disabled (storage batch sell not implemented). Sell positions individually for now.'
-  });
-});
+    try {
+      // ✅ IDEMPOTENCY CHECK: Return cached response if this is a retry
+      const idempotencyKey = getIdempotencyKey(req);
+      if (idempotencyKey) {
+        const cached = getIdempotentResponse(req.userId!, idempotencyKey);
+        if (cached) {
+          return res.status(cached.statusCode).json(cached.response);
+        }
+      }
 
+      const { tokenAddress } = req.body;
+      // NOTE: Client exitPrice is intentionally IGNORED
+
+      if (!tokenAddress) {
+        return res.status(400).json({ error: 'Invalid sell data - tokenAddress required' });
+      }
+
+      // Get all positions for this token and user
+      const allPositions = await storage.getUserPositions(req.userId!);
+      const tokenPositions = allPositions.filter(p => p.tokenAddress === tokenAddress);
+
+      if (tokenPositions.length === 0) {
+        return res.status(404).json({ error: 'No positions found for this token' });
+      }
+
+      // ✅ ANTI-CHEAT FIX: Use SERVER-SIDE price only
+      const currentTokenData = await fetchDexScreenerPrice(tokenAddress);
+      if (!currentTokenData || !currentTokenData.priceLamports) {
+        return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
+      }
+
+      // Server-side price with negative slippage for sells
+      const serverPriceLamports = BigInt(currentTokenData.priceLamports);
+      const SLIPPAGE_BPS = 50n;
+      const slippageMultiplier = 10000n - SLIPPAGE_BPS;
+      const executionPriceLamports = (serverPriceLamports * slippageMultiplier) / 10000n;
+
+      console.log(`💰 Server-side sell-all execution (ANTI-CHEAT):`);
+      console.log(`   DexScreener price: ${serverPriceLamports.toString()} lamports/token`);
+      console.log(`   Execution price (-0.5% slippage): ${executionPriceLamports.toString()} lamports/token`);
+
+      // Get decimals from first position
+      const decimals = tokenPositions[0].decimals || 6;
+
+      // Execute atomic sell-all with server-side price
+      const result = await storage.executeSellAllTrades({
+        userId: req.userId!,
+        tokenAddress,
+        exitPrice: executionPriceLamports, // Server-side execution price
+        positionsToSell: tokenPositions.map(p => ({
+          id: p.id,
+          tokenName: p.tokenName,
+          tokenSymbol: p.tokenSymbol,
+          decimals: p.decimals || 6,
+          entryPrice: p.entryPrice,
+          amount: p.amount,
+          solSpent: p.solSpent,
+          openedAt: p.openedAt,
+        })),
+      });
+
+      const solDisplay = Number(result.totalSolReceived) / 1_000_000_000;
+      const profitDisplay = Number(result.totalProfit) / 1_000_000_000;
+      console.log(`✅ Sold all ${result.positionsClosed} positions of ${tokenAddress} for ${solDisplay.toFixed(4)} SOL (P/L: ${profitDisplay.toFixed(4)} SOL)`);
+
+      // ✅ IDEMPOTENCY: Cache successful response
+      const successResponse = {
+        message: `Successfully sold ${result.positionsClosed} position(s)`,
+        positionsClosed: result.positionsClosed,
+        totalProfit: result.totalProfit.toString(),
+        totalSolReceived: result.totalSolReceived.toString(),
+      };
+
+      if (idempotencyKey) {
+        setIdempotentResponse(req.userId!, idempotencyKey, successResponse, 200);
+      }
+
+      res.json(successResponse);
+    } catch (error: any) {
+      console.error('Sell all error:', error);
+      res.status(500).json({ error: 'Could not execute sell all order' });
+    }
+  });
 
   app.get('/api/trades/history', authenticateToken, async (req, res) => {
     try {
@@ -2351,6 +2430,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Initialize leaderboard service for period management
   leaderboardService.start();
-  registerMarketRoutes(app, { authenticateToken, searchLimiter });
+
   return httpServer;
 }

@@ -17,9 +17,6 @@ import { heliusService } from "./helius-enhanced";
 import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest } from "@shared/schema";
 
 
-import { getSolPrice, getCachedSolPrice } from './solPrice';
-import { registerMarketRoutes } from "./services/marketRoutes";
-
 // ============================================================================
 // RATE LIMITING WITH REDIS STORE (for multi-instance deployments)
 // ============================================================================
@@ -541,6 +538,10 @@ function serializeBigInts(obj: any): any {
 }
 
 // ✅ MEDIUM FIX: Use centralized SOL price module
+import { getSolPrice, getCachedSolPrice } from './solPrice';
+
+import { registerMarketRoutes } from "./services/marketRoutes";
+
 // Alias for backward compatibility
 const fetchSolPrice = getSolPrice;
 
@@ -2352,5 +2353,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize leaderboard service for period management
   leaderboardService.start();
   registerMarketRoutes(app, { authenticateToken, searchLimiter });
+
+
   return httpServer;
 }
