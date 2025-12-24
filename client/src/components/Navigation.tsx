@@ -88,7 +88,7 @@ export function Navigation() {
   const showSearchResults = debouncedQuery.length >= 3;
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-border bg-gradient-to-r from-primary/10 via-background to-chart-2/10 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <nav className="sticky top-0 z-50 nav-glass border-b border-white/5">
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between gap-4">
           <div className="flex items-center gap-4 shrink-0">
@@ -123,7 +123,7 @@ export function Navigation() {
                   placeholder="Search tokens..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-10 h-9"
+                  className="pl-9 pr-10 h-9 bg-background/50 border-border/50 focus:border-primary/50 input-glow transition-all"
                   data-testid="input-search-header"
                 />
                 {isSearching && (
@@ -133,7 +133,7 @@ export function Navigation() {
 
               {/* Search Results Dropdown */}
               {showSearchResults && (
-                <Card className="absolute top-full mt-2 w-full max-h-96 overflow-y-auto shadow-lg z-50">
+                <Card className="absolute top-full mt-2 w-full max-h-96 overflow-y-auto glass-card z-50">
                   {hasSearchResults ? (
                     <div className="p-2">
                       {searchResults.results.map((result) => (
