@@ -83,30 +83,11 @@ export default function Portfolio() {
   // ✅ NEW: Mutation for selling all positions using server-authoritative quotes
   const sellAllMutation = useMutation({
     mutationFn: async ({ tokenAddress, totalTokens }: { tokenAddress: string; totalTokens: bigint }) => {
-      // Step 1: Get server-authoritative quote for sell-all
-      const quoteParams = new URLSearchParams({
-        token: tokenAddress,
-        side: 'sell',
-        amountTokens: totalTokens.toString(),
-      });
-
-      console.log('🔄 Getting sell-all quote from server...');
-      const quoteResponse = await fetch(`/api/quote?${quoteParams}`, {
-        credentials: 'include',
-      });
-
-      if (!quoteResponse.ok) {
-        const err = await quoteResponse.json();
-        throw new Error(err.error || 'Failed to get quote');
-      }
-
-      const quote = await quoteResponse.json();
-      console.log('✅ Got server quote for sell-all:', quote);
-
-      // Step 2: Execute sell-all with quoteId (server validates price)
+      // Call sell-all directly - server handles price server-side
+      console.log('💰 Executing sell-all for token:', tokenAddress);
       return await apiRequest('POST', '/api/trades/sell-all', { 
-        quoteId: quote.quoteId,
         tokenAddress,
+        amountTokens: totalTokens.toString(),
       });
     },
     onSuccess: (data: any) => {

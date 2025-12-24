@@ -1,4 +1,3 @@
-
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import express from "express";
@@ -158,6 +157,16 @@ const searchLimiter = createRateLimiter({
   skip: skipHealthCheck,
 });
 
+// ✅ FIX Issue #27: Rate limiter for public endpoints (trending, quotes, leaderboard)
+const publicApiLimiter = createRateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute per IP (generous for browsing)
+  message: { error: 'Too many requests, please slow down' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: skipHealthCheck,
+});
+
 // Bot endpoints - keyed by bot secret header
 const botLimiter = createRateLimiter({
   windowMs: 60 * 1000, // 1 minute
@@ -183,6 +192,11 @@ function parseSolToLamports(solAmount: string | number): bigint {
   // Convert to string if number was passed
   const solStr = String(solAmount);
 
+  // ✅ FIX: Bounds check before processing (prevent memory issues)
+  if (solStr.length > 30) {
+    throw new Error('Amount too large');
+  }
+
   // Validate format: only digits, optional decimal, optional leading minus
   if (!/^-?\d*\.?\d+$/.test(solStr)) {
     throw new Error('Invalid SOL amount format');
@@ -202,6 +216,12 @@ function parseSolToLamports(solAmount: string | number): bigint {
 
   // Combine and parse as BigInt
   const lamportsStr = wholePart + fracPart;
+
+  // ✅ FIX: Final bounds check
+  if (lamportsStr.length > 20) {
+    throw new Error('Amount exceeds maximum precision');
+  }
+
   const lamports = BigInt(lamportsStr);
 
   return lamports;
@@ -461,8 +481,8 @@ const IDEMPOTENCY_CONFIG = {
   maxEntries: 10_000,          // Prevent memory bloat
 };
 
-// Periodic cleanup of expired entries
-setInterval(() => {
+// ✅ FIX: Store interval reference and unref() so it doesn't block shutdown
+const idempotencyCleanupInterval = setInterval(() => {
   const now = Date.now();
   let cleaned = 0;
 
@@ -477,6 +497,9 @@ setInterval(() => {
     console.log(`🧹 Idempotency cache cleanup: removed ${cleaned} expired entries`);
   }
 }, IDEMPOTENCY_CONFIG.cleanupIntervalMs);
+
+// Don't prevent process exit on shutdown
+idempotencyCleanupInterval.unref();
 
 // Get cached response for idempotency key
 function getIdempotentResponse(userId: number | string, idempotencyKey: string): IdempotencyEntry | null {
@@ -523,9 +546,26 @@ function setIdempotentResponse(
   });
 }
 
-// Helper to extract idempotency key from request
+// Helper to extract and validate idempotency key from request
+// ✅ FIX: Validate key format and length to prevent abuse
 function getIdempotencyKey(req: any): string | null {
-  return req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || null;
+  const key = req.headers['x-idempotency-key'] || req.headers['idempotency-key'];
+
+  if (!key) return null;
+
+  // Validate length (max 256 chars)
+  if (key.length > 256) {
+    console.warn('⚠️ Idempotency key too long, ignoring');
+    return null;
+  }
+
+  // Validate format (alphanumeric, dashes, underscores only)
+  if (!/^[a-zA-Z0-9_-]+$/.test(key)) {
+    console.warn('⚠️ Invalid idempotency key format, ignoring');
+    return null;
+  }
+
+  return key;
 }
 
 // Helper to serialize BigInt values for JSON responses
@@ -999,12 +1039,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Middleware to verify telegram bot requests
   // ✅ SECURITY FIX: Never use Telegram token for internal API auth
   // Telegram tokens leak easily (logs, screenshots, env dumps)
-  const DEV_BOT_SECRET = 'simfi-dev-bot-secret-change-in-production';
+
+  // ✅ FIX: Generate random dev secret at startup instead of hardcoding
+  const DEV_BOT_SECRET = process.env.BOT_API_SECRET || (() => {
+    // Use crypto.randomUUID() which is available globally in Node 18+
+    const generated = crypto.randomUUID() + crypto.randomUUID();
+    console.warn('⚠️  BOT_API_SECRET not set. Generated temporary dev secret.');
+    console.warn(`   For bot.js, set: BOT_API_SECRET=${generated}`);
+    return generated;
+  })();
 
   const verifyBotSecret = (req: any, res: any, next: any) => {
     const botSecret = req.headers['x-bot-secret'];
-
-    let expectedSecret: string;
 
     if (process.env.NODE_ENV === 'production') {
       // Production: BOT_API_SECRET is required - no fallback
@@ -1012,18 +1058,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('❌ FATAL: BOT_API_SECRET must be set in production');
         return res.status(500).json({ error: 'Server misconfiguration - bot endpoints disabled' });
       }
-      expectedSecret = process.env.BOT_API_SECRET;
-    } else {
-      // Development: Use BOT_API_SECRET if set, otherwise use dev-only default
-      // NEVER fall back to Telegram token
-      expectedSecret = process.env.BOT_API_SECRET || DEV_BOT_SECRET;
-
-      if (!process.env.BOT_API_SECRET) {
-        console.warn('⚠️  Using default dev bot secret. Set BOT_API_SECRET in .env for security.');
-      }
     }
 
-    if (!botSecret || botSecret !== expectedSecret) {
+    if (!botSecret || botSecret !== DEV_BOT_SECRET) {
       return res.status(403).json({ error: 'Forbidden - Invalid bot secret' });
     }
 
@@ -1562,7 +1599,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // IMPORTANT: Search route must come BEFORE :address route to avoid matching "search" as an address
   // Get trending tokens based on user activity (most bought/sold by user count)
-  app.get('/api/trending', async (req, res) => {
+  app.get('/api/trending', publicApiLimiter, async (req, res) => {
     try {
       // Get top tokens by number of unique users who bought them
       const buyActivity = await db
@@ -1941,7 +1978,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get Jupiter quote for buying tokens with SOL
-  app.get('/api/tokens/quote/buy', async (req, res) => {
+  app.get('/api/tokens/quote/buy', publicApiLimiter, async (req, res) => {
     try {
       const { tokenAddress, solAmount, decimals } = req.query;
 
@@ -2028,7 +2065,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get Jupiter quote for selling tokens for SOL
-  app.get('/api/tokens/quote/sell', async (req, res) => {
+  app.get('/api/tokens/quote/sell', publicApiLimiter, async (req, res) => {
     try {
       const { tokenAddress, tokenAmount, decimals } = req.query;
 
@@ -2300,7 +2337,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Leaderboard Routes
   // ============================================================================
 
-  app.get('/api/leaderboard/overall', async (req, res) => {
+  app.get('/api/leaderboard/overall', publicApiLimiter, async (req, res) => {
     try {
       const leaders = await storage.getTopUsersByTotalProfit(100);
       res.json(serializeBigInts({ leaders: leaders.map((l, i) => ({ ...l, rank: i + 1 })) }));
@@ -2310,7 +2347,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/leaderboard/current-period', async (req, res) => {
+  app.get('/api/leaderboard/current-period', publicApiLimiter, async (req, res) => {
     try {
       // Get the actual current period from storage
       const currentPeriod = await storage.getCurrentLeaderboardPeriod();
@@ -2337,7 +2374,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/leaderboard/winners', async (req, res) => {
+  app.get('/api/leaderboard/winners', publicApiLimiter, async (req, res) => {
     try {
       const winners = await storage.getPastWinners(10);
       res.json(serializeBigInts({ winners }));

@@ -26,7 +26,7 @@ export interface IStorage {
   createTrade(data: Omit<InsertTrade, 'id'> & { userId: string }): Promise<Trade>;
   getUserTrades(userId: string, limit?: number, offset?: number): Promise<Trade[]>;
   getUserTradesCount(userId: string): Promise<number>;
-  
+
   // Atomic trade execution
   executeBuyTrade(params: {
     userId: string;
@@ -38,7 +38,7 @@ export interface IStorage {
     amount: bigint;
     solSpent: bigint;
   }): Promise<Position>;
-  
+
   executeSellTrade(params: {
     userId: string;
     positionId: string;
@@ -48,7 +48,7 @@ export interface IStorage {
     profitLoss: bigint;
     proportionalCost: bigint;
   }): Promise<void>;
-  
+
   // Leaderboard operations
   getTopUsersByTotalProfit(limit: number): Promise<any[]>;
   getTopUsersByPeriodProfit(startTime: Date, endTime: Date, limit: number): Promise<any[]>;
@@ -225,7 +225,7 @@ class DbStorage implements IStorage {
     .groupBy(users.id)
     .orderBy(desc(sql`COALESCE(SUM(${tradeHistory.profitLoss}), 0)`))
     .limit(limit);
-    
+
     return result;
   }
 
@@ -258,7 +258,7 @@ class DbStorage implements IStorage {
       .where(sql`${leaderboardPeriods.winnerId} IS NOT NULL`)
       .orderBy(desc(leaderboardPeriods.endTime))
       .limit(limitPeriods);
-    
+
     // For each period, get the top 3 traders
     const allWinners = [];
     for (const period of periods) {
@@ -267,7 +267,7 @@ class DbStorage implements IStorage {
         period.endTime,
         3  // Top 3 per period
       );
-      
+
       // Add period info to each trader
       for (const trader of topTraders) {
         allWinners.push({
@@ -280,14 +280,14 @@ class DbStorage implements IStorage {
         });
       }
     }
-    
+
     return allWinners;
   }
 
   async saveTelegramSession(telegramUserId: string, userId: string, token: string, balance: bigint): Promise<TelegramSession> {
     // Session expires in 30 days
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    
+
     const [session] = await db.insert(telegramSessions)
       .values({
         telegramUserId,
@@ -306,7 +306,7 @@ class DbStorage implements IStorage {
         },
       })
       .returning();
-    
+
     return session;
   }
 
@@ -388,7 +388,7 @@ class DbStorage implements IStorage {
           },
         })
         .returning();
-      
+
       return position;
     });
   }
@@ -455,29 +455,31 @@ class DbStorage implements IStorage {
           openedAt: position.openedAt,
         });
 
-        // Delete position (ensure it was actually deleted)
-        const deleted = await tx
-          .delete(positions)
-          .where(and(eq(positions.id, params.positionId), eq(positions.userId, params.userId)))
-          .returning({ id: positions.id });
-
-        if (deleted.length === 0) throw new Error("Position already closed");
-
-        // If partial sell, create new position with remaining
+        // ✅ FIX: Use UPDATE for partial sells, DELETE only for full sells
+        // This prevents data loss if the operation fails
         if (params.sellAmount < position.amount) {
+          // PARTIAL SELL: Update position with remaining amount
           const remainingAmount = position.amount - params.sellAmount;
           const remainingCost = position.solSpent - proportionalCost;
 
-          await tx.insert(positions).values({
-            userId: params.userId,
-            tokenAddress: position.tokenAddress,
-            tokenName: position.tokenName,
-            tokenSymbol: position.tokenSymbol,
-            decimals,
-            entryPrice: position.entryPrice,
-            amount: remainingAmount,
-            solSpent: remainingCost,
-          });
+          const [updated] = await tx
+            .update(positions)
+            .set({
+              amount: remainingAmount,
+              solSpent: remainingCost,
+            })
+            .where(and(eq(positions.id, params.positionId), eq(positions.userId, params.userId)))
+            .returning({ id: positions.id });
+
+          if (!updated) throw new Error("Failed to update position");
+        } else {
+          // FULL SELL: Delete the position entirely
+          const deleted = await tx
+            .delete(positions)
+            .where(and(eq(positions.id, params.positionId), eq(positions.userId, params.userId)))
+            .returning({ id: positions.id });
+
+          if (deleted.length === 0) throw new Error("Position already closed");
         }
       });
     }

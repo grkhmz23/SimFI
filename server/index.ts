@@ -184,9 +184,14 @@ app.use((err, req, res, next) => {
     : process.env.TELEGRAM_BOT_TOKEN;
 
   if (botToken) {
-    // Only auto-start bot in development for convenience
-    // In production, run the bot as a separate singleton process
-    if (app.get("env") === "development" && process.env.AUTO_START_BOT !== 'false') {
+    // Auto-start bot if:
+    // - Development mode (unless AUTO_START_BOT=false)
+    // - Production mode with AUTO_START_BOT=true (for single-instance deployments like Replit)
+    const shouldAutoStart = 
+      (app.get("env") === "development" && process.env.AUTO_START_BOT !== 'false') ||
+      (app.get("env") === "production" && process.env.AUTO_START_BOT === 'true');
+
+    if (shouldAutoStart) {
       console.log(`🤖 Starting Telegram bot in ${app.get("env")} mode...`);
       const botProcess = spawn('node', ['bot.js'], {
         stdio: 'inherit',
@@ -208,7 +213,7 @@ app.use((err, req, res, next) => {
       process.on('SIGTERM', () => gracefulShutdown('SIGTERM', botProcess));
     } else {
       console.log(`ℹ️  Telegram bot should be run separately: node bot.js`);
-      console.log(`   (Set AUTO_START_BOT=true to auto-start in development)`);
+      console.log(`   (Set AUTO_START_BOT=true to auto-start)`);
 
       // ✅ FIX: Graceful shutdown without bot process
       process.on('SIGINT', () => gracefulShutdown('SIGINT'));
