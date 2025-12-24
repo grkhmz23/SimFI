@@ -63,61 +63,77 @@ export default function Trade() {
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section with Gradient */}
-      <div className="relative overflow-hidden gradient-simfi-radial border-b border-border">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-chart-2/5" />
+      <div className="relative overflow-hidden border-b border-border/50">
+        {/* Background effects */}
+        <div className="absolute inset-0 mesh-gradient" />
+        <div className="absolute inset-0 grid-pattern opacity-20" />
+        <div className="absolute top-20 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[100px] animate-glow-pulse" />
+        <div className="absolute bottom-20 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-[100px] animate-glow-pulse" style={{ animationDelay: '1.5s' }} />
+
         <div className="container mx-auto px-4 py-16 md:py-24 relative">
           <div className="max-w-5xl mx-auto">
             {/* Hero Content */}
             <div className="text-center">
-              <h1 className="text-4xl md:text-6xl font-bold mb-4">
-                <span className="gradient-simfi-text">Your Gateway to</span>
+              <div className="opacity-0 animate-slide-up" style={{ animationFillMode: 'forwards' }}>
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/20 bg-primary/5 mb-6">
+                  <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                  <span className="text-sm text-primary">Live Paper Trading</span>
+                </div>
+              </div>
+
+              <h1 className="text-4xl md:text-6xl font-bold mb-4 opacity-0 animate-slide-up stagger-1" style={{ animationFillMode: 'forwards' }}>
+                <span className="gradient-text">Your Gateway to</span>
                 <br />
                 <span className="text-foreground">Risk-Free DeFi Trading</span>
               </h1>
-              <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
+              <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 opacity-0 animate-slide-up stagger-2" style={{ animationFillMode: 'forwards' }}>
                 Practice trading Solana memecoins with virtual SOL. Master your strategy without financial risk.
               </p>
 
               {/* Google-style Search Bar */}
-              <div className="max-w-2xl mx-auto mb-8">
+              <div className="max-w-2xl mx-auto mb-8 opacity-0 animate-slide-up stagger-3" style={{ animationFillMode: 'forwards' }}>
                 <p className="text-sm text-muted-foreground text-center mb-3">
-                  Please add token contract address or name to trade
+                  Enter a token contract address or name to start trading
                 </p>
-                <div className="relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Search tokens by name or address..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="h-14 pl-12 pr-4 text-base rounded-full border-2 border-border focus:border-primary shadow-lg"
-                    data-testid="input-search-main"
-                  />
+                <div className="relative group">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 via-accent/20 to-primary/20 rounded-full blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                  <div className="relative">
+                    <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder="Search tokens by name or address..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="h-14 pl-14 pr-4 text-base rounded-full bg-card/80 backdrop-blur border-2 border-border/50 focus:border-primary/50 shadow-xl input-glow transition-all"
+                      data-testid="input-search-main"
+                    />
+                  </div>
                 </div>
 
                 {/* Search Results - Shown directly below search bar */}
                 {showSearchResults && (
-                  <div className="mt-6">
+                  <div className="mt-6 animate-fade-in">
                     {isSearching ? (
-                      <Card className="p-8 text-center bg-card/95 backdrop-blur">
+                      <Card className="glass-card p-8 text-center">
                         <Loader2 className="h-8 w-8 mx-auto text-primary animate-spin mb-2" />
                         <p className="text-sm text-muted-foreground">Searching tokens...</p>
                       </Card>
                     ) : hasSearchResults ? (
                       <div className="space-y-2 max-h-96 overflow-y-auto">
-                        {searchResults.results.map((result) => (
+                        {searchResults.results.map((result, index) => (
                           <Card
                             key={result.tokenAddress}
-                            className="p-4 hover-elevate active-elevate-2 cursor-pointer transition-all bg-card/95 backdrop-blur"
+                            className="token-card p-4 cursor-pointer"
                             onClick={() => handleTokenClick(result.tokenAddress)}
                             data-testid={`search-result-${result.tokenAddress}`}
+                            style={{ animationDelay: `${index * 50}ms` }}
                           >
                             <div className="flex items-start gap-3">
                               {result.icon && (
                                 <img
                                   src={result.icon}
                                   alt={result.name}
-                                  className="w-10 h-10 rounded-full shrink-0"
+                                  className="w-10 h-10 rounded-full shrink-0 ring-2 ring-border"
                                   onError={(e) => {
                                     e.currentTarget.style.display = 'none';
                                   }}
@@ -128,7 +144,7 @@ export default function Trade() {
                                   <h3 className="font-bold truncate" data-testid={`text-name-${result.tokenAddress}`}>
                                     {result.name}
                                   </h3>
-                                  <Badge variant="outline" className="text-xs">
+                                  <Badge variant="outline" className="text-xs border-primary/30 text-primary">
                                     {result.symbol}
                                   </Badge>
                                 </div>
@@ -137,8 +153,8 @@ export default function Trade() {
                                 </p>
                                 {result.marketCap !== undefined && result.marketCap > 0 && (
                                   <div className="flex items-center gap-2 mt-1">
-                                    <TrendingUp className="h-3 w-3 text-muted-foreground" />
-                                    <span className="text-sm font-semibold">
+                                    <TrendingUp className="h-3 w-3 text-success" />
+                                    <span className="text-sm font-semibold text-success">
                                       ${result.marketCap >= 1_000_000
                                         ? `${(result.marketCap / 1_000_000).toFixed(2)}M`
                                         : result.marketCap >= 1_000
