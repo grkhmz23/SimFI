@@ -22,18 +22,6 @@ interface TradeModalProps {
   onClose: () => void;
 }
 
-// ✅ NEW: Server quote response type
-interface ServerQuote {
-  quoteId: string;
-  tokenAddress: string;
-  side: 'buy' | 'sell';
-  priceLamports: string;
-  estimatedOutput: string;
-  expiresAt: number;
-  expiresInMs: number;
-  priceImpactBps: number;
-}
-
 const buySchema = z.object({
   solAmount: z.number().positive('Amount must be positive'),
 });
@@ -172,7 +160,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
 
   const profitLossBigInt = !isBuying ? sellValueBigInt - proportionalCostBigInt : BigInt(0);
 
-  // ✅ NEW: Trade mutation using server-authoritative quotes
+  // ✅ Trade mutation - server enforces price (no client manipulation possible)
   const tradeMutation = useMutation({
     mutationFn: async (data: { 
       side: 'buy' | 'sell'; 
@@ -183,42 +171,20 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       tokenName?: string;
       tokenSymbol?: string;
     }) => {
-      // Step 1: Get server-authoritative quote
-      const quoteParams = new URLSearchParams({
-        token: data.tokenAddress,
-        side: data.side,
-      });
-
-      if (data.side === 'buy' && data.amountSol) {
-        quoteParams.set('amountSol', data.amountSol);
-      } else if (data.side === 'sell' && data.amountTokens) {
-        quoteParams.set('amountTokens', data.amountTokens);
-      }
-
-      console.log(`🔄 Getting ${data.side} quote from server...`);
-      const quoteResponse = await fetch(`/api/quote?${quoteParams}`, {
-        credentials: 'include',
-      });
-
-      if (!quoteResponse.ok) {
-        const err = await quoteResponse.json();
-        throw new Error(err.error || 'Failed to get quote');
-      }
-
-      const quote: ServerQuote = await quoteResponse.json();
-      console.log('✅ Got server quote:', quote);
-
-      // Step 2: Execute trade with quoteId (server validates price)
+      // Execute trade directly - server fetches price server-side (anti-cheat)
       if (data.side === 'buy') {
+        console.log(`🛒 Executing BUY: ${data.amountSol} SOL for ${data.tokenSymbol}`);
         return apiRequest('POST', '/api/trades/buy', {
-          quoteId: quote.quoteId,
+          tokenAddress: data.tokenAddress,
           tokenName: data.tokenName,
           tokenSymbol: data.tokenSymbol,
+          solAmount: data.amountSol,
         });
       } else {
+        console.log(`💰 Executing SELL: ${data.amountTokens} tokens of position ${data.positionId}`);
         return apiRequest('POST', '/api/trades/sell', {
-          quoteId: quote.quoteId,
           positionId: data.positionId,
+          amountLamports: data.amountTokens, // Server validates this
         });
       }
     },
@@ -265,8 +231,8 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       return;
     }
 
-    // ✅ NEW: Use quote-based trade (no price from client!)
-    console.log('🛒 BUY TRANSACTION STARTING (quote-based)');
+    // Execute buy trade (server handles price)
+    console.log('🛒 BUY TRANSACTION:', data.solAmount, 'SOL for', activeToken.symbol || symbol);
     tradeMutation.mutate({
       side: 'buy',
       tokenAddress: tokenAddress,
@@ -282,8 +248,8 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     // Calculate sell amount in token units
     const sellAmountLamports = (toBigInt(position.amount) * BigInt(data.percentage)) / BigInt(100);
 
-    // ✅ NEW: Use quote-based trade (no price from client!)
-    console.log('💰 SELL TRANSACTION STARTING (quote-based)');
+    // Execute sell trade (server handles price)
+    console.log('💰 SELL TRANSACTION:', data.percentage + '%', 'of position', position.id);
     tradeMutation.mutate({
       side: 'sell',
       tokenAddress: position.tokenAddress,
