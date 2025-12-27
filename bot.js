@@ -1,4 +1,8 @@
-// CRITICAL: Log immediately before any imports to ensure bot.js is executing
+// ============================================================================
+// SIMFI TELEGRAM BOT - GOD MODE VERSION
+// Combined best practices from multiple security audits
+// ============================================================================
+
 console.log('[BOT] ✅ bot.js file is executing');
 
 import { Telegraf, Markup } from 'telegraf';
@@ -6,12 +10,16 @@ import axios from 'axios';
 
 console.log('[BOT] ✅ Imports completed');
 
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
 // Use dev token in development, production token in production
 const BOT_TOKEN = process.env.NODE_ENV === 'development' 
   ? process.env.TELEGRAM_BOT_TOKEN_DEV 
   : process.env.TELEGRAM_BOT_TOKEN;
 
-// ✅ SECURITY FIX: Never use Telegram token for internal API auth
+// ✅ SECURITY: Never use Telegram token for internal API auth
 // Telegram tokens leak easily (logs, screenshots, env dumps)
 const DEV_BOT_SECRET = 'simfi-dev-bot-secret-change-in-production';
 
@@ -22,10 +30,13 @@ if (process.env.NODE_ENV === 'production') {
     console.error('   This is required for secure communication with the API server');
     process.exit(1);
   }
+  if (process.env.BOT_API_SECRET.length < 20) {
+    console.error('❌ FATAL: BOT_API_SECRET must be at least 20 characters');
+    process.exit(1);
+  }
   BOT_API_SECRET = process.env.BOT_API_SECRET;
 } else {
   // Development: Use BOT_API_SECRET if set, otherwise use dev-only default
-  // NEVER fall back to Telegram token
   BOT_API_SECRET = process.env.BOT_API_SECRET || DEV_BOT_SECRET;
 
   if (!process.env.BOT_API_SECRET) {
@@ -63,13 +74,14 @@ try {
 }
 
 // ============================================================================
-// ✅ FIX: SESSION MANAGEMENT WITH TTL (prevents memory leak)
+// ✅ SESSION MANAGEMENT WITH TTL (prevents memory leak)
 // ============================================================================
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 class SessionManager {
-  constructor() {
+  constructor(ttlMs = SESSION_TTL_MS) {
+    this.ttlMs = ttlMs;
     this.sessions = new Map();
 
     // Cleanup expired sessions every hour
@@ -78,30 +90,32 @@ class SessionManager {
     }, 60 * 60 * 1000);
 
     // Don't prevent process exit
-    this.cleanupInterval.unref();
+    if (typeof this.cleanupInterval.unref === 'function') {
+      this.cleanupInterval.unref();
+    }
   }
 
   set(userId, data) {
     this.sessions.set(userId, {
-      ...data,
+      value: data,
       lastSeen: Date.now()
     });
   }
 
   get(userId) {
-    const session = this.sessions.get(userId);
-    if (!session) return null;
+    const record = this.sessions.get(userId);
+    if (!record) return null;
 
     // Check if expired
     const now = Date.now();
-    if (now - session.lastSeen > SESSION_TTL_MS) {
+    if (now - record.lastSeen > this.ttlMs) {
       this.sessions.delete(userId);
       return null;
     }
 
     // Update last seen
-    session.lastSeen = now;
-    return session;
+    record.lastSeen = now;
+    return record.value;
   }
 
   delete(userId) {
@@ -112,8 +126,8 @@ class SessionManager {
     const now = Date.now();
     let cleaned = 0;
 
-    for (const [userId, session] of this.sessions.entries()) {
-      if (now - session.lastSeen > SESSION_TTL_MS) {
+    for (const [userId, record] of this.sessions.entries()) {
+      if (now - record.lastSeen > this.ttlMs) {
         this.sessions.delete(userId);
         cleaned++;
       }
@@ -125,21 +139,168 @@ class SessionManager {
   }
 }
 
-const sessionManager = new SessionManager();
-
-// Wrapper to maintain same interface
-const userSessions = {
-  get: (userId) => sessionManager.get(userId),
-  set: (userId, data) => sessionManager.set(userId, data),
-  delete: (userId) => sessionManager.delete(userId)
-};
-
+const userSessions = new SessionManager();
 const userStates = new Map();
 const pendingOperations = new Map(); // Track pending operations to prevent concurrent trades
 let cachedSolPrice = 0;
 let solPriceLastUpdated = 0;
 
-// Global error handler for unhandled errors
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+// ✅ Escape Markdown special characters to prevent formatting issues
+const escapeMarkdown = (input) => {
+  const s = String(input ?? '');
+  return s.replace(/([_*\[\]()`])/g, '\\$1');
+};
+
+// Helper to detect auth states (for log redaction)
+const isAuthState = (state) => {
+  return state === 'awaiting_login_credentials' || 
+         state === 'awaiting_registration' || 
+         state === 'login_password' || 
+         state === 'register_password';
+};
+
+const formatSol = (lamports) => {
+  const sol = Number(lamports) / 1_000_000_000;
+  return sol.toFixed(4);
+};
+
+const formatTokenAmount = (lamports, decimals = 6) => {
+  const tokens = Number(lamports) / (10 ** decimals);
+  return tokens.toFixed(2);
+};
+
+// Convert lamports (SOL) to USD
+const formatSolToUsd = (lamports, solPrice = cachedSolPrice) => {
+  if (!solPrice || !Number.isFinite(solPrice)) return 'N/A';
+  const sol = Number(lamports) / 1_000_000_000;
+  const usd = sol * solPrice;
+  if (!Number.isFinite(usd)) return 'N/A';
+  return `$${usd.toFixed(2)}`;
+};
+
+// Get current SOL price - cached for 5 seconds to avoid repeated API calls
+const getSolPrice = async (token) => {
+  const now = Date.now();
+  if (cachedSolPrice > 0 && (now - solPriceLastUpdated) < 5000) {
+    return cachedSolPrice;
+  }
+
+  const result = await apiRequest('/api/solana/price', 'GET', null, token);
+  if (result.success && result.data?.price) {
+    cachedSolPrice = result.data.price;
+    solPriceLastUpdated = now;
+    return cachedSolPrice;
+  }
+
+  console.warn('Failed to fetch SOL price:', result.error || 'unavailable');
+  return cachedSolPrice || null; // No magic fallback
+};
+
+// Helper function to detect Solana token addresses
+const isSolanaAddress = (text) => {
+  // Solana addresses are base58 encoded, typically 32-44 characters
+  // They only contain: 1-9, A-H, J-N, P-Z, a-k, m-z (no 0, O, I, l)
+  const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  return base58Regex.test(text.trim());
+};
+
+// ✅ IMPROVED: Deterministic idempotency key using Telegram update_id
+// This ensures the same button press always generates the same key
+const generateIdempotencyKey = (ctx, action, data = '') => {
+  const userId = ctx.from?.id || 'unknown';
+  const updateId = ctx.update?.update_id || Date.now();
+  const sanitizedData = String(data).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 50);
+  return `tg_${userId}_${updateId}_${action}_${sanitizedData}`.substring(0, 256);
+};
+
+// ============================================================================
+// API REQUEST HELPER
+// ============================================================================
+
+const apiRequest = async (endpoint, method = 'GET', data = null, token = null, isBotRequest = false, extraHeaders = {}) => {
+  try {
+    const headers = { ...extraHeaders };
+
+    // Use standard Bearer token authentication
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // Add bot secret for telegram session endpoints
+    if (isBotRequest) {
+      headers['x-bot-secret'] = BOT_API_SECRET;
+    }
+
+    const config = {
+      method,
+      url: `${API_BASE_URL}${endpoint}`,
+      headers,
+      withCredentials: false,
+      timeout: 15000 // 15 second timeout
+    };
+
+    if (data) {
+      config.data = data;
+    }
+
+    const response = await axios(config);
+
+    if (response.data === undefined || response.data === null) {
+      console.warn(`⚠️ API returned empty response for ${endpoint}`);
+    }
+
+    return { 
+      success: true, 
+      data: response.data,
+      headers: response.headers 
+    };
+  } catch (error) {
+    // Network errors
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT') {
+      console.error('❌ Network Error:', error.code, error.message);
+      return {
+        success: false,
+        error: 'Network error - cannot reach server. Please try again.'
+      };
+    }
+
+    // Timeout errors
+    if (error.code === 'ECONNABORTED') {
+      console.error('❌ Request timeout:', endpoint);
+      return {
+        success: false,
+        error: 'Request timeout - server took too long to respond.'
+      };
+    }
+
+    console.error('API Error:', error.response?.data || error.message);
+
+    // Robust error message extraction
+    let errorMessage = 'Unknown error occurred';
+    if (error.response?.data?.error) {
+      errorMessage = error.response.data.error;
+    } else if (error.response?.data?.message) {
+      errorMessage = error.response.data.message;
+    } else if (typeof error.message === 'string') {
+      errorMessage = error.message;
+    }
+
+    return { 
+      success: false, 
+      error: errorMessage
+    };
+  }
+};
+
+// ============================================================================
+// ERROR HANDLING & MIDDLEWARE
+// ============================================================================
+
+// Global error handler
 bot.catch((err, ctx) => {
   console.error('❌ Telegraf error:', err.message);
   try {
@@ -149,20 +310,15 @@ bot.catch((err, ctx) => {
   }
 });
 
-// Helper to detect auth states (for log redaction)
-const isAuthState = (state) => state === 'awaiting_login_credentials' || state === 'awaiting_registration' || state === 'login_password' || state === 'register_password';
-
-// Debug middleware to log all updates
+// Debug middleware with credential redaction
 bot.use(async (ctx, next) => {
   const updateType = ctx.updateType;
   const userId = ctx.from?.id;
   const username = ctx.from?.username || ctx.from?.first_name;
 
   console.log(`[MIDDLEWARE] 📨 Received update: ${updateType} from user ${userId} (@${username})`);
-  console.log(`[MIDDLEWARE] Context keys: ${Object.keys(ctx).join(', ').substring(0, 200)}`);
 
   if (ctx.message?.text) {
-    // ✅ FIX: Redact sensitive data in logs
     const st = userStates.get(userId);
     const redacted = st && isAuthState(st.state);
     console.log(`[MIDDLEWARE]    Message text: "${redacted ? '[REDACTED]' : ctx.message.text}"`);
@@ -172,7 +328,6 @@ bot.use(async (ctx, next) => {
   }
 
   try {
-    console.log(`[MIDDLEWARE] ↳ Calling next middleware...`);
     await next();
     console.log(`[MIDDLEWARE] ✅ Finished processing ${updateType}`);
   } catch (err) {
@@ -199,130 +354,9 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000);
 
-const formatSol = (lamports) => {
-  const sol = Number(lamports) / 1_000_000_000;
-  return sol.toFixed(4);
-};
-
-const formatTokenAmount = (lamports, decimals = 6) => {
-  const tokens = Number(lamports) / (10 ** decimals);
-  return tokens.toFixed(2);
-};
-
-// Convert lamports (SOL) to USD
-const formatSolToUsd = (lamports, solPrice = cachedSolPrice) => {
-  const sol = Number(lamports) / 1_000_000_000;
-  const usd = sol * solPrice;
-  return `$${usd.toFixed(2)}`;
-};
-
-// Get current SOL price - cached for 5 seconds to avoid repeated API calls
-const getSolPrice = async (token) => {
-  const now = Date.now();
-  if (cachedSolPrice > 0 && (now - solPriceLastUpdated) < 5000) {
-    return cachedSolPrice;
-  }
-
-  const result = await apiRequest('/api/solana/price', 'GET', null, token);
-  if (result.success && result.data.price) {
-    cachedSolPrice = result.data.price;
-    solPriceLastUpdated = now;
-    return result.data.price;
-  }
-  return cachedSolPrice || 138; // Fallback to last known price
-};
-
-// Helper function to detect Solana token addresses
-const isSolanaAddress = (text) => {
-  // Solana addresses are base58 encoded, typically 32-44 characters
-  // They only contain: 1-9, A-H, J-N, P-Z, a-k, m-z (no 0, O, I, l)
-  const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-  return base58Regex.test(text.trim());
-};
-
-// ✅ FIX: Generate idempotency key for trade operations
-const generateIdempotencyKey = (prefix, userId, data) => {
-  const timestamp = Date.now();
-  const key = `${prefix}_${userId}_${data}_${timestamp}`;
-  // Sanitize: only allow alphanumeric, dashes, underscores
-  return key.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 256);
-};
-
-const apiRequest = async (endpoint, method = 'GET', data = null, token = null, isBotRequest = false, extraHeaders = {}) => {
-  try {
-    const headers = { ...extraHeaders };
-
-    // Use standard Bearer token authentication (not Cookie)
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    // Add bot secret for telegram session endpoints
-    if (isBotRequest) {
-      headers['x-bot-secret'] = BOT_API_SECRET;
-    }
-
-    const config = {
-      method,
-      url: `${API_BASE_URL}${endpoint}`,
-      headers,
-      withCredentials: false,
-      timeout: 15000 // 15 second timeout for faster responses
-    };
-
-    if (data) {
-      config.data = data;
-    }
-
-    const response = await axios(config);
-
-    // Validate response has data (Bug #18)
-    if (response.data === undefined || response.data === null) {
-      console.warn(`⚠️ API returned empty response for ${endpoint}`);
-    }
-
-    return { 
-      success: true, 
-      data: response.data,
-      headers: response.headers 
-    };
-  } catch (error) {
-    // Better error handling for network vs API errors (Bug #14)
-    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT') {
-      console.error('❌ Network Error:', error.code, error.message);
-      return {
-        success: false,
-        error: 'Network error - cannot reach server. Please try again.'
-      };
-    }
-
-    // Handle timeout errors
-    if (error.code === 'ECONNABORTED') {
-      console.error('❌ Request timeout:', endpoint);
-      return {
-        success: false,
-        error: 'Request timeout - server took too long to respond.'
-      };
-    }
-
-    console.error('API Error:', error.response?.data || error.message);
-
-    // Robust error message extraction (Bug #13)
-    let errorMessage = 'Unknown error occurred';
-    if (error.response?.data?.error) {
-      errorMessage = error.response.data.error;
-    } else if (error.response?.data?.message) {
-      errorMessage = error.response.data.message;
-    } else if (typeof error.message === 'string') {
-      errorMessage = error.message;
-    }
-
-    return { 
-      success: false, 
-      error: errorMessage
-    };
-  }
-};
+// ============================================================================
+// UI HELPERS
+// ============================================================================
 
 const getMainMenuKeyboard = (balance) => {
   return Markup.inlineKeyboard([
@@ -350,7 +384,6 @@ const showMainMenu = async (ctx) => {
     return ctx.reply('❌ Session expired. Please /start to login again.');
   }
 
-  // Fetch latest balance
   const result = await apiRequest('/api/auth/profile', 'GET', null, session.token);
 
   if (!result.success) {
@@ -361,7 +394,7 @@ const showMainMenu = async (ctx) => {
   session.balance = BigInt(balance);
 
   return ctx.reply(
-    `🎮 *SimFi Trading Bot*\n\nChoose an action:`,
+    `🎮 *SimFi Trading Bot*\n\nWelcome back, *${escapeMarkdown(result.data.username)}*!`,
     {
       parse_mode: 'Markdown',
       ...getMainMenuKeyboard(balance)
@@ -372,6 +405,11 @@ const showMainMenu = async (ctx) => {
 // Helper function to show buy menu for a token
 const showBuyMenu = async (ctx, tokenAddress, session) => {
   const userId = ctx.from.id;
+
+  // Validate address format first
+  if (!isSolanaAddress(tokenAddress)) {
+    return ctx.reply('❌ Invalid Solana token address. Please paste a valid token mint address (base58, 32–44 chars).');
+  }
 
   let loadingMsg;
   try {
@@ -393,6 +431,16 @@ const showBuyMenu = async (ctx, tokenAddress, session) => {
 
   if (!result.success) {
     userStates.delete(userId);
+
+    // Better error message for liquidity issues
+    if (result.error && result.error.includes('liquidity')) {
+      return ctx.reply(
+        `❌ This token doesn't meet liquidity requirements.\n\n` +
+        `Minimum: $1,000 liquidity, $500 daily volume\n\n` +
+        `Try a more established token.`
+      );
+    }
+
     return ctx.reply(
       '❌ Could not fetch token info.\n\n' +
       'This token may not be listed on DexScreener or may not have a Solana trading pair.\n\n' +
@@ -404,7 +452,7 @@ const showBuyMenu = async (ctx, tokenAddress, session) => {
   const priceLamports = BigInt(token.price);
   const priceInSol = Number(priceLamports) / 1_000_000_000;
   const solPrice = await getSolPrice(session.token);
-  const priceInUsd = priceInSol * solPrice;
+  const priceInUsd = solPrice ? (priceInSol * solPrice) : null;
 
   // Store token data in user state
   userStates.set(userId, {
@@ -418,10 +466,12 @@ const showBuyMenu = async (ctx, tokenAddress, session) => {
     lastActivity: Date.now()
   });
 
+  const priceUsdStr = priceInUsd ? `($${priceInUsd.toFixed(6)})` : '';
+
   await ctx.reply(
-    `📊 *${token.symbol}*\n` +
-    `${token.name}\n\n` +
-    `💰 Price: ${priceInSol.toFixed(9)} SOL ($${priceInUsd.toFixed(6)})\n` +
+    `📊 *${escapeMarkdown(token.symbol)}*\n` +
+    `${escapeMarkdown(token.name)}\n\n` +
+    `💰 Price: ${priceInSol.toFixed(9)} SOL ${priceUsdStr}\n` +
     `⚠️ Note: ~0.5% slippage will be applied\n\n` +
     `How much SOL do you want to spend?`,
     {
@@ -443,7 +493,7 @@ const showBuyMenu = async (ctx, tokenAddress, session) => {
 };
 
 // ============================================================================
-// BOT COMMANDS AND HANDLERS
+// BOT COMMANDS
 // ============================================================================
 
 bot.command('start', async (ctx) => {
@@ -471,7 +521,6 @@ bot.command('start', async (ctx) => {
     const profileTest = await apiRequest('/api/auth/profile', 'GET', null, dbSession.token);
 
     if (profileTest.success) {
-      // Restore session
       let balanceValue;
       if (typeof dbSession.balance === 'bigint') {
         balanceValue = dbSession.balance;
@@ -509,6 +558,10 @@ bot.command('start', async (ctx) => {
     }
   );
 });
+
+// ============================================================================
+// AUTH ACTIONS
+// ============================================================================
 
 bot.action('login', async (ctx) => {
   await ctx.answerCbQuery();
@@ -548,6 +601,27 @@ bot.action('register', async (ctx) => {
   );
 });
 
+bot.action('logout', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id;
+
+  // Delete session from database
+  const telegramUserId = userId.toString();
+  await apiRequest(`/api/telegram/session/${telegramUserId}`, 'DELETE', null, null, true);
+
+  userSessions.delete(userId);
+  userStates.delete(userId);
+
+  await ctx.reply(
+    '👋 You have been logged out.\n\n' +
+    'Use /start to login again.'
+  );
+});
+
+// ============================================================================
+// TRADING ACTIONS
+// ============================================================================
+
 bot.action('buy', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = ctx.from.id;
@@ -557,7 +631,6 @@ bot.action('buy', async (ctx) => {
     return ctx.reply('❌ Session expired. Please /start to login again.');
   }
 
-  // Check for pending operations
   if (pendingOperations.get(userId)) {
     return ctx.reply('⏳ You already have a trade in progress. Please wait for it to complete.');
   }
@@ -574,58 +647,108 @@ bot.action('buy', async (ctx) => {
   );
 });
 
-bot.action('portfolio', async (ctx) => {
+bot.action('buy_custom', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = ctx.from.id;
+
+  const state = userStates.get(userId);
+  if (!state || !state.token) {
+    return ctx.reply('❌ Session expired. Please try again.');
+  }
+
+  userStates.set(userId, {
+    ...state,
+    state: 'awaiting_buy_amount_custom',
+    lastActivity: Date.now()
+  });
+
+  await ctx.reply(
+    '✏️ Enter the amount of SOL you want to spend:\n\n' +
+    'Example: 0.25',
+    { parse_mode: 'Markdown' }
+  );
+});
+
+// ✅ CRITICAL FIX: Quick buy buttons handler with race condition protection
+bot.action(/^buy_amt:(.+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const amount = parseFloat(ctx.match[1]);
+  const userId = ctx.from.id;
+  const state = userStates.get(userId);
   const session = userSessions.get(userId);
 
   if (!session) {
+    userStates.delete(userId);
     return ctx.reply('❌ Session expired. Please /start to login again.');
   }
 
-  const result = await apiRequest('/api/trades/positions', 'GET', null, session.token);
-
-  if (!result.success) {
-    return ctx.reply('❌ Error: ' + result.error);
+  if (!state || !state.token) {
+    return ctx.reply('❌ Session expired. Please try again.');
   }
 
-  const positions = result.data.positions || [];
+  // ✅ CRITICAL: Prevent race condition - check for pending operations
+  if (pendingOperations.get(userId)) {
+    return ctx.reply('⏳ You already have a trade in progress. Please wait for it to complete.');
+  }
 
-  if (positions.length === 0) {
-    return ctx.reply(
-      '📊 *Your Portfolio*\n\n' +
-      'You have no open positions.\n\n' +
-      'Use /start to buy tokens!',
+  // Mark operation as pending
+  pendingOperations.set(userId, true);
+
+  try {
+    const loadingMsg = await ctx.reply('⏳ Processing buy order...');
+
+    // ✅ Deterministic idempotency key using update_id
+    const idempotencyKey = generateIdempotencyKey(ctx, 'buy', `${state.tokenAddress}_${amount}`);
+
+    // ✅ Only send what server needs (server fetches price itself)
+    const result = await apiRequest('/api/trades/buy', 'POST', {
+      tokenAddress: state.tokenAddress,
+      tokenName: state.token.name,
+      tokenSymbol: state.token.symbol,
+      solAmount: amount,
+    }, session.token, false, {
+      'x-idempotency-key': idempotencyKey
+    });
+
+    try {
+      if (loadingMsg?.message_id) {
+        await ctx.deleteMessage(loadingMsg.message_id);
+      }
+    } catch (e) {
+      console.log('ℹ️ Could not delete loading message:', e.message);
+    }
+
+    if (!result.success) {
+      userStates.delete(userId);
+
+      // Better error message for liquidity issues
+      if (result.error && result.error.includes('liquidity')) {
+        return ctx.reply(
+          `❌ This token doesn't meet liquidity requirements.\n\n` +
+          `Minimum: $1,000 liquidity, $500 daily volume\n\n` +
+          `Try a more established token.`
+        );
+      }
+
+      return ctx.reply('❌ Error: ' + result.error);
+    }
+
+    userStates.delete(userId);
+    const tokenAmount = result.data.tokensReceived || 0;
+    const decimals = result.data.decimals || 6;
+
+    await ctx.reply(
+      `✅ Successfully bought *${escapeMarkdown(state.token.symbol)}*!\n\n` +
+      `Amount: *${formatTokenAmount(tokenAmount, decimals)} ${escapeMarkdown(state.token.symbol)}*\n` +
+      `Spent: *${amount} SOL*`,
       { parse_mode: 'Markdown' }
     );
+
+    await showMainMenu(ctx);
+  } finally {
+    // Always clear pending operation
+    pendingOperations.delete(userId);
   }
-
-  let message = '📊 *Your Portfolio*\n\n';
-  let totalValue = BigInt(0);
-
-  for (const pos of positions) {
-    const currentValue = BigInt(pos.currentValue || 0);
-    const costBasis = BigInt(pos.solSpent || 0);
-    const profitLoss = currentValue - costBasis;
-    const profitPercent = costBasis > 0n
-      ? (Number(profitLoss) / Number(costBasis)) * 100
-      : 0;
-
-    const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
-    const profitSign = profitLoss > 0n ? '+' : '';
-
-    message += `${profitEmoji} *${pos.tokenSymbol}*\n`;
-    message += `Amount: ${formatTokenAmount(pos.amount, pos.decimals || 6)} ${pos.tokenSymbol}\n`;
-    message += `Value: ${formatSol(currentValue)} SOL\n`;
-    message += `P/L: ${profitSign}${formatSol(profitLoss)} SOL (${profitSign}${profitPercent.toFixed(2)}%)\n\n`;
-
-    totalValue += currentValue;
-  }
-
-  message += `💰 *Total Value:* ${formatSol(totalValue)} SOL`;
-
-  await ctx.reply(message, { parse_mode: 'Markdown' });
-  await showMainMenu(ctx);
 });
 
 bot.action('sell', async (ctx) => {
@@ -637,7 +760,6 @@ bot.action('sell', async (ctx) => {
     return ctx.reply('❌ Session expired. Please /start to login again.');
   }
 
-  // Check for pending operations
   if (pendingOperations.get(userId)) {
     return ctx.reply('⏳ You already have a trade in progress. Please wait for it to complete.');
   }
@@ -692,19 +814,16 @@ bot.action(/^sell_pos:(.+)$/, async (ctx) => {
     return ctx.reply('❌ Session expired. Please /start to login again.');
   }
 
-  // Check for pending operations
   if (pendingOperations.get(userId)) {
     return ctx.reply('⏳ You already have a trade in progress. Please wait for it to complete.');
   }
 
-  // Mark operation as pending
   pendingOperations.set(userId, true);
 
   try {
     const loadingMsg = await ctx.reply('⏳ Processing sell order...');
 
-    // ✅ FIX: Add idempotency key
-    const idempotencyKey = generateIdempotencyKey('sell', userId, positionId);
+    const idempotencyKey = generateIdempotencyKey(ctx, 'sell', positionId);
 
     const result = await apiRequest('/api/trades/sell', 'POST', {
       positionId,
@@ -717,7 +836,7 @@ bot.action(/^sell_pos:(.+)$/, async (ctx) => {
         await ctx.deleteMessage(loadingMsg.message_id);
       }
     } catch (e) {
-      console.log('ℹ️ Could not delete loading message (sell):', e.message);
+      console.log('ℹ️ Could not delete loading message:', e.message);
     }
 
     if (!result.success) {
@@ -738,9 +857,66 @@ bot.action(/^sell_pos:(.+)$/, async (ctx) => {
 
     await showMainMenu(ctx);
   } finally {
-    // Always clear pending operation
     pendingOperations.delete(userId);
   }
+});
+
+// ============================================================================
+// PORTFOLIO & HISTORY
+// ============================================================================
+
+bot.action('portfolio', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+
+  if (!session) {
+    return ctx.reply('❌ Session expired. Please /start to login again.');
+  }
+
+  const result = await apiRequest('/api/trades/positions', 'GET', null, session.token);
+
+  if (!result.success) {
+    return ctx.reply('❌ Error: ' + result.error);
+  }
+
+  const positions = result.data.positions || [];
+
+  if (positions.length === 0) {
+    return ctx.reply(
+      '📊 *Your Portfolio*\n\n' +
+      'You have no open positions.\n\n' +
+      'Use the Buy button to start trading!',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  let message = '📊 *Your Portfolio*\n\n';
+  let totalValue = BigInt(0);
+
+  for (const pos of positions) {
+    const currentValue = BigInt(pos.currentValue || 0);
+    const costBasis = BigInt(pos.solSpent || 0);
+    const profitLoss = currentValue - costBasis;
+    const profitPercent = costBasis > 0n
+      ? (Number(profitLoss) / Number(costBasis)) * 100
+      : 0;
+
+    const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
+    const profitSign = profitLoss > 0n ? '+' : '';
+
+    message += `${profitEmoji} *${escapeMarkdown(pos.tokenSymbol)}*\n`;
+    message += `Amount: ${formatTokenAmount(pos.amount, pos.decimals || 6)} ${escapeMarkdown(pos.tokenSymbol)}\n`;
+    message += `Value: ${formatSol(currentValue)} SOL\n`;
+    message += `P/L: ${profitSign}${formatSol(profitLoss)} SOL (${profitSign}${profitPercent.toFixed(2)}%)\n\n`;
+
+    totalValue += currentValue;
+  }
+
+  message += `💰 *Total Value:* ${formatSol(totalValue)} SOL`;
+
+  await ctx.reply(message, { parse_mode: 'Markdown' });
+  await showMainMenu(ctx);
 });
 
 bot.action('history', async (ctx) => {
@@ -775,7 +951,7 @@ bot.action('history', async (ctx) => {
     const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
     const profitSign = profitLoss > 0n ? '+' : '';
 
-    message += `${profitEmoji} *${trade.tokenSymbol}*\n`;
+    message += `${profitEmoji} *${escapeMarkdown(trade.tokenSymbol)}*\n`;
     message += `Amount: ${formatTokenAmount(trade.amount, trade.decimals || 6)}\n`;
     message += `P/L: ${profitSign}${formatSol(profitLoss)} SOL\n`;
     message += `Date: ${new Date(trade.closedAt).toLocaleDateString()}\n\n`;
@@ -784,6 +960,10 @@ bot.action('history', async (ctx) => {
   await ctx.reply(message, { parse_mode: 'Markdown' });
   await showMainMenu(ctx);
 });
+
+// ============================================================================
+// LEADERBOARD (✅ FIXED ENDPOINTS)
+// ============================================================================
 
 bot.action('leaderboard', async (ctx) => {
   await ctx.answerCbQuery();
@@ -805,7 +985,7 @@ bot.action('leaderboard', async (ctx) => {
 bot.action('lb_overall', async (ctx) => {
   await ctx.answerCbQuery();
 
-  // ✅ FIX: Use correct endpoint
+  // ✅ FIXED: Correct endpoint
   const result = await apiRequest('/api/leaderboard/overall', 'GET');
 
   if (!result.success) {
@@ -819,12 +999,15 @@ bot.action('lb_overall', async (ctx) => {
   }
 
   let message = '🏆 *Overall Leaderboard*\n\n';
+  const medals = ['🥇', '🥈', '🥉'];
 
-  for (const leader of leaders.slice(0, 10)) {
+  for (let i = 0; i < Math.min(leaders.length, 10); i++) {
+    const leader = leaders[i];
     const profit = BigInt(leader.totalProfit || 0);
     const profitSign = profit > 0n ? '+' : '';
+    const medal = medals[i] || `${i + 1}.`;
 
-    message += `${leader.rank}. *${leader.username}*\n`;
+    message += `${medal} *${escapeMarkdown(leader.username)}*\n`;
     message += `   Profit: ${profitSign}${formatSol(profit)} SOL\n\n`;
   }
 
@@ -834,7 +1017,7 @@ bot.action('lb_overall', async (ctx) => {
 bot.action('lb_period', async (ctx) => {
   await ctx.answerCbQuery();
 
-  // ✅ FIX: Use correct endpoint
+  // ✅ FIXED: Correct endpoint
   const result = await apiRequest('/api/leaderboard/current-period', 'GET');
 
   if (!result.success) {
@@ -848,67 +1031,38 @@ bot.action('lb_period', async (ctx) => {
   }
 
   let message = '📅 *Current Period Leaderboard*\n\n';
+  const medals = ['🥇', '🥈', '🥉'];
 
-  for (const leader of leaders.slice(0, 10)) {
-    const profit = BigInt(leader.periodProfit || 0);
+  for (let i = 0; i < Math.min(leaders.length, 10); i++) {
+    const leader = leaders[i];
+    const profit = BigInt(leader.periodProfit || leader.totalProfit || 0);
     const profitSign = profit > 0n ? '+' : '';
+    const medal = medals[i] || `${i + 1}.`;
 
-    message += `${leader.rank}. *${leader.username}*\n`;
+    message += `${medal} *${escapeMarkdown(leader.username)}*\n`;
     message += `   Profit: ${profitSign}${formatSol(profit)} SOL\n\n`;
   }
 
   await ctx.reply(message, { parse_mode: 'Markdown' });
 });
 
-bot.action('logout', async (ctx) => {
-  await ctx.answerCbQuery();
-  const userId = ctx.from.id;
-
-  // Delete session from database
-  const telegramUserId = userId.toString();
-  await apiRequest(`/api/telegram/session/${telegramUserId}`, 'DELETE', null, null, true);
-
-  userSessions.delete(userId);
-  userStates.delete(userId);
-
-  await ctx.reply(
-    '👋 You have been logged out.\n\n' +
-    'Use /start to login again.'
-  );
-});
+// ============================================================================
+// MISC ACTIONS
+// ============================================================================
 
 bot.action('main_menu', async (ctx) => {
   await ctx.answerCbQuery();
   await showMainMenu(ctx);
 });
 
-bot.action('buy_custom', async (ctx) => {
-  await ctx.answerCbQuery();
-  const userId = ctx.from.id;
-
-  const state = userStates.get(userId);
-  if (!state || !state.token) {
-    return ctx.reply('❌ Session expired. Please try again.');
-  }
-
-  userStates.set(userId, {
-    ...state,
-    state: 'awaiting_buy_amount_custom',
-    lastActivity: Date.now()
-  });
-
-  await ctx.reply(
-    '✏️ Enter the amount of SOL you want to spend:\n\n' +
-    'Example: 0.25',
-    { parse_mode: 'Markdown' }
-  );
-});
-
 bot.action('noop', async (ctx) => {
   await ctx.answerCbQuery();
 });
 
-// Handle text messages
+// ============================================================================
+// TEXT MESSAGE HANDLER
+// ============================================================================
+
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
   const text = ctx.message.text;
@@ -918,6 +1072,7 @@ bot.on('text', async (ctx) => {
     return ctx.reply('Please use /start to begin.');
   }
 
+  // Registration handler
   if (state.state === 'awaiting_registration') {
     const parts = text.split(/\s+/);
 
@@ -945,11 +1100,26 @@ bot.on('text', async (ctx) => {
         await ctx.deleteMessage(loadingMsg.message_id);
       }
     } catch (e) {
-      console.log('ℹ️ Could not delete loading message (register):', e.message);
+      console.log('ℹ️ Could not delete loading message:', e.message);
     }
 
     if (!result.success) {
       userStates.delete(userId);
+
+      const errorMsg = result.error || '';
+      if (errorMsg.includes('already registered') || errorMsg.includes('Email already')) {
+        return ctx.reply(
+          `❌ Registration failed: This email is already registered!\n\n` +
+          `💡 Use Login if you already have an account.`
+        );
+      }
+      if (errorMsg.includes('already taken') || errorMsg.includes('Username already')) {
+        return ctx.reply(
+          `❌ Registration failed: This username is already taken!\n\n` +
+          `💡 Try a different username.`
+        );
+      }
+
       return ctx.reply('❌ Registration failed: ' + result.error);
     }
 
@@ -985,14 +1155,16 @@ bot.on('text', async (ctx) => {
 
     await ctx.reply(
       `✅ *Registration successful!*\n\n` +
-      `Welcome, ${user.username}!\n` +
+      `Welcome, *${escapeMarkdown(user.username)}*!\n` +
       `💰 Starting balance: ${formatSol(user.balance)} SOL`,
       { parse_mode: 'Markdown' }
     );
 
     await showMainMenu(ctx);
+    return;
   }
 
+  // Login handler
   if (state.state === 'awaiting_login_credentials') {
     const parts = text.split(/\s+/);
 
@@ -1016,6 +1188,14 @@ bot.on('text', async (ctx) => {
         password
       }, null, true);
 
+      try {
+        if (loadingMsg?.message_id) {
+          await ctx.deleteMessage(loadingMsg.message_id);
+        }
+      } catch (e) {
+        console.log('ℹ️ Could not delete loading message:', e.message);
+      }
+
       if (!result.success) {
         userStates.delete(userId);
 
@@ -1026,30 +1206,21 @@ bot.on('text', async (ctx) => {
             `❌ Login failed: Email/username or password is incorrect.\n\n` +
             `💡 Please check:\n` +
             `• Email or username is correct\n` +
-            `• Password is correct (case-sensitive)\n` +
-            `• You registered on this bot (use /register if you haven't)\n\n` +
+            `• Password is correct (case-sensitive)\n\n` +
             `Try again or use /start to restart.`
           );
         }
         if (errorMsg.includes('Invalid bot secret') || errorMsg.includes('Forbidden')) {
           return ctx.reply('❌ Bot authentication failed. Please contact support.');
         }
-        if (errorMsg.includes('Server error') || errorMsg.includes('500')) {
-          return ctx.reply('❌ Server error. Please try again in a moment.');
-        }
 
-        return ctx.reply(
-          `❌ Login failed: ${errorMsg}\n\n` +
-          `Use /start to try again.`
-        );
+        return ctx.reply(`❌ Login failed: ${errorMsg}\n\nUse /start to try again.`);
       }
 
       if (!result.data || !result.data.user || !result.data.token) {
         console.error('❌ Invalid login response structure:', result.data);
         userStates.delete(userId);
-        return ctx.reply(
-          '❌ Unexpected server response. Please try again or contact support.'
-        );
+        return ctx.reply('❌ Unexpected server response. Please try again.');
       }
 
       const user = result.data.user;
@@ -1073,28 +1244,17 @@ bot.on('text', async (ctx) => {
       });
 
       const telegramUserId = userId.toString();
-      const sessionResult = await apiRequest('/api/telegram/session', 'POST', {
+      await apiRequest('/api/telegram/session', 'POST', {
         telegramUserId,
         userId: user.id,
         token,
         balance: user.balance.toString()
       }, null, true);
 
-      if (!sessionResult.success) {
-        console.warn('⚠️ Warning: Could not save telegram session:', sessionResult.error);
-      }
-
       userStates.delete(userId);
-      try {
-        if (loadingMsg?.message_id) {
-          await ctx.deleteMessage(loadingMsg.message_id);
-        }
-      } catch (e) {
-        console.log('ℹ️ Could not delete loading message (login):', e.message);
-      }
 
       await ctx.reply(
-        `✅ *Welcome back, ${user.username}!*\n\n` +
+        `✅ *Welcome back, ${escapeMarkdown(user.username)}!*\n\n` +
         `💰 Balance: ${formatSol(user.balance)} SOL`,
         { parse_mode: 'Markdown' }
       );
@@ -1104,11 +1264,13 @@ bot.on('text', async (ctx) => {
       console.error('❌ Bot login exception:', error);
       await ctx.reply(
         '❌ An unexpected error occurred during login.\n\n' +
-        '💡 Please use /start to try again, or contact support if the problem persists.'
+        '💡 Please use /start to try again.'
       );
     }
+    return;
   }
 
+  // Buy token address handler
   if (state.state === 'awaiting_buy_token') {
     const session = userSessions.get(userId);
     if (!session) {
@@ -1118,8 +1280,10 @@ bot.on('text', async (ctx) => {
 
     const tokenAddress = text.trim();
     await showBuyMenu(ctx, tokenAddress, session);
+    return;
   }
 
+  // Custom buy amount handler
   if (state.state === 'awaiting_buy_amount_custom') {
     const amount = parseFloat(text);
     if (isNaN(amount) || amount <= 0) {
@@ -1133,21 +1297,18 @@ bot.on('text', async (ctx) => {
       return ctx.reply('❌ Session expired. Please /start to login again.');
     }
 
-    // ✅ FIX: Check for pending operations
+    // ✅ CRITICAL: Check for pending operations
     if (pendingOperations.get(userId)) {
       return ctx.reply('⏳ You already have a trade in progress. Please wait for it to complete.');
     }
 
-    // Mark operation as pending
     pendingOperations.set(userId, true);
 
     try {
       const loadingMsg = await ctx.reply('⏳ Processing buy order...');
 
-      // ✅ FIX: Add idempotency key
-      const idempotencyKey = generateIdempotencyKey('buy', userId, state.tokenAddress);
+      const idempotencyKey = generateIdempotencyKey(ctx, 'buy', `${state.tokenAddress}_${amount}`);
 
-      // ✅ FIX: Only send what server needs (server fetches price itself)
       const result = await apiRequest('/api/trades/buy', 'POST', {
         tokenAddress: state.tokenAddress,
         tokenName: state.token.name,
@@ -1162,13 +1323,12 @@ bot.on('text', async (ctx) => {
           await ctx.deleteMessage(loadingMsg.message_id);
         }
       } catch (e) {
-        console.log('ℹ️ Could not delete loading message (buy custom):', e.message);
+        console.log('ℹ️ Could not delete loading message:', e.message);
       }
 
       if (!result.success) {
         userStates.delete(userId);
 
-        // ✅ FIX: Better error message for liquidity issues
         if (result.error && result.error.includes('liquidity')) {
           return ctx.reply(
             `❌ This token doesn't meet liquidity requirements.\n\n` +
@@ -1182,115 +1342,34 @@ bot.on('text', async (ctx) => {
 
       userStates.delete(userId);
       const tokenAmount = result.data.tokensReceived || 0;
-      const decimals = 6;
+      const decimals = result.data.decimals || 6;
 
       await ctx.reply(
-        `✅ Successfully bought *${state.token.symbol}*!\n\n` +
-        `Amount: *${formatTokenAmount(tokenAmount, decimals)} ${state.token.symbol}*\n` +
+        `✅ Successfully bought *${escapeMarkdown(state.token.symbol)}*!\n\n` +
+        `Amount: *${formatTokenAmount(tokenAmount, decimals)} ${escapeMarkdown(state.token.symbol)}*\n` +
         `Spent: *${amount} SOL*`,
         { parse_mode: 'Markdown' }
       );
 
       await showMainMenu(ctx);
     } finally {
-      // Always clear pending operation
       pendingOperations.delete(userId);
     }
+    return;
   }
 });
 
-// ✅ FIX: Add pendingOperations check to buy_amt handler
-bot.action(/^buy_amt:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
-  const amount = parseFloat(ctx.match[1]);
-  const userId = ctx.from.id;
-  const state = userStates.get(userId);
-  const session = userSessions.get(userId);
+// ============================================================================
+// BOT STARTUP
+// ============================================================================
 
-  if (!session) {
-    userStates.delete(userId);
-    return ctx.reply('❌ Session expired. Please /start to login again.');
-  }
-
-  if (!state || !state.token) {
-    return ctx.reply('❌ Session expired. Please try again.');
-  }
-
-  // ✅ FIX: Check for pending operations (CRITICAL - prevents race condition)
-  if (pendingOperations.get(userId)) {
-    return ctx.reply('⏳ You already have a trade in progress. Please wait for it to complete.');
-  }
-
-  // Mark operation as pending
-  pendingOperations.set(userId, true);
-
-  try {
-    const loadingMsg = await ctx.reply('⏳ Processing buy order...');
-
-    // ✅ FIX: Add idempotency key
-    const idempotencyKey = generateIdempotencyKey('buy', userId, state.tokenAddress);
-
-    // ✅ FIX: Only send what server needs (server fetches price itself)
-    const result = await apiRequest('/api/trades/buy', 'POST', {
-      tokenAddress: state.tokenAddress,
-      tokenName: state.token.name,
-      tokenSymbol: state.token.symbol,
-      solAmount: amount,
-    }, session.token, false, {
-      'x-idempotency-key': idempotencyKey
-    });
-
-    try {
-      if (loadingMsg?.message_id) {
-        await ctx.deleteMessage(loadingMsg.message_id);
-      }
-    } catch (e) {
-      console.log('ℹ️ Could not delete loading message (buy):', e.message);
-    }
-
-    if (!result.success) {
-      userStates.delete(userId);
-
-      // ✅ FIX: Better error message for liquidity issues
-      if (result.error && result.error.includes('liquidity')) {
-        return ctx.reply(
-          `❌ This token doesn't meet liquidity requirements.\n\n` +
-          `Minimum: $1,000 liquidity, $500 daily volume\n\n` +
-          `Try a more established token.`
-        );
-      }
-
-      return ctx.reply('❌ Error: ' + result.error);
-    }
-
-    userStates.delete(userId);
-    const tokenAmount = result.data.tokensReceived || 0;
-    const decimals = 6;
-
-    await ctx.reply(
-      `✅ Successfully bought *${state.token.symbol}*!\n\n` +
-      `Amount: *${formatTokenAmount(tokenAmount, decimals)} ${state.token.symbol}*\n` +
-      `Spent: *${amount} SOL*`,
-      { parse_mode: 'Markdown' }
-    );
-
-    await showMainMenu(ctx);
-  } finally {
-    // Always clear pending operation
-    pendingOperations.delete(userId);
-  }
-});
-
-// Use Telegraf built-in polling - the most reliable method
 console.log('🚀 Starting Telegram bot with polling...');
 
 (async () => {
   try {
-    // Test token
     const botInfo = await bot.telegram.getMe();
     console.log(`✅ Bot token valid: @${botInfo.username} (${botInfo.first_name})`);
 
-    // CRITICAL: Fully disable webhooks before polling
     try {
       await bot.telegram.deleteWebhook();
       console.log('📡 Webhook deleted successfully');
@@ -1298,23 +1377,12 @@ console.log('🚀 Starting Telegram bot with polling...');
       console.log('📡 No active webhook');
     }
 
-    // Start polling - non-blocking with proper error handling
     console.log('📡 Starting polling...');
     bot.startPolling();
 
     console.log('✅ Telegram bot polling started!');
     console.log('🎯 Bot is now listening for messages');
     console.log(`📱 Try sending /start to @${botInfo.username}`);
-
-    // Log when first update is received
-    bot.on('message', async (ctx) => {
-      if (!ctx.message) return;
-      console.log(`📩 Message received from user ${ctx.from.id}: "${ctx.message.text}"`);
-    });
-
-    bot.on('callback_query', async (ctx) => {
-      console.log(`📩 Callback received from user ${ctx.from.id}: "${ctx.callbackQuery.data}"`);
-    });
 
   } catch (err) {
     console.error('❌ Failed to start bot:');
@@ -1324,7 +1392,7 @@ console.log('🚀 Starting Telegram bot with polling...');
   }
 })();
 
-// Enable graceful shutdown
+// Graceful shutdown
 process.once('SIGINT', () => {
   console.log('📴 Stopping bot...');
   bot.stop('SIGINT');
