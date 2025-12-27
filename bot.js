@@ -560,6 +560,279 @@ bot.command('start', async (ctx) => {
 });
 
 // ============================================================================
+// ADDITIONAL SLASH COMMANDS
+// ============================================================================
+
+bot.command('help', async (ctx) => {
+  const session = userSessions.get(ctx.from.id);
+  const loggedIn = !!session;
+
+  let message = `📚 *SimFi Bot Commands*\n\n`;
+  message += `/start - Start bot & show main menu\n`;
+  message += `/help - Show this help message\n\n`;
+
+  if (loggedIn) {
+    message += `*Trading:*\n`;
+    message += `/buy - Buy a token by address\n`;
+    message += `/sell - Sell your open positions\n\n`;
+    message += `*Portfolio:*\n`;
+    message += `/portfolio - View your holdings\n`;
+    message += `/balance - Check your SOL balance\n`;
+    message += `/history - View trade history\n\n`;
+    message += `*Social:*\n`;
+    message += `/leaderboard - View top traders\n\n`;
+    message += `*Account:*\n`;
+    message += `/logout - Log out of your account\n`;
+  } else {
+    message += `Please /start to login or register first.`;
+  }
+
+  await ctx.reply(message, { parse_mode: 'Markdown' });
+});
+
+bot.command('buy', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+
+  if (!session) {
+    return ctx.reply('❌ Please /start to login first.');
+  }
+
+  if (pendingOperations.get(userId)) {
+    return ctx.reply('⏳ You already have a trade in progress. Please wait for it to complete.');
+  }
+
+  // Check if token address was provided with command
+  const args = ctx.message.text.split(/\s+/).slice(1);
+
+  if (args.length > 0 && isSolanaAddress(args[0])) {
+    // Token address provided, go directly to buy menu
+    await showBuyMenu(ctx, args[0], session);
+  } else {
+    // No address provided, ask for it
+    userStates.set(userId, {
+      state: 'awaiting_buy_token',
+      lastActivity: Date.now()
+    });
+
+    await ctx.reply(
+      '📈 *Buy Token*\n\n' +
+      'Please send the Solana token address you want to buy.\n\n' +
+      '💡 Tip: You can also use `/buy <address>` directly.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+});
+
+bot.command('sell', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+
+  if (!session) {
+    return ctx.reply('❌ Please /start to login first.');
+  }
+
+  if (pendingOperations.get(userId)) {
+    return ctx.reply('⏳ You already have a trade in progress. Please wait for it to complete.');
+  }
+
+  const result = await apiRequest('/api/trades/positions', 'GET', null, session.token);
+
+  if (!result.success) {
+    return ctx.reply('❌ Error: ' + result.error);
+  }
+
+  const positions = result.data.positions || [];
+
+  if (positions.length === 0) {
+    return ctx.reply(
+      '📉 *Sell Position*\n\n' +
+      'You have no open positions to sell.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  const buttons = positions.map(pos => {
+    const currentValue = BigInt(pos.currentValue || 0);
+    const costBasis = BigInt(pos.solSpent || 0);
+    const profitLoss = currentValue - costBasis;
+    const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
+
+    return [Markup.button.callback(
+      `${profitEmoji} ${pos.tokenSymbol} (${formatSol(currentValue)} SOL)`,
+      `sell_pos:${pos.id}`
+    )];
+  });
+
+  buttons.push([Markup.button.callback('« Back to Menu', 'main_menu')]);
+
+  await ctx.reply(
+    '📉 *Sell Position*\n\n' +
+    'Select a position to sell:',
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard(buttons)
+    }
+  );
+});
+
+bot.command('portfolio', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+
+  if (!session) {
+    return ctx.reply('❌ Please /start to login first.');
+  }
+
+  const result = await apiRequest('/api/trades/positions', 'GET', null, session.token);
+
+  if (!result.success) {
+    return ctx.reply('❌ Error: ' + result.error);
+  }
+
+  const positions = result.data.positions || [];
+
+  if (positions.length === 0) {
+    return ctx.reply(
+      '📊 *Your Portfolio*\n\n' +
+      'You have no open positions.\n\n' +
+      'Use /buy to start trading!',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  let message = '📊 *Your Portfolio*\n\n';
+  let totalValue = BigInt(0);
+
+  for (const pos of positions) {
+    const currentValue = BigInt(pos.currentValue || 0);
+    const costBasis = BigInt(pos.solSpent || 0);
+    const profitLoss = currentValue - costBasis;
+    const profitPercent = costBasis > 0n
+      ? (Number(profitLoss) / Number(costBasis)) * 100
+      : 0;
+
+    const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
+    const profitSign = profitLoss > 0n ? '+' : '';
+
+    message += `${profitEmoji} *${escapeMarkdown(pos.tokenSymbol)}*\n`;
+    message += `Amount: ${formatTokenAmount(pos.amount, pos.decimals || 6)} ${escapeMarkdown(pos.tokenSymbol)}\n`;
+    message += `Value: ${formatSol(currentValue)} SOL\n`;
+    message += `P/L: ${profitSign}${formatSol(profitLoss)} SOL (${profitSign}${profitPercent.toFixed(2)}%)\n\n`;
+
+    totalValue += currentValue;
+  }
+
+  message += `💰 *Total Value:* ${formatSol(totalValue)} SOL`;
+
+  await ctx.reply(message, { parse_mode: 'Markdown' });
+});
+
+bot.command('balance', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+
+  if (!session) {
+    return ctx.reply('❌ Please /start to login first.');
+  }
+
+  const result = await apiRequest('/api/auth/profile', 'GET', null, session.token);
+
+  if (!result.success) {
+    return ctx.reply('❌ Error fetching balance. Please /start to login again.');
+  }
+
+  const balance = result.data.balance;
+  const solPrice = await getSolPrice(session.token);
+  const balanceInSol = Number(balance) / 1_000_000_000;
+  const balanceUsd = solPrice ? (balanceInSol * solPrice) : null;
+  const usdStr = balanceUsd ? ` (~$${balanceUsd.toFixed(2)})` : '';
+
+  await ctx.reply(
+    `💰 *Your Balance*\n\n` +
+    `Available: *${formatSol(balance)} SOL*${usdStr}\n\n` +
+    `Use /buy to trade or /portfolio to see holdings.`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('history', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+
+  if (!session) {
+    return ctx.reply('❌ Please /start to login first.');
+  }
+
+  const result = await apiRequest('/api/trades/history?page=1', 'GET', null, session.token);
+
+  if (!result.success) {
+    return ctx.reply('❌ Error: ' + result.error);
+  }
+
+  const trades = result.data.trades || [];
+
+  if (trades.length === 0) {
+    return ctx.reply(
+      '📜 *Trade History*\n\n' +
+      'No trades yet. Use /buy to start trading!',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  let message = '📜 *Recent Trades*\n\n';
+
+  for (const trade of trades.slice(0, 10)) {
+    const profitLoss = BigInt(trade.profitLoss || 0);
+    const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
+    const profitSign = profitLoss > 0n ? '+' : '';
+
+    message += `${profitEmoji} *${escapeMarkdown(trade.tokenSymbol)}*\n`;
+    message += `Amount: ${formatTokenAmount(trade.amount, trade.decimals || 6)}\n`;
+    message += `P/L: ${profitSign}${formatSol(profitLoss)} SOL\n`;
+    message += `Date: ${new Date(trade.closedAt).toLocaleDateString()}\n\n`;
+  }
+
+  await ctx.reply(message, { parse_mode: 'Markdown' });
+});
+
+bot.command('leaderboard', async (ctx) => {
+  await ctx.reply(
+    '🏆 *Leaderboard*\n\n' +
+    'Choose a leaderboard:',
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('🌍 Overall', 'lb_overall')],
+        [Markup.button.callback('📅 Current Period', 'lb_period')],
+        [Markup.button.callback('« Back to Menu', 'main_menu')]
+      ])
+    }
+  );
+});
+
+bot.command('logout', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+
+  if (!session) {
+    return ctx.reply('❌ You are not logged in. Use /start to login.');
+  }
+
+  // Delete session from database
+  const telegramUserId = userId.toString();
+  await apiRequest(`/api/telegram/session/${telegramUserId}`, 'DELETE', null, null, true);
+
+  userSessions.delete(userId);
+  userStates.delete(userId);
+
+  await ctx.reply(
+    '👋 You have been logged out.\n\n' +
+    'Use /start to login again.'
+  );
+});
+
+// ============================================================================
 // AUTH ACTIONS
 // ============================================================================
 
