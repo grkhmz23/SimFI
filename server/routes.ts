@@ -1040,13 +1040,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ✅ SECURITY FIX: Never use Telegram token for internal API auth
   // Telegram tokens leak easily (logs, screenshots, env dumps)
 
-  // ✅ FIX: Generate random dev secret at startup instead of hardcoding
+  // ✅ FIX: Use consistent dev secret that matches bot.js
+  // In production, BOT_API_SECRET env var is REQUIRED
+  // In development, use the same hardcoded value as bot.js for seamless local dev
   const DEV_BOT_SECRET = process.env.BOT_API_SECRET || (() => {
-    // Use crypto.randomUUID() which is available globally in Node 18+
-    const generated = crypto.randomUUID() + crypto.randomUUID();
-    console.warn('⚠️  BOT_API_SECRET not set. Generated temporary dev secret.');
-    console.warn(`   For bot.js, set: BOT_API_SECRET=${generated}`);
-    return generated;
+    if (process.env.NODE_ENV === 'production') {
+      // This should never be reached if verifyBotSecret checks properly
+      // But add as safeguard
+      console.error('❌ FATAL: BOT_API_SECRET must be set in production');
+      throw new Error('BOT_API_SECRET required in production');
+    }
+    // Development: Use same hardcoded value as bot.js
+    console.warn('⚠️  BOT_API_SECRET not set. Using dev default (matches bot.js).');
+    return 'simfi-dev-bot-secret-change-in-production';
   })();
 
   const verifyBotSecret = (req: any, res: any, next: any) => {
