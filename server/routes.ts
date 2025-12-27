@@ -1037,31 +1037,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
 
   // Middleware to verify telegram bot requests
-  // ✅ SECURITY FIX: Never use Telegram token for internal API auth
+  // ============================================================================
+  // ✅ GOD MODE: BOT SECRET CONFIGURATION
+  // ============================================================================
+  // SECURITY: Never use Telegram token for internal API auth
   // Telegram tokens leak easily (logs, screenshots, env dumps)
+  //
+  // In PRODUCTION: BOT_API_SECRET env var is MANDATORY (min 20 chars)
+  // In DEVELOPMENT: Falls back to hardcoded value matching bot.js
+  // ============================================================================
 
-  // ✅ FIX: Use consistent dev secret that matches bot.js
-  // In production, BOT_API_SECRET env var is REQUIRED
-  // In development, use the same hardcoded value as bot.js for seamless local dev
-  const DEV_BOT_SECRET = process.env.BOT_API_SECRET || (() => {
+  const DEV_BOT_SECRET = (() => {
+    // Production: Require strong secret
     if (process.env.NODE_ENV === 'production') {
-      // This should never be reached if verifyBotSecret checks properly
-      // But add as safeguard
-      console.error('❌ FATAL: BOT_API_SECRET must be set in production');
-      throw new Error('BOT_API_SECRET required in production');
+      if (!process.env.BOT_API_SECRET) {
+        console.error('❌ FATAL: BOT_API_SECRET must be set in production');
+        throw new Error('BOT_API_SECRET required in production');
+      }
+      if (process.env.BOT_API_SECRET.length < 20) {
+        console.error('❌ FATAL: BOT_API_SECRET must be at least 20 characters');
+        throw new Error('BOT_API_SECRET too short');
+      }
+      return process.env.BOT_API_SECRET;
     }
-    // Development: Use same hardcoded value as bot.js
+
+    // Development: Use env var if set, otherwise fall back to dev default
+    // This MUST match the value in bot.js for local development to work
+    const devFallback = 'simfi-dev-bot-secret-change-in-production';
+
+    if (process.env.BOT_API_SECRET) {
+      return process.env.BOT_API_SECRET;
+    }
+
     console.warn('⚠️  BOT_API_SECRET not set. Using dev default (matches bot.js).');
-    return 'simfi-dev-bot-secret-change-in-production';
+    return devFallback;
   })();
 
   const verifyBotSecret = (req: any, res: any, next: any) => {
     const botSecret = req.headers['x-bot-secret'];
 
     if (process.env.NODE_ENV === 'production') {
-      // Production: BOT_API_SECRET is required - no fallback
-      if (!process.env.BOT_API_SECRET) {
-        console.error('❌ FATAL: BOT_API_SECRET must be set in production');
+      // Production: BOT_API_SECRET is required with minimum length
+      if (!process.env.BOT_API_SECRET || process.env.BOT_API_SECRET.length < 20) {
+        console.error('❌ FATAL: BOT_API_SECRET must be set in production (min 20 chars)');
         return res.status(500).json({ error: 'Server misconfiguration - bot endpoints disabled' });
       }
     }
