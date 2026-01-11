@@ -10,7 +10,7 @@ import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@tanstack/react-query';
-import { TrendingUp, Mail, Lock, ArrowRight, Sparkles } from 'lucide-react';
+import { TrendingUp, Mail, Lock, ArrowRight, Sparkles, X } from 'lucide-react';
 import type { LoginRequest } from '@shared/schema';
 
 const loginSchema = z.object({
@@ -70,9 +70,18 @@ export default function Login() {
       >
         {/* Card glow */}
         <div className="absolute -inset-0.5 bg-gradient-to-r from-primary/50 to-accent/50 rounded-3xl blur opacity-30" />
-        
+
         {/* Card */}
         <div className="relative bg-card/95 backdrop-blur-xl border border-border/50 rounded-3xl p-8 shadow-2xl">
+          {/* Close button */}
+          <button
+            onClick={() => setLocation('/')}
+            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-muted/50 hover:bg-muted flex items-center justify-center transition-colors group"
+            aria-label="Close and return to home"
+          >
+            <X className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </button>
+
           {/* Header */}
           <div className="text-center mb-8">
             {/* Logo */}

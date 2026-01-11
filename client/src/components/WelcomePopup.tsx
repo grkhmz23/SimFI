@@ -13,7 +13,7 @@ interface WelcomePopupProps {
 export function WelcomePopup({
   storageKey = 'simfi-welcome-popup-seen',
   delay = 800,
-  showOncePerSession = true,
+  showOncePerSession = false, // Changed to false so it uses localStorage by default
 }: WelcomePopupProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [, setLocation] = useLocation();
@@ -21,12 +21,12 @@ export function WelcomePopup({
   useEffect(() => {
     const storage = showOncePerSession ? sessionStorage : localStorage;
     const hasSeen = storage.getItem(storageKey);
-    
+
     if (!hasSeen) {
       const timer = setTimeout(() => {
         setIsOpen(true);
       }, delay);
-      
+
       return () => clearTimeout(timer);
     }
   }, [storageKey, delay, showOncePerSession]);
@@ -55,7 +55,7 @@ export function WelcomePopup({
             className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md"
             onClick={handleClose}
           />
-          
+
           {/* Popup */}
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -68,7 +68,7 @@ export function WelcomePopup({
               {/* Animated glow effect */}
               <div className="absolute -inset-1 bg-gradient-to-r from-primary via-accent to-primary rounded-3xl blur-xl opacity-60 animate-pulse" />
               <div className="absolute -inset-0.5 bg-gradient-to-r from-primary to-accent rounded-3xl opacity-30" />
-              
+
               {/* Main container */}
               <div className="relative bg-card border border-border/50 rounded-3xl overflow-hidden shadow-2xl">
                 {/* Close button */}
