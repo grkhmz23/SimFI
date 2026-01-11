@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, bigint, integer, timestamp, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, bigint, integer, timestamp, unique, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -23,13 +23,12 @@ export const positions = pgTable("positions", {
   tokenAddress: text("token_address").notNull(),
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
-  decimals: integer("decimals").notNull().default(6), // Most pump.fun tokens use 6 decimals
+  decimals: integer("decimals").notNull().default(6),
   entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(),
   amount: bigint("amount", { mode: "bigint" }).notNull(),
   solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(),
   openedAt: timestamp("opened_at").defaultNow().notNull(),
 }, (table) => ({
-  // Unique constraint on userId + tokenAddress to enable position aggregation
   userTokenUnique: unique().on(table.userId, table.tokenAddress),
 }));
 
@@ -39,7 +38,7 @@ export const tradeHistory = pgTable("trade_history", {
   tokenAddress: text("token_address").notNull(),
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
-  decimals: integer("decimals").notNull().default(6), // Most pump.fun tokens use 6 decimals
+  decimals: integer("decimals").notNull().default(6),
   entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(),
   exitPrice: bigint("exit_price", { mode: "bigint" }).notNull(),
   amount: bigint("amount", { mode: "bigint" }).notNull(),
@@ -67,7 +66,91 @@ export const telegramSessions = pgTable("telegram_sessions", {
   expiresAt: timestamp("expires_at").notNull(),
 });
 
+// =============================================================================
+// Rewards Engine Tables (FINAL - keyed by leaderboard_period_id)
+// =============================================================================
+
+export type PayoutPlanEntry = {
+  rank: 1 | 2 | 3;
+  wallet: string;
+  amountLamports: string;
+  userId?: string | null;
+  profitLamports?: string;
+  tradeCount?: number;
+};
+
+export const rewardsState = pgTable("rewards_state", {
+  id: integer("id").primaryKey().default(1),
+
+  carryRewardsLamports: bigint("carry_rewards_lamports", { mode: "bigint" }).notNull().default(sql`0`),
+  treasuryAccruedLamports: bigint("treasury_accrued_lamports", { mode: "bigint" }).notNull().default(sql`0`),
+
+  lastProcessedPeriodId: varchar("last_processed_period_id").references(() => leaderboardPeriods.id),
+  lastProcessedPeriodEnd: timestamp("last_processed_period_end"),
+
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const rewardsEpochs = pgTable("rewards_epochs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+
+  leaderboardPeriodId: varchar("leaderboard_period_id").notNull().references(() => leaderboardPeriods.id),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+
+  rewardsPoolBps: integer("rewards_pool_bps").notNull().default(5000),
+
+  beforeBalanceLamports: bigint("before_balance_lamports", { mode: "bigint" }),
+  afterBalanceLamports: bigint("after_balance_lamports", { mode: "bigint" }),
+
+  totalInflowLamports: bigint("total_inflow_lamports", { mode: "bigint" }).notNull().default(sql`0`),
+  rewardInflowLamports: bigint("reward_inflow_lamports", { mode: "bigint" }).notNull().default(sql`0`),
+  treasuryInflowLamports: bigint("treasury_inflow_lamports", { mode: "bigint" }).notNull().default(sql`0`),
+
+  carryInLamports: bigint("carry_in_lamports", { mode: "bigint" }).notNull().default(sql`0`),
+  totalPotLamports: bigint("total_pot_lamports", { mode: "bigint" }).notNull().default(sql`0`),
+
+  claimStartedAt: timestamp("claim_started_at"),
+  claimCompletedAt: timestamp("claim_completed_at"),
+  claimTxSignatures: jsonb("claim_tx_signatures").$type<string[]>().default(sql`'[]'::jsonb`),
+
+  payoutPlan: jsonb("payout_plan").$type<PayoutPlanEntry[]>().default(sql`'[]'::jsonb`),
+  payoutStartedAt: timestamp("payout_started_at"),
+  payoutCompletedAt: timestamp("payout_completed_at"),
+  payoutTxSignature: text("payout_tx_signature"),
+  totalPaidLamports: bigint("total_paid_lamports", { mode: "bigint" }).notNull().default(sql`0`),
+
+  status: varchar("status", { length: 20 }).notNull().default("created"),
+  failureReason: text("failure_reason"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  periodUnique: unique("rewards_epochs_period_unique").on(t.leaderboardPeriodId),
+}));
+
+export const rewardsWinners = pgTable("rewards_winners", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  epochId: varchar("epoch_id").notNull().references(() => rewardsEpochs.id, { onDelete: "cascade" }),
+
+  rank: integer("rank").notNull(),
+  walletAddress: text("wallet_address").notNull(),
+  userId: varchar("user_id").references(() => users.id),
+
+  profitLamports: bigint("profit_lamports", { mode: "bigint" }).notNull().default(sql`0`),
+  tradeCount: integer("trade_count").notNull().default(0),
+  payoutLamports: bigint("payout_lamports", { mode: "bigint" }).notNull().default(sql`0`),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  epochRankUnique: unique("rewards_winners_epoch_rank_unique").on(t.epochId, t.rank),
+  epochWalletUnique: unique("rewards_winners_epoch_wallet_unique").on(t.epochId, t.walletAddress),
+}));
+
+// =============================================================================
 // Insert Schemas
+// =============================================================================
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   balance: true,
@@ -92,33 +175,41 @@ export const insertTradeSchema = createInsertSchema(tradeHistory).omit({
   closedAt: true,
 });
 
+// =============================================================================
 // Types
+// =============================================================================
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Position = typeof positions.$inferSelect;
 export type Trade = typeof tradeHistory.$inferSelect;
 export type LeaderboardPeriod = typeof leaderboardPeriods.$inferSelect;
 export type TelegramSession = typeof telegramSessions.$inferSelect;
+export type RewardsState = typeof rewardsState.$inferSelect;
+export type RewardsEpoch = typeof rewardsEpochs.$inferSelect;
+export type RewardsWinner = typeof rewardsWinners.$inferSelect;
 export type InsertPosition = z.infer<typeof insertPositionSchema>;
 export type InsertTrade = z.infer<typeof insertTradeSchema>;
 
-// Token interface (from WebSocket/API)
+// =============================================================================
+// Interfaces
+// =============================================================================
+
 export interface Token {
   tokenAddress: string;
   name: string;
   symbol: string;
-  decimals?: number; // Token decimals (6 for most pump.fun tokens, 9 for SOL)
-  price: number; // Price in Lamports per token (for trading calculations)
-  priceUsd?: number; // Price in USD (for display)
-  marketCap: number; // Market cap in USD
-  volume24h?: number; // 24h volume in USD
-  priceChange24h?: number; // 24h price change percentage
+  decimals?: number;
+  price: number;
+  priceUsd?: number;
+  marketCap: number;
+  volume24h?: number;
+  priceChange24h?: number;
   creator?: string;
   timestamp?: string;
-  icon?: string; // Token image URL from DexScreener
+  icon?: string;
 }
 
-// API Request/Response types
 export interface LoginRequest {
   email: string;
   password: string;
@@ -135,27 +226,30 @@ export interface BuyRequest {
   tokenAddress: string;
   tokenName: string;
   tokenSymbol: string;
-  solAmount: number; // Amount of SOL to spend (can be fractional, e.g., 0.1, 1, 5)
-  price: number; // Price in Lamports per token
+  solAmount: number;
+  price: number;
 }
 
 export interface SellRequest {
   positionId: string;
-  amount?: number; // Optional partial sell, if not provided sells all
-  exitPrice: number; // Price in Lamports per token
+  amount?: number;
+  exitPrice: number;
 }
 
 export interface LeaderboardEntry {
   id: string;
   username: string;
   walletAddress?: string;
-  totalProfit?: number; // In Lamports
-  periodProfit?: number; // In Lamports
-  balance?: number; // In Lamports
+  totalProfit?: number;
+  periodProfit?: number;
+  balance?: number;
   rank?: number;
 }
 
-// Utility functions for Lamports conversion
+// =============================================================================
+// Utility Functions
+// =============================================================================
+
 export function solToLamports(sol: number): number {
   return Math.floor(sol * LAMPORTS_PER_SOL);
 }
