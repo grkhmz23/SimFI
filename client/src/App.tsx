@@ -6,7 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { PriceProvider } from "@/lib/price-context";
 import { Navigation } from "@/components/Navigation";
-import { Footer } from "@/components/ui-components/footer";
+import { Footer } from "@/components/ui/footer";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Trade from "@/pages/Trade";
