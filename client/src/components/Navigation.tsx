@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,10 +13,29 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { TrendingUp, History, Trophy, User, LogOut, Wallet, Info, Search, Loader2, Microscope, BarChart3 } from 'lucide-react';
+import { 
+  TrendingUp, 
+  History, 
+  Trophy, 
+  User, 
+  LogOut, 
+  Wallet, 
+  Info, 
+  Search, 
+  Loader2, 
+  Microscope, 
+  BarChart3, 
+  Gift,
+  Menu,
+  X,
+  Sparkles,
+  ChevronDown
+} from 'lucide-react';
 import { formatSol } from '@/lib/lamports';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
 import logoUrl from '@assets/simfilogo_1761226731940.png';
 
 interface SearchResult {
@@ -33,6 +53,17 @@ export function Navigation() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  // Track scroll for header background
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 20);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Debounce search query
   useEffect(() => {
@@ -48,9 +79,9 @@ export function Navigation() {
       setSearchQuery('');
       setDebouncedQuery('');
     }
+    setMobileMenuOpen(false);
   }, [location]);
 
-  // ✅ UPDATED: Use new cached market search endpoint
   const { data: searchResults, isLoading: isSearching } = useQuery<{ results: SearchResult[] }>({
     queryKey: ['/api/market/search', debouncedQuery],
     queryFn: async () => {
@@ -66,7 +97,7 @@ export function Navigation() {
       return response.json();
     },
     enabled: debouncedQuery.length >= 3,
-    staleTime: 30000, // Cache for 30 seconds (server also caches)
+    staleTime: 30000,
   });
 
   const handleTokenClick = (address: string) => {
@@ -79,6 +110,7 @@ export function Navigation() {
     { path: '/', label: 'Trade', icon: TrendingUp },
     { path: '/study', label: 'Study', icon: Microscope },
     { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
+    { path: '/rewards', label: 'Rewards', icon: Gift },
     { path: '/about', label: 'About', icon: Info },
   ];
 
@@ -87,175 +119,310 @@ export function Navigation() {
   const showSearchResults = debouncedQuery.length >= 3;
 
   return (
-    <nav className="sticky top-0 z-50 nav-glass border-b border-white/5">
-      <div className="container mx-auto px-4">
-        <div className="flex h-16 items-center justify-between gap-4">
-          <div className="flex items-center gap-4 shrink-0">
-            <Link href="/" className="flex items-center gap-2 hover-elevate rounded-md px-2 py-1" data-testid="link-home">
-              <img src={logoUrl} alt="SimFi Logo" className="h-14 w-auto" />
-            </Link>
-
-            <div className="hidden md:flex gap-1">
-              {navItems.map(item => (
-                <Button
-                  key={item.path}
-                  variant={location === item.path ? "secondary" : "ghost"}
-                  size="sm"
-                  className="gap-2"
-                  onClick={() => setLocation(item.path)}
-                  data-testid={`link-${item.label.toLowerCase()}`}
+    <>
+      <nav className={cn(
+        "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
+        scrolled 
+          ? "bg-background/80 backdrop-blur-xl border-b border-border/50 shadow-lg shadow-black/5" 
+          : "bg-transparent"
+      )}>
+        <div className="container mx-auto px-4">
+          <div className="flex h-16 items-center justify-between gap-4">
+            {/* Logo & Desktop Nav */}
+            <div className="flex items-center gap-6">
+              <Link href="/" className="flex items-center gap-2 group" data-testid="link-home">
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="relative"
                 >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                </Button>
-              ))}
-            </div>
-          </div>
+                  <img src={logoUrl} alt="SimFi Logo" className="h-10 w-auto" />
+                  {/* Glow effect on hover */}
+                  <div className="absolute inset-0 bg-primary/20 blur-xl opacity-0 group-hover:opacity-100 transition-opacity rounded-full" />
+                </motion.div>
+              </Link>
 
-          {/* Search Bar - Only shown when NOT on main page */}
-          {showSearchBar && (
-            <div className="flex-1 max-w-md mx-4 relative">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  placeholder="Search tokens..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-10 h-9 bg-background/50 border-border/50 focus:border-primary/50 input-glow transition-all"
-                  data-testid="input-search-header"
-                />
-                {isSearching && (
-                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
-                )}
+              {/* Desktop Navigation */}
+              <div className="hidden lg:flex items-center gap-1">
+                {navItems.map(item => {
+                  const isActive = location === item.path;
+                  return (
+                    <motion.button
+                      key={item.path}
+                      onClick={() => setLocation(item.path)}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className={cn(
+                        "relative px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2",
+                        isActive 
+                          ? "text-primary" 
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      data-testid={`link-${item.label.toLowerCase()}`}
+                    >
+                      <item.icon className={cn("h-4 w-4", isActive && "text-primary")} />
+                      {item.label}
+                      
+                      {/* Active indicator */}
+                      {isActive && (
+                        <motion.div
+                          layoutId="activeNav"
+                          className="absolute inset-0 bg-primary/10 border border-primary/20 rounded-lg -z-10"
+                          transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                        />
+                      )}
+                    </motion.button>
+                  );
+                })}
               </div>
-
-              {/* Search Results Dropdown */}
-              {showSearchResults && (
-                <Card className="absolute top-full mt-2 w-full max-h-96 overflow-y-auto glass-card z-50">
-                  {hasSearchResults ? (
-                    <div className="p-2">
-                      {searchResults.results.map((result) => (
-                        <div
-                          key={result.tokenAddress}
-                          onClick={() => handleTokenClick(result.tokenAddress)}
-                          className="flex items-center gap-3 p-3 hover-elevate active-elevate-2 rounded-md cursor-pointer"
-                          data-testid={`search-result-${result.tokenAddress}`}
-                        >
-                          {result.icon && (
-                            <img src={result.icon} alt={result.symbol} className="w-8 h-8 rounded-full" />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{result.name}</div>
-                            <div className="text-sm text-muted-foreground">{result.symbol}</div>
-                          </div>
-                          {result.marketCap && (
-                            <div className="text-sm font-mono text-muted-foreground">
-                              ${result.marketCap >= 1_000_000 
-                                ? `${(result.marketCap / 1_000_000).toFixed(2)}M`
-                                : result.marketCap >= 1_000
-                                ? `${(result.marketCap / 1_000).toFixed(1)}K`
-                                : result.marketCap.toFixed(0)}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-6 text-center text-muted-foreground">
-                      <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>No tokens found</p>
-                      <p className="text-xs mt-1">Try a different search term</p>
-                    </div>
-                  )}
-                </Card>
-              )}
             </div>
-          )}
 
-          <div className="flex items-center gap-4 shrink-0">
-            {isAuthenticated ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="gap-2" data-testid="button-user-menu">
-                    <User className="h-5 w-5" />
-                    <div className="hidden sm:flex flex-col items-start">
-                      <span className="text-sm font-medium">{user?.username}</span>
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {formatSol(user?.balance || 0)} SOL
-                      </span>
-                    </div>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>
-                    <div className="flex flex-col">
-                      <span>{user?.username}</span>
-                      <span className="font-mono text-xs text-muted-foreground font-normal">
-                        {formatSol(user?.balance || 0)} SOL
-                      </span>
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setLocation('/portfolio')} data-testid="menu-portfolio">
-                    <Wallet className="mr-2 h-4 w-4" />
-                    Portfolio
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setLocation('/positions')} data-testid="menu-positions">
-                    <BarChart3 className="mr-2 h-4 w-4" />
-                    Positions
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setLocation('/history')} data-testid="menu-history">
-                    <History className="mr-2 h-4 w-4" />
-                    History
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={logout} data-testid="menu-logout">
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Logout
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setLocation('/login')}
-                  data-testid="button-login"
-                >
-                  Login
-                </Button>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => setLocation('/register')}
-                  data-testid="button-register"
-                >
-                  Register
-                </Button>
+            {/* Search Bar - Only shown when NOT on main page */}
+            {showSearchBar && (
+              <div className="hidden md:block flex-1 max-w-md mx-4 relative">
+                <div className="relative group">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                  <Input
+                    type="text"
+                    placeholder="Search tokens..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 pr-10 h-10 bg-card/50 border-border/50 focus:border-primary/50 focus:bg-card rounded-full transition-all"
+                    data-testid="input-search-header"
+                  />
+                  {isSearching && (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-primary" />
+                  )}
+                  
+                  {/* Glow on focus */}
+                  <div className="absolute inset-0 rounded-full bg-primary/5 opacity-0 group-focus-within:opacity-100 blur-xl transition-opacity -z-10" />
+                </div>
+
+                {/* Search Results Dropdown */}
+                <AnimatePresence>
+                  {showSearchResults && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      className="absolute top-full mt-2 w-full"
+                    >
+                      <Card className="max-h-96 overflow-y-auto bg-card/95 backdrop-blur-xl border-border/50 shadow-xl">
+                        {hasSearchResults ? (
+                          <div className="p-2">
+                            {searchResults.results.map((result, index) => (
+                              <motion.div
+                                key={result.tokenAddress}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: index * 0.05 }}
+                                onClick={() => handleTokenClick(result.tokenAddress)}
+                                className="flex items-center gap-3 p-3 rounded-lg cursor-pointer hover:bg-primary/5 transition-colors"
+                                data-testid={`search-result-${result.tokenAddress}`}
+                              >
+                                {result.icon && (
+                                  <img src={result.icon} alt={result.symbol} className="w-8 h-8 rounded-full ring-2 ring-border" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium truncate">{result.name}</div>
+                                  <div className="text-sm text-muted-foreground">{result.symbol}</div>
+                                </div>
+                                {result.marketCap && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    ${result.marketCap >= 1_000_000 
+                                      ? `${(result.marketCap / 1_000_000).toFixed(2)}M`
+                                      : result.marketCap >= 1_000
+                                      ? `${(result.marketCap / 1_000).toFixed(1)}K`
+                                      : result.marketCap.toFixed(0)}
+                                  </Badge>
+                                )}
+                              </motion.div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-6 text-center text-muted-foreground">
+                            <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p>No tokens found</p>
+                          </div>
+                        )}
+                      </Card>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             )}
+
+            {/* Right Side - Auth & Mobile Menu */}
+            <div className="flex items-center gap-3">
+              {isAuthenticated ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="flex items-center gap-3 px-3 py-2 rounded-full bg-card/50 border border-border/50 hover:border-primary/30 transition-all"
+                      data-testid="button-user-menu"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+                        <User className="h-4 w-4 text-white" />
+                      </div>
+                      <div className="hidden sm:flex flex-col items-start">
+                        <span className="text-sm font-medium">{user?.username}</span>
+                        <span className="font-mono text-xs text-primary">
+                          {formatSol(user?.balance || 0)} SOL
+                        </span>
+                      </div>
+                      <ChevronDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
+                    </motion.button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 bg-card/95 backdrop-blur-xl">
+                    <DropdownMenuLabel>
+                      <div className="flex flex-col">
+                        <span>{user?.username}</span>
+                        <span className="font-mono text-xs text-primary font-normal">
+                          {formatSol(user?.balance || 0)} SOL
+                        </span>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setLocation('/portfolio')} data-testid="menu-portfolio">
+                      <Wallet className="mr-2 h-4 w-4" />
+                      Portfolio
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setLocation('/positions')} data-testid="menu-positions">
+                      <BarChart3 className="mr-2 h-4 w-4" />
+                      Positions
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setLocation('/history')} data-testid="menu-history">
+                      <History className="mr-2 h-4 w-4" />
+                      History
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive" data-testid="menu-logout">
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Logout
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <div className="hidden sm:flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setLocation('/login')}
+                    className="rounded-full"
+                    data-testid="button-login"
+                  >
+                    Login
+                  </Button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setLocation('/register')}
+                    className="px-4 py-2 rounded-full text-sm font-medium bg-gradient-to-r from-primary to-accent text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-shadow"
+                    data-testid="button-register"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      Get Started
+                    </span>
+                  </motion.button>
+                </div>
+              )}
+
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="lg:hidden p-2 rounded-lg hover:bg-card/50 transition-colors"
+              >
+                {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              </button>
+            </div>
           </div>
         </div>
+      </nav>
 
-        {/* Mobile navigation */}
-        <div className="flex md:hidden gap-1 pb-2 overflow-x-auto">
-          {navItems.map(item => (
-            <Button
-              key={item.path}
-              variant={location === item.path ? "secondary" : "ghost"}
-              size="sm"
-              className="gap-2 whitespace-nowrap"
-              onClick={() => setLocation(item.path)}
-              data-testid={`link-mobile-${item.label.toLowerCase()}`}
+      {/* Mobile Menu Overlay */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="fixed top-16 left-0 right-0 bg-background/95 backdrop-blur-xl border-b border-border z-40 lg:hidden"
             >
-              <item.icon className="h-4 w-4" />
-              {item.label}
-            </Button>
-          ))}
-        </div>
-      </div>
-    </nav>
+              <div className="container mx-auto px-4 py-4">
+                {/* Mobile Search */}
+                {showSearchBar && (
+                  <div className="relative mb-4">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder="Search tokens..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 h-10 rounded-full"
+                    />
+                  </div>
+                )}
+
+                {/* Mobile Nav Items */}
+                <div className="space-y-1">
+                  {navItems.map(item => {
+                    const isActive = location === item.path;
+                    return (
+                      <button
+                        key={item.path}
+                        onClick={() => setLocation(item.path)}
+                        className={cn(
+                          "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors",
+                          isActive 
+                            ? "bg-primary/10 text-primary" 
+                            : "hover:bg-card/50 text-foreground"
+                        )}
+                      >
+                        <item.icon className="h-5 w-5" />
+                        <span className="font-medium">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Mobile Auth Buttons */}
+                {!isAuthenticated && (
+                  <div className="flex gap-2 mt-4 pt-4 border-t border-border">
+                    <Button
+                      variant="outline"
+                      className="flex-1 rounded-full"
+                      onClick={() => setLocation('/login')}
+                    >
+                      Login
+                    </Button>
+                    <Button
+                      className="flex-1 rounded-full bg-gradient-to-r from-primary to-accent"
+                      onClick={() => setLocation('/register')}
+                    >
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Get Started
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Spacer for fixed nav */}
+      <div className="h-16" />
+    </>
   );
 }

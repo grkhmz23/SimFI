@@ -1,10 +1,25 @@
-import { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { useLocation } from 'wouter';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Search, Loader2, ArrowRight, TrendingUp, Zap, Shield, BarChart3, Users, Rocket, Star, Trophy, Send, ExternalLink, Sparkles, Coins, GraduationCap, ChevronDown } from 'lucide-react';
+import { 
+  Search, 
+  Loader2, 
+  ArrowRight, 
+  TrendingUp, 
+  Shield, 
+  BarChart3, 
+  Rocket, 
+  Trophy, 
+  Coins, 
+  GraduationCap, 
+  ChevronDown, 
+  Sparkles,
+  ExternalLink,
+  Github,
+  Heart
+} from 'lucide-react';
 import { SiX } from 'react-icons/si';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
@@ -22,9 +37,9 @@ interface SearchResult {
 }
 
 // =============================================================================
-// LIGHTNING BACKGROUND COMPONENT (WebGL)
+// LIGHTNING BACKGROUND (WebGL) - GREEN HUE (172 = primary color)
 // =============================================================================
-const Lightning = memo(({ hue = 180, intensity = 0.4 }: { hue?: number; intensity?: number }) => {
+const Lightning = memo(({ hue = 172, intensity = 0.4 }: { hue?: number; intensity?: number }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -152,11 +167,11 @@ const AnimatedSearchBar = ({
         {/* Glow layers */}
         <div className="absolute z-[-1] overflow-hidden h-full w-full rounded-full blur-[3px] 
           before:absolute before:content-[''] before:z-[-2] before:w-[999px] before:h-[999px] before:bg-no-repeat before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:rotate-[60deg]
-          before:bg-[conic-gradient(#000,#402fb5_5%,#000_38%,#000_50%,#cf30aa_60%,#000_87%)] before:transition-all before:duration-[2000ms]
+          before:bg-[conic-gradient(#000,hsl(172,81%,55%)_5%,#000_38%,#000_50%,hsl(265,80%,60%)_60%,#000_87%)] before:transition-all before:duration-[2000ms]
           group-hover:before:rotate-[-120deg] group-focus-within:before:rotate-[420deg] group-focus-within:before:duration-[4000ms]" />
         <div className="absolute z-[-1] overflow-hidden h-full w-full rounded-full blur-[2px] 
           before:absolute before:content-[''] before:z-[-2] before:w-[600px] before:h-[600px] before:bg-no-repeat before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:rotate-[83deg]
-          before:bg-[conic-gradient(rgba(0,0,0,0)_0%,#a099d8,rgba(0,0,0,0)_8%,rgba(0,0,0,0)_50%,#dfa2da,rgba(0,0,0,0)_58%)]
+          before:bg-[conic-gradient(rgba(0,0,0,0)_0%,hsl(172,60%,70%),rgba(0,0,0,0)_8%,rgba(0,0,0,0)_50%,hsl(265,60%,70%),rgba(0,0,0,0)_58%)]
           before:transition-all before:duration-[2000ms] group-hover:before:rotate-[-97deg] group-focus-within:before:rotate-[443deg] group-focus-within:before:duration-[4000ms]" />
 
         {/* Input */}
@@ -172,7 +187,7 @@ const AnimatedSearchBar = ({
           {isLoading && (
             <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 h-5 w-5 text-primary animate-spin" />
           )}
-          <div className="pointer-events-none w-[30px] h-[20px] absolute bg-[#cf30aa] top-[10px] left-[5px] blur-2xl opacity-60 transition-all duration-[2000ms] group-hover:opacity-0 rounded-full" />
+          <div className="pointer-events-none w-[30px] h-[20px] absolute bg-primary top-[10px] left-[5px] blur-2xl opacity-40 transition-all duration-[2000ms] group-hover:opacity-0 rounded-full" />
         </div>
       </div>
     </div>
@@ -200,7 +215,7 @@ const GradientButton = ({ children, onClick, className }: { children: React.Reac
 );
 
 // =============================================================================
-// FEATURE CARD WITH GLOW
+// FEATURE CARD
 // =============================================================================
 const FeatureCard = ({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) => (
   <motion.div 
@@ -260,11 +275,11 @@ export default function Trade() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* ===== HERO SECTION WITH LIGHTNING ===== */}
+      {/* ===== HERO SECTION ===== */}
       <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden">
-        {/* Lightning Background */}
+        {/* Lightning Background - GREEN HUE */}
         <div className="absolute inset-0 z-0">
-          <Lightning hue={180} intensity={0.35} />
+          <Lightning hue={172} intensity={0.35} />
           <div className="absolute inset-0 bg-black/50" />
         </div>
 
@@ -274,8 +289,8 @@ export default function Trade() {
           <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-accent/15 rounded-full blur-[80px] animate-pulse" style={{ animationDelay: '1s' }} />
         </div>
 
-        {/* Planet decoration */}
-        <div className="absolute top-[65%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-[radial-gradient(circle_at_25%_90%,_#1e386b_15%,_#000000de_70%,_#000000ed_100%)] blur-sm z-[2] pointer-events-none hidden md:block" />
+        {/* Planet/Moon - GREEN (primary hsl 172) */}
+        <div className="absolute top-[60%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-[radial-gradient(circle_at_25%_90%,_hsl(172,81%,35%)_15%,_#000000de_70%,_#000000ed_100%)] blur-sm z-[2] pointer-events-none hidden md:block" />
 
         {/* Content */}
         <div className="container mx-auto px-4 relative z-10">
@@ -286,7 +301,7 @@ export default function Trade() {
             animate="visible"
           >
             <motion.div variants={itemVariants}>
-              <Badge className="mb-6 px-4 py-2 text-sm bg-primary/10 border-primary/30">
+              <Badge className="mb-6 px-4 py-2 text-sm bg-primary/10 border-primary/30 backdrop-blur-sm">
                 <div className="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse" />
                 Live Paper Trading
               </Badge>
@@ -296,9 +311,11 @@ export default function Trade() {
               <span className="bg-gradient-to-r from-primary via-accent to-chart-3 bg-clip-text text-transparent">
                 SimFi
               </span>
-              <br />
-              <span className="text-foreground text-4xl md:text-5xl">Risk-Free DeFi Trading</span>
             </motion.h1>
+
+            <motion.p variants={itemVariants} className="text-2xl md:text-3xl text-foreground mb-2">
+              Risk-Free DeFi Trading
+            </motion.p>
 
             <motion.p variants={itemVariants} className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
               Practice trading Solana memecoins with virtual SOL. Master your strategy, compete on leaderboards, and win real rewards.
@@ -488,7 +505,7 @@ export default function Trade() {
                 variant="outline"
                 size="lg"
                 onClick={() => setLocation('/leaderboard')}
-                className="gap-2"
+                className="gap-2 rounded-full"
               >
                 <Trophy className="h-5 w-5" />
                 View Leaderboard
@@ -499,21 +516,109 @@ export default function Trade() {
       </section>
 
       {/* ===== FOOTER ===== */}
-      <footer className="border-t border-border py-8">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-                <span className="text-sm font-bold text-white">S</span>
+      <footer className="border-t border-border/50 bg-card/30">
+        <div className="container mx-auto px-4 py-12">
+          {/* Main Footer Content */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+            {/* Brand */}
+            <div className="md:col-span-2">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+                  <span className="text-lg font-bold text-white">S</span>
+                </div>
+                <span className="text-xl font-bold">SimFi</span>
               </div>
-              <span className="font-semibold text-foreground">SimFi</span>
+              <p className="text-muted-foreground mb-4 max-w-sm">
+                Risk-free paper trading platform for Solana memecoins. Learn, practice, and compete without financial risk.
+              </p>
+              <div className="flex items-center gap-4">
+                <a 
+                  href="https://x.com/simikiapp" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                >
+                  <SiX className="h-4 w-4" />
+                </a>
+                <a 
+                  href="https://github.com/grkhmz23/simfi-bags-rewards-engine" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                >
+                  <Github className="h-4 w-4" />
+                </a>
+              </div>
             </div>
-            <p>© {new Date().getFullYear()} SimFi. Educational trading platform. No real money involved.</p>
-            <div className="flex items-center gap-4">
-              <a href="https://x.com/i/communities/1981329893569835367" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">
-                <SiX className="h-5 w-5" />
-              </a>
+
+            {/* Quick Links */}
+            <div>
+              <h4 className="font-semibold mb-4">Platform</h4>
+              <ul className="space-y-2">
+                {[
+                  { label: 'Trade', path: '/' },
+                  { label: 'Leaderboard', path: '/leaderboard' },
+                  { label: 'Rewards', path: '/rewards' },
+                  { label: 'Study', path: '/study' },
+                ].map(link => (
+                  <li key={link.path}>
+                    <button 
+                      onClick={() => setLocation(link.path)}
+                      className="text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      {link.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
+
+            {/* Resources */}
+            <div>
+              <h4 className="font-semibold mb-4">Resources</h4>
+              <ul className="space-y-2">
+                <li>
+                  <button 
+                    onClick={() => setLocation('/about')}
+                    className="text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    About
+                  </button>
+                </li>
+                <li>
+                  <a 
+                    href="https://github.com/grkhmz23/simfi-bags-rewards-engine" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                  >
+                    Rewards Engine
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </li>
+                <li>
+                  <a 
+                    href="https://x.com/i/communities/1981329893569835367" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                  >
+                    Community
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Bottom Bar */}
+          <div className="pt-8 border-t border-border/50 flex flex-col md:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-muted-foreground">
+              © {new Date().getFullYear()} SimFi. Educational trading platform. No real money involved.
+            </p>
+            <p className="text-sm text-muted-foreground flex items-center gap-1">
+              Made with <Heart className="h-4 w-4 text-destructive fill-destructive" /> for the Solana community
+            </p>
           </div>
         </div>
       </footer>
