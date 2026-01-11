@@ -15,7 +15,7 @@ interface FooterProps extends React.HTMLAttributes<HTMLElement> {
 }
 
 export const Footer: FC<FooterProps> = ({
-  logoSrc,
+  logoSrc = '/simfi-logo.png',
   companyName = 'SimFi',
   description = 'Practice trading Solana memecoins risk-free. Master strategies, compete on leaderboards, and learn without losing real money.',
   usefulLinks = [
@@ -25,7 +25,7 @@ export const Footer: FC<FooterProps> = ({
     { label: 'About', href: '/about' },
   ],
   socialLinks = [
-    { label: 'Twitter', href: 'https://x.com/i/communities/1981329893569835367', icon: <Twitter className="h-5 w-5" /> },
+    { label: 'X Community', href: 'https://x.com/i/communities/1981329893569835367', icon: <Twitter className="h-5 w-5" /> },
   ],
   newsletterTitle = 'Stay Updated',
   onSubscribe,
@@ -61,13 +61,11 @@ export const Footer: FC<FooterProps> = ({
         {/* Company Info */}
         <div className="flex flex-col items-start gap-4">
           <div className="flex items-center gap-3">
-            {logoSrc ? (
-              <img src={logoSrc} alt={`${companyName} Logo`} className="h-10 w-10 rounded-full" />
-            ) : (
-              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-                <span className="text-lg font-bold text-primary-foreground">S</span>
-              </div>
-            )}
+            <img 
+              src={logoSrc} 
+              alt={`${companyName} Logo`} 
+              className="h-10 w-10 object-contain" 
+            />
             <span className="text-xl font-bold gradient-simfi-text">{companyName}</span>
           </div>
           <p className="text-sm text-muted-foreground">{description}</p>
