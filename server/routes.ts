@@ -18,6 +18,8 @@ import { insertUserSchema, solToLamports, type LoginRequest, type RegisterReques
 
 import { getSolPrice, getCachedSolPrice } from './solPrice';
 import { registerMarketRoutes } from "./services/marketRoutes";
+import { registerRewardsRoutes } from "./services/rewardsRoutes";
+import { rewardsEngine } from "./services/rewardsEngine";
 
 // ============================================================================
 // RATE LIMITING WITH REDIS STORE (for multi-instance deployments)
@@ -2413,5 +2415,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize leaderboard service for period management
   leaderboardService.start();
   registerMarketRoutes(app, { authenticateToken, searchLimiter });
+  registerRewardsRoutes(app);
+  rewardsEngine.start();
   return httpServer;
 }
