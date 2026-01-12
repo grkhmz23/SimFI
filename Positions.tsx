@@ -128,14 +128,16 @@ export default function Positions() {
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Total Invested</p>
                     <p className="text-2xl font-bold font-mono" data-testid="text-total-invested">
-                      {formatUSD(totalInvestedLamports, 2)}
+                      {formatSol(totalInvestedLamports, 2)} SOL
                     </p>
+                    <p className="text-sm text-muted-foreground font-mono">≈ {formatUSD(totalInvestedLamports, 2)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Current Value</p>
                     <p className="text-2xl font-bold font-mono" data-testid="text-total-value">
-                      {formatUSD(totalValueLamports, 2)}
+                      {formatSol(totalValueLamports, 2)} SOL
                     </p>
+                    <p className="text-sm text-muted-foreground font-mono">≈ {formatUSD(totalValueLamports, 2)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Total P/L</p>
@@ -144,12 +146,15 @@ export default function Positions() {
                         className={`text-2xl font-bold font-mono ${totalPnLLamports >= BigInt(0) ? 'text-success' : 'text-destructive'}`}
                         data-testid="text-total-pnl"
                       >
-                        {totalPnLLamports >= BigInt(0) ? '+' : ''}{formatUSD(totalPnLLamports, 2)}
+                        {totalPnLLamports >= BigInt(0) ? '+' : ''}{formatSol(totalPnLLamports, 2)} SOL
                       </p>
                       <Badge variant={totalPnLLamports >= BigInt(0) ? 'default' : 'destructive'}>
                         {totalPnLLamports >= BigInt(0) ? '+' : ''}{totalPnLPercent.toFixed(2)}%
                       </Badge>
                     </div>
+                    <p className="text-sm text-muted-foreground font-mono">
+                      ≈ {totalPnLLamports >= BigInt(0) ? '+' : ''}{formatUSD(totalPnLLamports, 2)}
+                    </p>
                   </div>
                 </div>
               </CardContent>

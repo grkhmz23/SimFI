@@ -168,7 +168,8 @@ export default function Portfolio() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Invested</p>
-              <p className="text-2xl font-bold font-mono">{formatUSD(totalInvested, 2)}</p>
+              <p className="text-2xl font-bold font-mono">{formatSol(totalInvested, 2)} SOL</p>
+              <p className="text-sm text-muted-foreground font-mono">≈ {formatUSD(totalInvested, 2)}</p>
             </div>
           </div>
         </Card>
@@ -180,7 +181,8 @@ export default function Portfolio() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Current Value</p>
-              <p className="text-2xl font-bold font-mono">{formatUSD(totalCurrentValue, 2)}</p>
+              <p className="text-2xl font-bold font-mono">{formatSol(totalCurrentValue, 2)} SOL</p>
+              <p className="text-sm text-muted-foreground font-mono">≈ {formatUSD(totalCurrentValue, 2)}</p>
             </div>
           </div>
         </Card>
@@ -197,7 +199,10 @@ export default function Portfolio() {
             <div>
               <p className="text-sm text-muted-foreground">Total P/L</p>
               <p className={`text-2xl font-bold font-mono ${totalPL >= 0n ? 'text-success' : 'text-destructive'}`}>
-                {totalPL >= 0n ? '+' : ''}{formatUSD(totalPL, 2)}
+                {totalPL >= 0n ? '+' : ''}{formatSol(totalPL, 2)} SOL
+              </p>
+              <p className="text-sm text-muted-foreground font-mono">
+                ≈ {totalPL >= 0n ? '+' : ''}{formatUSD(totalPL, 2)}
               </p>
             </div>
           </div>
