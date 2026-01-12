@@ -289,8 +289,16 @@ export default function Trade() {
           <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-accent/15 rounded-full blur-[80px] animate-pulse" style={{ animationDelay: '1s' }} />
         </div>
 
-        {/* Planet/Moon - GREEN (primary hsl 172) */}
-        <div className="absolute top-[60%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-[radial-gradient(circle_at_25%_90%,_hsl(172,81%,35%)_15%,_#000000de_70%,_#000000ed_100%)] blur-sm z-[2] pointer-events-none hidden md:block" />
+        {/* Half Moon - Crescent phase like real moon */}
+        <div className="absolute top-[60%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] z-[2] pointer-events-none hidden md:block">
+          {/* Main moon circle */}
+          <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_35%_35%,_hsl(172,81%,40%)_0%,_hsl(172,70%,30%)_30%,_hsl(172,50%,20%)_60%,_transparent_100%)]" />
+        </div>
+
+        {/* First Quarter Moon - Green crescent phase */}
+        <div className="absolute top-[60%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] z-[2] pointer-events-none hidden md:block">
+          <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_30%_35%,_hsl(172,81%,45%)_0%,_hsl(172,70%,32%)_35%,_hsl(172,50%,20%)_70%,_transparent_100%)] blur-sm" style={{ clipPath: "inset(0 50% 0 0 round 9999px)" }} />
+        </div>
 
         {/* Content */}
         <div className="container mx-auto px-4 relative z-10">
