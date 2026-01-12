@@ -269,7 +269,10 @@ export function Navigation() {
                       <div className="hidden sm:flex flex-col items-start">
                         <span className="text-sm font-medium">{user?.username}</span>
                         <span className="font-mono text-xs text-primary">
-                          {formatUSD(user?.balance || 0, 2)}
+                          {formatSol(user?.balance || 0, 2)} SOL
+                        </span>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          ≈ {formatUSD(user?.balance || 0, 2)}
                         </span>
                       </div>
                       <ChevronDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
@@ -280,7 +283,10 @@ export function Navigation() {
                       <div className="flex flex-col">
                         <span>{user?.username}</span>
                         <span className="font-mono text-xs text-primary font-normal">
-                          {formatUSD(user?.balance || 0, 2)}
+                          {formatSol(user?.balance || 0, 2)} SOL
+                        </span>
+                        <span className="font-mono text-[10px] text-muted-foreground font-normal">
+                          ≈ {formatUSD(user?.balance || 0, 2)}
                         </span>
                       </div>
                     </DropdownMenuLabel>

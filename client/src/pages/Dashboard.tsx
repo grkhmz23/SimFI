@@ -39,6 +39,7 @@ function StatsCard({
   icon: Icon, 
   label, 
   value, 
+  secondaryValue,
   subValue,
   trend,
   accentColor = 'primary',
@@ -47,6 +48,7 @@ function StatsCard({
   icon: any;
   label: string;
   value: string;
+  secondaryValue?: string;
   subValue?: string;
   trend?: 'up' | 'down' | null;
   accentColor?: 'primary' | 'success' | 'destructive' | 'accent';
@@ -89,6 +91,9 @@ function StatsCard({
                 </span>
               )}
             </div>
+            {secondaryValue && (
+              <p className="text-sm text-muted-foreground font-mono mt-0.5">≈ {secondaryValue}</p>
+            )}
             {subValue && (
               <p className="text-xs text-muted-foreground mt-1">{subValue}</p>
             )}
@@ -223,7 +228,8 @@ export default function Dashboard() {
           <StatsCard
             icon={Wallet}
             label="Available Balance"
-            value={formatUSD(currentUser?.balance || 0, 2)}
+            value={`${formatSol(currentUser?.balance || 0, 2)} SOL`}
+            secondaryValue={formatUSD(currentUser?.balance || 0, 2)}
             subValue="Ready to trade"
             accentColor="primary"
             delay={100}
@@ -232,7 +238,8 @@ export default function Dashboard() {
           <StatsCard
             icon={TrendingUp}
             label="Total P/L"
-            value={`${totalProfit >= 0 ? '+' : ''}${formatUSD(totalProfit, 2)}`}
+            value={`${totalProfit >= 0 ? '+' : ''}${formatSol(totalProfit, 2)} SOL`}
+            secondaryValue={`${totalProfit >= 0 ? '+' : ''}${formatUSD(totalProfit, 2)}`}
             subValue="All-time performance"
             trend={profitTrend}
             accentColor={totalProfit >= 0 ? 'success' : 'destructive'}
