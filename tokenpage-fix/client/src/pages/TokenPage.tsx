@@ -385,6 +385,9 @@ export default function TokenPage() {
                   <div>
                     <p className="text-xs text-muted-foreground uppercase mb-1">Entry Price</p>
                     <p className="text-xl font-bold font-mono">
+                      {formatPricePerToken(userPosition.entryPrice, 8)} SOL
+                    </p>
+                    <p className="text-xs text-muted-foreground">
                       {formatPricePerTokenUSD(userPosition.entryPrice, 6)}
                     </p>
                   </div>
@@ -396,16 +399,16 @@ export default function TokenPage() {
                           const amount = toBigInt(userPosition.amount);
                           const price = Number(token.price);
                           if (!isFinite(price) || price <= 0) {
-                            return '$0.00';
+                            return '0.00 SOL';
                           }
                           const priceLamports = BigInt(Math.floor(price));
                           const decimals = userPosition.decimals || 6;
                           const decimalDivisor = BigInt(10 ** decimals);
                           const valueLamports = (amount * priceLamports) / decimalDivisor;
-                          return formatUSD(valueLamports, 2);
+                          return formatSol(valueLamports) + ' SOL';
                         } catch (error) {
                           console.error('Error calculating position value:', error);
-                          return '$0.00';
+                          return '0.00 SOL';
                         }
                       })()}
                     </p>
