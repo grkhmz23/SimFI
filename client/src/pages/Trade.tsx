@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AsciiOrb } from '@/components/ui/ascii-orb';
+import { ProceduralGroundBackground } from '@/components/ui/procedural-ground-background';
 import { 
   Search, 
   Loader2, 
@@ -16,12 +17,8 @@ import {
   Coins, 
   GraduationCap, 
   ChevronDown, 
-  Sparkles,
-  ExternalLink,
-  Github,
-  Heart
+  Sparkles
 } from 'lucide-react';
-import { SiX } from 'react-icons/si';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth-context';
@@ -275,13 +272,21 @@ export default function Trade() {
   const showSearchResults = debouncedQuery.length >= 3;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen">
+      {/* Topographic Ground Background - lowest z-index, covers entire page */}
+      <ProceduralGroundBackground />
+
       {/* ===== HERO SECTION ===== */}
       <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden">
-        {/* Lightning Background - GREEN HUE */}
-        <div className="absolute inset-0 z-0">
+        {/* Lightning Background - GREEN HUE - with radial fade to remove box edges */}
+        <div 
+          className="absolute inset-0 z-0"
+          style={{
+            maskImage: 'radial-gradient(ellipse 80% 70% at 50% 50%, black 40%, transparent 100%)',
+            WebkitMaskImage: 'radial-gradient(ellipse 80% 70% at 50% 50%, black 40%, transparent 100%)'
+          }}
+        >
           <Lightning hue={172} intensity={0.35} />
-          <div className="absolute inset-0 bg-black/50" />
         </div>
 
         {/* Gradient orbs */}
@@ -290,8 +295,14 @@ export default function Trade() {
           <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-accent/15 rounded-full blur-[80px] animate-pulse" style={{ animationDelay: '1s' }} />
         </div>
 
-        {/* ASCII Glitch Orb - GREEN (primary hsl 172) */}
-        <div className="absolute top-[55%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-[2] pointer-events-none hidden md:block">
+        {/* ASCII Glitch Orb - GREEN (primary hsl 172) - with radial fade */}
+        <div 
+          className="absolute top-[55%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-[2] pointer-events-none hidden md:block"
+          style={{
+            maskImage: 'radial-gradient(circle, black 20%, transparent 70%)',
+            WebkitMaskImage: 'radial-gradient(circle, black 20%, transparent 70%)'
+          }}
+        >
           <AsciiOrb hue={172} size={450} />
         </div>
 
@@ -517,114 +528,6 @@ export default function Trade() {
           </motion.div>
         </div>
       </section>
-
-      {/* ===== FOOTER ===== */}
-      <footer className="border-t border-border/50 bg-card/30">
-        <div className="container mx-auto px-4 py-12">
-          {/* Main Footer Content */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-            {/* Brand */}
-            <div className="md:col-span-2">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-                  <span className="text-lg font-bold text-white">S</span>
-                </div>
-                <span className="text-xl font-bold">SimFi</span>
-              </div>
-              <p className="text-muted-foreground mb-4 max-w-sm">
-                Risk-free paper trading platform for Solana memecoins. Learn, practice, and compete without financial risk.
-              </p>
-              <div className="flex items-center gap-4">
-                <a 
-                  href="https://x.com/simikiapp" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center hover:border-primary/50 hover:bg-primary/5 transition-colors"
-                >
-                  <SiX className="h-4 w-4" />
-                </a>
-                <a 
-                  href="https://github.com/grkhmz23/simfi-bags-rewards-engine" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center hover:border-primary/50 hover:bg-primary/5 transition-colors"
-                >
-                  <Github className="h-4 w-4" />
-                </a>
-              </div>
-            </div>
-
-            {/* Quick Links */}
-            <div>
-              <h4 className="font-semibold mb-4">Platform</h4>
-              <ul className="space-y-2">
-                {[
-                  { label: 'Trade', path: '/' },
-                  { label: 'Leaderboard', path: '/leaderboard' },
-                  { label: 'Rewards', path: '/rewards' },
-                  { label: 'Study', path: '/study' },
-                ].map(link => (
-                  <li key={link.path}>
-                    <button 
-                      onClick={() => setLocation(link.path)}
-                      className="text-muted-foreground hover:text-primary transition-colors"
-                    >
-                      {link.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Resources */}
-            <div>
-              <h4 className="font-semibold mb-4">Resources</h4>
-              <ul className="space-y-2">
-                <li>
-                  <button 
-                    onClick={() => setLocation('/about')}
-                    className="text-muted-foreground hover:text-primary transition-colors"
-                  >
-                    About
-                  </button>
-                </li>
-                <li>
-                  <a 
-                    href="https://github.com/grkhmz23/simfi-bags-rewards-engine" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
-                  >
-                    Rewards Engine
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                </li>
-                <li>
-                  <a 
-                    href="https://x.com/i/communities/1981329893569835367" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
-                  >
-                    Community
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          {/* Bottom Bar */}
-          <div className="pt-8 border-t border-border/50 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-muted-foreground">
-              © {new Date().getFullYear()} SimFi. Educational trading platform. No real money involved.
-            </p>
-            <p className="text-sm text-muted-foreground flex items-center gap-1">
-              Made with <Heart className="h-4 w-4 text-destructive fill-destructive" /> for the Solana community
-            </p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
