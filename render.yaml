@@ -1,0 +1,64 @@
+# SimFi - Render Blueprint Configuration
+# This file configures the SimFi deployment on Render
+
+services:
+  # Main Web Service - Full-stack application
+  - type: web
+    name: simfi-web
+    runtime: node
+    plan: standard
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: simfi-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: BOT_API_SECRET
+        generateValue: true
+      # Optional: Auto-start Telegram bot with web server
+      # Set to 'true' only for single-instance deployments
+      - key: AUTO_START_BOT
+        value: "false"
+    autoDeploy: true
+
+  # Background Worker - Telegram Bot (separate service)
+  - type: worker
+    name: simfi-bot
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm install
+    startCommand: node bot.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_BASE_URL
+        fromService:
+          type: web
+          name: simfi-web
+          property: host
+      - key: DATABASE_URL
+        fromDatabase:
+          name: simfi-db
+          property: connectionString
+      - key: BOT_API_SECRET
+        fromService:
+          type: web
+          name: simfi-web
+          envVarKey: BOT_API_SECRET
+    autoDeploy: true
+
+databases:
+  - name: simfi-db
+    plan: free
+    region: oregon
+    postgresMajorVersion: "15"
