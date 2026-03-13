@@ -1,8 +1,8 @@
 import { storage } from "./storage";
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
 
-neonConfig.webSocketConstructor = ws;
+// Use standard pg Pool for Render PostgreSQL (not Neon)
+import pg from "pg";
+const { Pool } = pg;
 
 const PERIOD_DURATION_MS = 6 * 60 * 60 * 1000;
 const LEADER_LOCK_ID = 123456789;
