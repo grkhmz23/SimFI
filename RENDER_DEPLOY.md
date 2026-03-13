@@ -154,4 +154,4 @@ Render auto-deploys on push to your branch. To disable:
 
 ---
 
-Need help? Check the main [README](./replit.md) for app documentation.
+Need help? Check the project documentation for more details.

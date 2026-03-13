@@ -1633,25 +1633,109 @@ bot.on('text', async (ctx) => {
 });
 
 // ============================================================================
-// BOT STARTUP
+// BOT STARTUP - FIXED POLLING
 // ============================================================================
 
 console.log('🚀 Starting Telegram bot with polling...');
 
+// Track polling state
+let isPolling = false;
+let pollOffset = 0;
+let consecutiveErrors = 0;
+const MAX_CONSECUTIVE_ERRORS = 10;
+const PROCESSED_UPDATES = new Set(); // Prevent duplicate processing
+
+// Manual polling implementation - more reliable than Telegraf's built-in polling
+async function startManualPolling() {
+  if (isPolling) {
+    console.log('⚠️ Polling already running, skipping...');
+    return;
+  }
+  
+  isPolling = true;
+  console.log('[POLL] Starting manual polling loop...');
+  
+  while (isPolling) {
+    try {
+      // Get updates from Telegram
+      const updates = await bot.telegram.getUpdates({
+        offset: pollOffset,
+        limit: 100,
+        timeout: 30, // Long polling timeout
+      });
+      
+      if (updates && updates.length > 0) {
+        console.log(`[POLL] Received ${updates.length} update(s)`);
+        
+        for (const update of updates) {
+          // Deduplication: Skip if we've already processed this update
+          if (PROCESSED_UPDATES.has(update.update_id)) {
+            console.log(`[POLL] Skipping duplicate update ${update.update_id}`);
+            continue;
+          }
+          
+          // Add to processed set and limit size
+          PROCESSED_UPDATES.add(update.update_id);
+          if (PROCESSED_UPDATES.size > 1000) {
+            const iterator = PROCESSED_UPDATES.values();
+            PROCESSED_UPDATES.delete(iterator.next().value);
+          }
+          
+          console.log(`[POLL] Processing update ${update.update_id}: ${Object.keys(update).filter(k => k !== 'update_id').join(', ')}`);
+          
+          try {
+            // Process the update through Telegraf
+            await bot.handleUpdate(update);
+            console.log(`[POLL] ✅ Processed update ${update.update_id}`);
+          } catch (handlerError) {
+            console.error(`[POLL] ❌ Error handling update ${update.update_id}:`, handlerError.message);
+          }
+          
+          // Update offset to acknowledge this update
+          pollOffset = update.update_id + 1;
+        }
+        
+        consecutiveErrors = 0; // Reset error counter on success
+      }
+    } catch (error) {
+      consecutiveErrors++;
+      console.error(`[POLL] ❌ Polling error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error.message);
+      
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        console.error('[POLL] ❌ Too many consecutive errors, stopping polling');
+        isPolling = false;
+        process.exit(1);
+      }
+      
+      // Wait before retrying (exponential backoff)
+      const delay = Math.min(1000 * Math.pow(2, consecutiveErrors - 1), 30000);
+      console.log(`[POLL] Waiting ${delay}ms before retry...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
 (async () => {
   try {
+    // Validate bot token
     const botInfo = await bot.telegram.getMe();
     console.log(`✅ Bot token valid: @${botInfo.username} (${botInfo.first_name})`);
 
+    // CRITICAL: Delete webhook and drop pending updates
     try {
-      await bot.telegram.deleteWebhook();
-      console.log('📡 Webhook deleted successfully');
+      console.log('📡 Deleting webhook and dropping pending updates...');
+      await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+      console.log('✅ Webhook deleted and pending updates cleared');
     } catch (err) {
-      console.log('📡 No active webhook');
+      console.warn('⚠️ Could not delete webhook:', err.message);
     }
 
+    // Wait a moment for Telegram to process the webhook deletion
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Start manual polling
     console.log('📡 Starting polling...');
-    bot.startPolling();
+    startManualPolling();
 
     console.log('✅ Telegram bot polling started!');
     console.log('🎯 Bot is now listening for messages');
@@ -1661,16 +1745,24 @@ console.log('🚀 Starting Telegram bot with polling...');
     console.error('❌ Failed to start bot:');
     console.error('Error:', err.message);
     if (err.code) console.error('Code:', err.code);
+    if (err.code === 401) {
+      console.error('\n💡 Your TELEGRAM_BOT_TOKEN is invalid or revoked.');
+      console.error('   Get a new token from @BotFather on Telegram.');
+    }
     process.exit(1);
   }
 })();
 
 // Graceful shutdown
 process.once('SIGINT', () => {
-  console.log('📴 Stopping bot...');
+  console.log('\n📴 SIGINT received, stopping bot...');
+  isPolling = false;
   bot.stop('SIGINT');
+  process.exit(0);
 });
 process.once('SIGTERM', () => {
-  console.log('📴 Stopping bot...');
+  console.log('\n📴 SIGTERM received, stopping bot...');
+  isPolling = false;
   bot.stop('SIGTERM');
+  process.exit(0);
 });
