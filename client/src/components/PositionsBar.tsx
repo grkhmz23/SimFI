@@ -91,7 +91,7 @@ export function PositionsBar() {
                     <div className="col-span-2">
                       <span className="text-muted-foreground">Total Spent:</span>
                       <span className="ml-1 font-mono font-semibold text-foreground">
-                        {formatSol(toBigInt(position.solSpent))} SOL
+                        {formatSol(toBigInt(position.nativeSpent))} SOL
                       </span>
                     </div>
                   </div>

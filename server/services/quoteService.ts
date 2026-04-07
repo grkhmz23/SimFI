@@ -1,8 +1,10 @@
 // server/services/quoteService.ts
-// Server-authoritative quote system to prevent price manipulation
+// Multi-chain server-authoritative quote system
 
 import crypto from 'crypto';
 import { marketDataService } from './marketData';
+import type { Chain } from '@shared/schema';
+import { CHAIN_CONFIG, parseToBaseUnits } from '../lib/chain-utils';
 
 interface Quote {
   quoteId: string;
@@ -10,11 +12,12 @@ interface Quote {
   tokenName?: string;
   tokenSymbol?: string;
   side: 'buy' | 'sell';
-  amountSolLamports?: bigint;   // For buys: how much SOL to spend
+  amountNative?: bigint;         // For buys: how much native token (SOL/ETH) to spend
   amountTokens?: bigint;         // For sells: how many tokens to sell
-  priceLamports: bigint;         // Server-determined execution price
-  estimatedOutput: bigint;       // Estimated tokens (buy) or SOL (sell)
+  priceNative: bigint;           // Server-determined execution price (in chain's base units)
+  estimatedOutput: bigint;       // Estimated tokens (buy) or native token (sell)
   decimals: number;
+  chain: Chain;                  // Which chain this quote is for
   userId: string | number;
   createdAt: number;
   expiresAt: number;
@@ -24,18 +27,20 @@ interface Quote {
 
 interface CreateQuoteParams {
   userId: string | number;
+  chain: Chain;
   tokenAddress: string;
   side: 'buy' | 'sell';
-  amountSol?: string;            // For buys
-  amountTokens?: string;         // For sells
+  amountNative?: string;         // For buys: amount in display units (SOL or ETH)
+  amountTokens?: string;         // For sells: token amount in base units
 }
 
 interface QuoteResponse {
   quoteId: string;
   tokenAddress: string;
   side: 'buy' | 'sell';
-  priceLamports: string;
+  priceNative: string;
   estimatedOutput: string;
+  chain: Chain;
   expiresAt: number;
   expiresInMs: number;
   priceImpactBps: number;
@@ -67,7 +72,7 @@ class QuoteService {
    * Create a new server-authoritative quote
    */
   async createQuote(params: CreateQuoteParams): Promise<QuoteResponse> {
-    const { userId, tokenAddress, side, amountSol, amountTokens } = params;
+    const { userId, chain, tokenAddress, side, amountNative, amountTokens } = params;
 
     // 1. Check user quote limit (prevent spam)
     const userCount = this.userQuoteCounts.get(userId) || 0;
@@ -76,17 +81,17 @@ class QuoteService {
     }
 
     // 2. Validate input
-    if (side === 'buy' && !amountSol) {
-      throw new Error('amountSol required for buy quotes');
+    if (side === 'buy' && !amountNative) {
+      throw new Error('amountNative required for buy quotes');
     }
     if (side === 'sell' && !amountTokens) {
       throw new Error('amountTokens required for sell quotes');
     }
 
-    // 3. Fetch current market data
-    const tokenData = await marketDataService.getToken(tokenAddress);
+    // 3. Fetch current market data for the specific chain
+    const tokenData = await marketDataService.getToken(tokenAddress, chain);
     if (!tokenData) {
-      throw new Error('Token not found or price unavailable');
+      throw new Error(`Token not found on ${chain} or price unavailable`);
     }
 
     // 4. Check liquidity
@@ -95,23 +100,27 @@ class QuoteService {
     }
 
     // 5. Calculate execution price with slippage
-    const basePriceLamports = BigInt(tokenData.priceLamports);
+    const basePriceNative = tokenData.priceNative;
     let executionPrice: bigint;
     let estimatedOutput: bigint;
     let priceImpactBps = 0;
 
+    const decimals = tokenData.decimals || (chain === 'base' ? 18 : 6);
+    const nativeDecimals = CHAIN_CONFIG[chain].decimals;
+
     if (side === 'buy') {
       // Buyer gets worse price (pays more per token)
-      executionPrice = (basePriceLamports * BigInt(10000 + CONFIG.SLIPPAGE_BPS)) / 10000n;
+      executionPrice = (basePriceNative * BigInt(10000 + CONFIG.SLIPPAGE_BPS)) / 10000n;
 
-      // Calculate estimated tokens to receive
-      const solLamports = this.parseSolToLamports(amountSol!);
-      const decimals = tokenData.decimals || 6;
+      // Parse native amount (SOL or ETH) to base units
+      const nativeAmount = parseToBaseUnits(chain, amountNative!);
       const decimalMultiplier = BigInt(10 ** decimals);
-      estimatedOutput = (solLamports * decimalMultiplier) / executionPrice;
+      estimatedOutput = (nativeAmount * decimalMultiplier) / executionPrice;
 
       // Estimate price impact based on trade size vs liquidity
-      const tradeValueUsd = Number(solLamports) / 1e9 * (tokenData.priceUsd / (Number(basePriceLamports) / 1e9));
+      const nativeSymbol = CHAIN_CONFIG[chain].nativeSymbol;
+      const nativePriceUsd = tokenData.priceUsd / (Number(basePriceNative) / (10 ** nativeDecimals));
+      const tradeValueUsd = Number(nativeAmount) / (10 ** nativeDecimals) * nativePriceUsd;
       priceImpactBps = Math.min(1000, Math.round((tradeValueUsd / tokenData.liquidity) * 10000));
 
       // 6. Create quote
@@ -121,10 +130,11 @@ class QuoteService {
         tokenName: tokenData.name,
         tokenSymbol: tokenData.symbol,
         side,
-        amountSolLamports: solLamports,
-        priceLamports: executionPrice,
+        amountNative: nativeAmount,
+        priceNative: executionPrice,
         estimatedOutput,
         decimals,
+        chain,
         userId,
         createdAt: Date.now(),
         expiresAt: Date.now() + CONFIG.QUOTE_TTL_MS,
@@ -136,12 +146,11 @@ class QuoteService {
       return this.formatQuoteResponse(quote);
 
     } else {
-      // Seller gets worse price (receives less SOL per token)
-      executionPrice = (basePriceLamports * BigInt(10000 - CONFIG.SLIPPAGE_BPS)) / 10000n;
+      // Seller gets worse price (receives less native token per token)
+      executionPrice = (basePriceNative * BigInt(10000 - CONFIG.SLIPPAGE_BPS)) / 10000n;
 
-      // Calculate estimated SOL to receive
+      // Calculate estimated native token to receive
       const tokenAmount = BigInt(amountTokens!);
-      const decimals = tokenData.decimals || 6;
       const decimalDivisor = BigInt(10 ** decimals);
       estimatedOutput = (tokenAmount * executionPrice) / decimalDivisor;
 
@@ -157,9 +166,10 @@ class QuoteService {
         tokenSymbol: tokenData.symbol,
         side,
         amountTokens: tokenAmount,
-        priceLamports: executionPrice,
+        priceNative: executionPrice,
         estimatedOutput,
         decimals,
+        chain,
         userId,
         createdAt: Date.now(),
         expiresAt: Date.now() + CONFIG.QUOTE_TTL_MS,
@@ -219,9 +229,16 @@ class QuoteService {
    * Get service stats
    */
   getStats() {
+    // Count quotes per chain
+    const byChain = new Map<Chain, number>();
+    for (const quote of this.quotes.values()) {
+      byChain.set(quote.chain, (byChain.get(quote.chain) || 0) + 1);
+    }
+
     return {
       activeQuotes: this.quotes.size,
       usersWithQuotes: this.userQuoteCounts.size,
+      byChain: Object.fromEntries(byChain),
     };
   }
 
@@ -288,28 +305,13 @@ class QuoteService {
       quoteId: quote.quoteId,
       tokenAddress: quote.tokenAddress,
       side: quote.side,
-      priceLamports: quote.priceLamports.toString(),
+      priceNative: quote.priceNative.toString(),
       estimatedOutput: quote.estimatedOutput.toString(),
+      chain: quote.chain,
       expiresAt: quote.expiresAt,
       expiresInMs: quote.expiresAt - Date.now(),
       priceImpactBps: quote.priceImpactBps,
     };
-  }
-
-  private parseSolToLamports(solAmount: string): bigint {
-    const parts = solAmount.split('.');
-    const wholePart = parts[0] || '0';
-    let fracPart = parts[1] || '';
-
-    // Pad/truncate to 9 decimals
-    if (fracPart.length > 9) {
-      fracPart = fracPart.slice(0, 9);
-    } else {
-      fracPart = fracPart.padEnd(9, '0');
-    }
-
-    const cleanWhole = wholePart.replace(/^0+/, '') || '0';
-    return BigInt(cleanWhole + fracPart);
   }
 }
 

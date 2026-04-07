@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth, useChainBalance } from '@/lib/auth-context';
+import { useChain, formatNativeAmount } from '@/lib/chain-context';
+import { ChainSelector } from '@/components/ChainSelector';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -50,6 +52,8 @@ interface SearchResult {
 export function Navigation() {
   const [location, setLocation] = useLocation();
   const { user, logout, isAuthenticated } = useAuth();
+  const { chain, config } = useChain();
+  const chainBalance = useChainBalance(chain);
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -252,8 +256,11 @@ export function Navigation() {
               </div>
             )}
 
-            {/* Right Side - Auth & Mobile Menu */}
+            {/* Right Side - Chain Selector, Auth & Mobile Menu */}
             <div className="flex items-center gap-3">
+              {/* Chain Selector - Always visible */}
+              <ChainSelector className="hidden sm:flex" />
+              
               {isAuthenticated ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -269,10 +276,10 @@ export function Navigation() {
                       <div className="hidden sm:flex flex-col items-start">
                         <span className="text-sm font-medium">{user?.username}</span>
                         <span className="font-mono text-xs text-primary">
-                          {formatSol(user?.balance || 0, 2)} SOL
+                          {formatNativeAmount(chain, BigInt(chainBalance || 0))}
                         </span>
                         <span className="font-mono text-[10px] text-muted-foreground">
-                          ≈ {formatUSD(user?.balance || 0, 2)}
+                          {chain === 'solana' ? `≈ ${formatUSD(chainBalance || 0, 2)}` : ''}
                         </span>
                       </div>
                       <ChevronDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
@@ -283,10 +290,10 @@ export function Navigation() {
                       <div className="flex flex-col">
                         <span>{user?.username}</span>
                         <span className="font-mono text-xs text-primary font-normal">
-                          {formatSol(user?.balance || 0, 2)} SOL
+                          {formatNativeAmount(chain, BigInt(chainBalance || 0))}
                         </span>
                         <span className="font-mono text-[10px] text-muted-foreground font-normal">
-                          ≈ {formatUSD(user?.balance || 0, 2)}
+                          {chain === 'solana' ? `≈ ${formatUSD(chainBalance || 0, 2)}` : ''}
                         </span>
                       </div>
                     </DropdownMenuLabel>

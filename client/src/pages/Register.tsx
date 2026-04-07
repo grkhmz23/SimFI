@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { useAuth } from '@/lib/auth-context';
+import { useChain, CHAIN_CONFIG, isValidChainAddress, type Chain } from '@/lib/chain-context';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@tanstack/react-query';
@@ -16,6 +17,7 @@ export default function Register() {
   const [, setLocation] = useLocation();
   const { setAuth } = useAuth();
   const { toast } = useToast();
+  const { chain, setChain, config } = useChain();
 
   const form = useForm<RegisterRequest>({
     resolver: zodResolver(insertUserSchema),
@@ -33,7 +35,7 @@ export default function Register() {
       setAuth(data.user);
       toast({
         title: 'Account Created! 🎉',
-        description: `Welcome ${data.user.username}! You have 10 SOL to start trading.`,
+        description: `Welcome ${data.user.username}! You have 10 ${config.nativeSymbol} on ${config.name} to start trading.`,
       });
       setLocation('/');
     },
@@ -103,7 +105,7 @@ export default function Register() {
           {/* Benefits */}
           <div className="flex justify-center gap-4 mb-6">
             {[
-              { icon: Gift, label: "10 SOL", color: "text-green-500" },
+              { icon: Gift, label: `10 ${config.nativeSymbol}`, color: "text-green-500" },
               { icon: Trophy, label: "Rewards", color: "text-yellow-500" },
               { icon: Zap, label: "Real-time", color: "text-primary" },
             ].map((item, index) => (
@@ -187,17 +189,49 @@ export default function Register() {
                 )}
               />
 
+              {/* Chain Selector for Registration */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Blockchain</label>
+                <div className="flex gap-2">
+                  {(['solana', 'base'] as Chain[]).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setChain(c)}
+                      className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl border transition-all ${
+                        chain === c
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border/50 bg-background/50 text-muted-foreground hover:border-primary/30'
+                      }`}
+                    >
+                      {c === 'solana' ? (
+                        <svg className="w-4 h-4" viewBox="0 0 128 128" fill="none">
+                          <path d="M108.5 72.5L93.5 87.5H34.5L19.5 72.5L34.5 57.5H93.5L108.5 72.5Z" fill="#9945FF"/>
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" viewBox="0 0 111 111" fill="none">
+                          <circle cx="55.5" cy="55.5" r="55.5" fill="#0052FF"/>
+                        </svg>
+                      )}
+                      <span className="font-medium">{CHAIN_CONFIG[c].name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <FormField
                 control={form.control}
                 name="walletAddress"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium">Solana Wallet Address</FormLabel>
+                    <FormLabel className="text-sm font-medium">{config.name} Wallet Address</FormLabel>
                     <FormControl>
                       <div className="relative">
                         <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
-                          placeholder="7xKXtg2CW87d97TXJSDpbD5jBkhe..."
+                          placeholder={chain === 'solana' 
+                            ? "7xKXtg2CW87d97TXJSDpbD5jBkhe..." 
+                            : "0x71C7656EC7ab88b098defB751B7401B5f6d8976F..."}
                           className="pl-10 h-11 rounded-xl border-border/50 bg-background/50 focus:border-primary font-mono text-sm"
                           data-testid="input-wallet"
                           {...field}
@@ -205,7 +239,7 @@ export default function Register() {
                       </div>
                     </FormControl>
                     <FormDescription className="text-xs text-muted-foreground">
-                      Required for receiving leaderboard rewards
+                      Required for receiving leaderboard rewards on {config.name}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

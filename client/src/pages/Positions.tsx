@@ -38,7 +38,7 @@ export default function Positions() {
   const positions: EnrichedPosition[] = (positionsData?.positions || []).map(p => {
     const amountBigInt = toBigInt(p.amount);
     const currentPriceBigInt = toBigInt(p.currentPrice);
-    const solSpentBigInt = toBigInt(p.solSpent);
+    const solSpentBigInt = toBigInt(p.nativeSpent);
     const decimals = p.decimals || 6;
     const divisor = BigInt(10 ** decimals);
     
@@ -75,7 +75,7 @@ export default function Positions() {
   // Calculate total portfolio value and P&L (keep all math in BigInt)
   // Note: Values come from JSON so we need to convert them to BigInt
   const totalValueLamports = positions.reduce((sum, p) => sum + toBigInt(p.currentValue), BigInt(0));
-  const totalInvestedLamports = positions.reduce((sum, p) => sum + toBigInt(p.solSpent), BigInt(0));
+  const totalInvestedLamports = positions.reduce((sum, p) => sum + toBigInt(p.nativeSpent), BigInt(0));
   const totalPnLLamports = totalValueLamports - totalInvestedLamports;
   const totalPnLPercent = totalInvestedLamports > BigInt(0)
     ? (Number(totalPnLLamports) / Number(totalInvestedLamports)) * 100 
@@ -254,7 +254,7 @@ export default function Positions() {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Invested</span>
                         <span className="font-mono" data-testid={`text-invested-${position.id}`}>
-                          {formatUSD(toBigInt(position.solSpent), 2)}
+                          {formatUSD(toBigInt(position.nativeSpent), 2)}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">

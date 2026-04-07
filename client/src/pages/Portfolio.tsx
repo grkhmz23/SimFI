@@ -131,19 +131,19 @@ export default function Portfolio() {
 
   const calculateProfitLossBigInt = (position: Position, currentPrice: number): bigint => {
     const currentValue = calculateCurrentValueBigInt(position, currentPrice);
-    const solSpent = toBigInt(position.solSpent);
+    const solSpent = toBigInt(position.nativeSpent);
     return currentValue - solSpent;
   };
 
   const calculateProfitLossPercent = (position: Position, currentPrice: number): number => {
     const pl = calculateProfitLossBigInt(position, currentPrice);
-    const solSpent = toBigInt(position.solSpent);
+    const solSpent = toBigInt(position.nativeSpent);
     return (Number(pl) / Number(solSpent)) * 100;
   };
 
   // Use BigInt for totals to prevent precision loss
   const totalInvested = positions.reduce((sum: bigint, p: Position) => {
-    return sum + toBigInt(p.solSpent);
+    return sum + toBigInt(p.nativeSpent);
   }, 0n);
 
   const totalCurrentValue = positions.reduce((sum: bigint, p: Position) => {
@@ -316,7 +316,7 @@ export default function Portfolio() {
                           {formatPricePerTokenUSD(positionWithPrice.currentPrice, 6, solPrice)}
                         </TableCell>
                         <TableCell className="text-right font-mono" data-testid={`text-invested-${position.id}`}>
-                          {formatUSD(position.solSpent, 2)}
+                          {formatUSD(position.nativeSpent, 2)}
                         </TableCell>
                         <TableCell className="text-right font-mono" data-testid={`text-value-${position.id}`}>
                           {formatUSD(currentValueBigInt, 2)}

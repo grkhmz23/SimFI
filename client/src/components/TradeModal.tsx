@@ -155,7 +155,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     : BigInt(0);
 
   const proportionalCostBigInt = !isBuying && position 
-    ? (toBigInt(position.solSpent) * BigInt(percentage)) / BigInt(100)
+    ? (toBigInt(position.nativeSpent) * BigInt(percentage)) / BigInt(100)
     : BigInt(0);
 
   const profitLossBigInt = !isBuying ? sellValueBigInt - proportionalCostBigInt : BigInt(0);

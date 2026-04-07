@@ -13,10 +13,12 @@ import { authenticateToken } from "./middleware/auth";
 import { fetchDexScreenerProfiles } from "./pumpportal";
 import { leaderboardService } from "./leaderboardService";
 import { heliusService } from "./helius-enhanced";
-import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest } from "@shared/schema";
+import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest, type Chain } from "@shared/schema";
+import { isValidChain, isValidEvmAddress, CHAIN_CONFIG, getAddressExplorerUrl } from "./lib/chain-utils";
 
-
-import { getSolPrice, getCachedSolPrice } from './solPrice';
+import { getNativePrice, getCachedNativePrice, getSolPrice, getCachedSolPrice } from './nativePrice';
+import { parseToBaseUnits, formatFromBaseUnits } from './lib/chain-utils';
+import { marketDataService } from "./services/marketData";
 import { registerMarketRoutes } from "./services/marketRoutes";
 import { registerRewardsRoutes } from "./services/rewardsRoutes";
 import { rewardsEngine } from "./services/rewardsEngine";
@@ -188,45 +190,16 @@ const JWT_SECRET: string = (() => {
   return secret;
 })();
 
-// ✅ PRECISION FIX: Parse SOL string to lamports without floating-point math
+// ✅ PRECISION FIX: Parse native token amount to base units
 // This avoids issues like 0.1 * 1e9 = 99999999.99999999
+// Now chain-aware - supports both SOL (9 decimals) and ETH (18 decimals)
+function parseNativeAmount(chain: Chain, amount: string | number): bigint {
+  return parseToBaseUnits(chain, amount);
+}
+
+// Backward compatibility - defaults to Solana
 function parseSolToLamports(solAmount: string | number): bigint {
-  // Convert to string if number was passed
-  const solStr = String(solAmount);
-
-  // ✅ FIX: Bounds check before processing (prevent memory issues)
-  if (solStr.length > 30) {
-    throw new Error('Amount too large');
-  }
-
-  // Validate format: only digits, optional decimal, optional leading minus
-  if (!/^-?\d*\.?\d+$/.test(solStr)) {
-    throw new Error('Invalid SOL amount format');
-  }
-
-  // Split on decimal point
-  const parts = solStr.split('.');
-  const wholePart = parts[0] || '0';
-  let fracPart = parts[1] || '';
-
-  // Pad or truncate fractional part to exactly 9 digits (lamports precision)
-  if (fracPart.length > 9) {
-    fracPart = fracPart.slice(0, 9); // Truncate excess precision
-  } else {
-    fracPart = fracPart.padEnd(9, '0'); // Pad with zeros
-  }
-
-  // Combine and parse as BigInt
-  const lamportsStr = wholePart + fracPart;
-
-  // ✅ FIX: Final bounds check
-  if (lamportsStr.length > 20) {
-    throw new Error('Amount exceeds maximum precision');
-  }
-
-  const lamports = BigInt(lamportsStr);
-
-  return lamports;
+  return parseToBaseUnits('solana', solAmount);
 }
 
 // Input validation for trade amounts
@@ -584,7 +557,8 @@ function serializeBigInts(obj: any): any {
 
 // ✅ MEDIUM FIX: Use centralized SOL price module
 // Alias for backward compatibility
-const fetchSolPrice = getSolPrice;
+// Alias for backward compatibility
+const fetchSolPrice = () => getNativePrice('solana');
 
 // Helper to find the best (highest liquidity) Solana pair from DexScreener pairs array
 // This ensures we get the most accurate price from the most liquid market
@@ -948,17 +922,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: 'Logged out successfully' });
   });
 
-  // Get current SOL price (cached, refreshes every 30 seconds)
+  // Get current native token price for a chain (cached, refreshes every 30 seconds)
+  // Supports: solana, base
+  app.get('/api/price/:chain', async (req, res) => {
+    try {
+      const chainParam = req.params.chain;
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: `Invalid chain. Must be one of: solana, base` });
+      }
+      const chain = chainParam as Chain;
+      const symbol = CHAIN_CONFIG[chain].nativeSymbol;
+      
+      const price = await getNativePrice(chain);
+
+      if (price === null) {
+        return res.status(503).json({ 
+          error: `${symbol} price temporarily unavailable`,
+          available: false,
+          retryAfter: 30,
+        });
+      }
+
+      res.json({ 
+        price, 
+        chain,
+        symbol,
+        available: true,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      console.error('Native price fetch error:', error);
+      res.status(503).json({ 
+        error: 'Could not fetch price',
+        available: false,
+        retryAfter: 30,
+      });
+    }
+  });
+
+  // Legacy endpoint - Get current SOL price (backward compatible)
   app.get('/api/solana/price', async (req, res) => {
     try {
-      const price = await fetchSolPrice();
+      const price = await getNativePrice('solana');
 
-      // ✅ FIX #6: Return proper error when price unavailable (no hardcoded fallback!)
       if (price === null) {
         return res.status(503).json({ 
           error: 'SOL price temporarily unavailable',
           available: false,
-          retryAfter: 30, // Suggest retry in 30 seconds
+          retryAfter: 30,
         });
       }
 
@@ -1031,6 +1042,121 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Update profile error:', error);
       res.status(500).json({ error: 'Could not update profile' });
+    }
+  });
+
+  // ============================================================================
+  // Multi-Chain Balance & Wallet Routes
+  // ============================================================================
+
+  /**
+   * GET /api/user/balances
+   * Get all per-chain balances for the authenticated user
+   */
+  app.get('/api/user/balances', authenticateToken, async (req, res) => {
+    try {
+      const balances = await storage.getAllUserBalances(req.userId!);
+      
+      // Format for frontend consumption
+      const formatted = balances.map(b => ({
+        chain: b.chain,
+        balance: b.balance.toString(),
+        totalProfit: b.totalProfit.toString(),
+        updatedAt: b.updatedAt,
+      }));
+
+      res.json({ balances: formatted });
+    } catch (error: any) {
+      console.error('Get balances error:', error);
+      res.status(500).json({ error: 'Could not fetch balances' });
+    }
+  });
+
+  /**
+   * GET /api/user/balance/:chain
+   * Get balance for a specific chain
+   */
+  app.get('/api/user/balance/:chain', authenticateToken, async (req, res) => {
+    try {
+      const chainParam = req.params.chain;
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: `Invalid chain. Must be one of: solana, base` });
+      }
+      const chain = chainParam as Chain;
+
+      const balance = await storage.getUserBalance(req.userId!, chain);
+      
+      res.json({
+        chain,
+        balance: balance.toString(),
+        symbol: CHAIN_CONFIG[chain].nativeSymbol,
+      });
+    } catch (error: any) {
+      console.error('Get balance error:', error);
+      res.status(500).json({ error: 'Could not fetch balance' });
+    }
+  });
+
+  /**
+   * GET /api/user/wallets
+   * Get all wallet addresses for the authenticated user
+   */
+  app.get('/api/user/wallets', authenticateToken, async (req, res) => {
+    try {
+      const wallets = await storage.getAllUserWallets(req.userId!);
+      
+      const formatted = wallets.map(w => ({
+        chain: w.chain,
+        address: w.address,
+        isPrimary: w.isPrimary === 1,
+        explorerUrl: getAddressExplorerUrl(w.chain as Chain, w.address),
+      }));
+
+      res.json({ wallets: formatted });
+    } catch (error: any) {
+      console.error('Get wallets error:', error);
+      res.status(500).json({ error: 'Could not fetch wallets' });
+    }
+  });
+
+  /**
+   * POST /api/user/wallet
+   * Set wallet address for a specific chain
+   */
+  app.post('/api/user/wallet', authenticateToken, async (req, res) => {
+    try {
+      const { chain: chainParam, address } = req.body;
+
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: `Invalid chain. Must be one of: solana, base` });
+      }
+      const chain = chainParam as Chain;
+
+      if (!address) {
+        return res.status(400).json({ error: 'Wallet address required' });
+      }
+
+      // Validate address format for the chain
+      if (chain === 'solana' && !isValidSolanaAddress(address)) {
+        return res.status(400).json({ error: 'Invalid Solana wallet address' });
+      }
+      if (chain === 'base' && !isValidEvmAddress(address)) {
+        return res.status(400).json({ error: 'Invalid Base wallet address (must be 0x...)' });
+      }
+
+      const wallet = await storage.setUserWallet(req.userId!, chain, address);
+
+      res.json({
+        message: `${CHAIN_CONFIG[chain].name} wallet updated successfully`,
+        wallet: {
+          chain: wallet.chain,
+          address: wallet.address,
+          explorerUrl: getAddressExplorerUrl(chain, wallet.address),
+        },
+      });
+    } catch (error: any) {
+      console.error('Set wallet error:', error);
+      res.status(500).json({ error: 'Could not update wallet' });
     }
   });
 
@@ -1273,52 +1399,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/trades/positions', authenticateToken, async (req, res) => {
     try {
-      const positions = await storage.getUserPositions(req.userId!);
+      // Get optional chain filter from query params
+      const chainParam = req.query.chain as string | undefined;
+      const chain: Chain | undefined = chainParam && isValidChain(chainParam) ? chainParam as Chain : undefined;
+      
+      const positions = await storage.getUserPositions(req.userId!, chain);
 
-      // Fetch current prices for all unique tokens
-      const uniqueTokenAddresses = positions.map(p => p.tokenAddress);
-      const uniqueTokens = Array.from(new Set(uniqueTokenAddresses));
+      // Group positions by chain for fetching prices
+      const positionsByChain = new Map<Chain, typeof positions>();
+      for (const p of positions) {
+        const pChain = p.chain || 'solana';
+        if (!positionsByChain.has(pChain)) {
+          positionsByChain.set(pChain, []);
+        }
+        positionsByChain.get(pChain)!.push(p);
+      }
+
+      // Fetch current prices for all unique tokens (grouped by chain)
       const priceMap = new Map<string, bigint>();
+      
+      for (const [posChain, chainPositions] of positionsByChain) {
+        const uniqueTokenAddresses = chainPositions.map(p => p.tokenAddress);
+        const uniqueTokens = Array.from(new Set(uniqueTokenAddresses));
 
-      if (uniqueTokens.length > 0) {
-        try {
-          // Fetch prices from DexScreener in batches of 30
-          const batchSize = 30;
-          for (let i = 0; i < uniqueTokens.length; i += batchSize) {
-            const batch = uniqueTokens.slice(i, i + batchSize);
-            const addressesParam = batch.join(',');
-
-            const dexResponse = await fetchWithTimeout(
-              `https://api.dexscreener.com/latest/dex/tokens/${addressesParam}`,
-              8000
-            );
-
-            if (dexResponse.ok) {
-              const dexData = await dexResponse.json();
-              const pairs = dexData.pairs || [];
-
-              // Build price map using best (highest liquidity) pair for each token
-              for (const tokenAddr of batch) {
-                const bestPair = findBestSolanaPair(pairs, tokenAddr);
-                if (bestPair && bestPair.priceNative) {
-                  // ✅ PRECISION FIX: Parse without float math
-                  // Clamp to 1 lamport minimum (sub-lamport tokens <$0.0000002 are negligible)
-                  const priceLamports = BigInt(Math.max(1, parseDecimalToLamports(bestPair.priceNative)));
-                  priceMap.set(tokenAddr, priceLamports);
-                }
+        if (uniqueTokens.length > 0) {
+          try {
+            // Use marketDataService for chain-aware price fetching
+            const tokenDataMap = await marketDataService.getTokensBatch(uniqueTokens, posChain);
+            
+            for (const [addr, data] of tokenDataMap) {
+              if (data) {
+                priceMap.set(`${posChain}:${addr}`, data.priceNative);
               }
             }
+            
+            console.log(`📊 Fetched ${tokenDataMap.size} token prices from ${posChain}`);
+          } catch (error) {
+            console.warn(`⚠️  Failed to fetch prices for ${posChain}:`, error);
           }
-          console.log(`📊 Fetched ${priceMap.size} token profiles from DexScreener`);
-        } catch (error) {
-          console.warn('⚠️  Failed to fetch current prices for positions:', error);
         }
       }
 
       // Enrich positions with current prices and recalculate current value
-      // CRITICAL: Use fresh prices from DexScreener, never fall back to entryPrice
+      // CRITICAL: Use fresh prices from market data, never fall back to entryPrice
       const enrichedPositions = positions.map(p => {
-        const freshPrice = priceMap.get(p.tokenAddress);
+        const posChain = p.chain || 'solana';
+        const freshPrice = priceMap.get(`${posChain}:${p.tokenAddress}`);
         const priceToUse = freshPrice || p.entryPrice; // Use entry price as fallback only
 
         // ✅ Recalculate current value based on FRESH price, not stale DB value
@@ -1362,7 +1488,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const { tokenAddress, tokenName, tokenSymbol, solAmount } = req.body;
+      const { tokenAddress, tokenName, tokenSymbol, solAmount, chain: chainParam } = req.body;
       // NOTE: Client 'price' is intentionally IGNORED for execution
 
       // ✅ INPUT VALIDATION
@@ -1370,17 +1496,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
-      if (!isValidSolanaAddress(tokenAddress)) {
-        return res.status(400).json({ error: 'Invalid token address format' });
+      // Validate and default chain
+      const chain: Chain = chainParam && isValidChain(chainParam) ? chainParam : 'solana';
+
+      // ✅ ADDRESS VALIDATION (chain-aware)
+      if (chain === 'solana' && !isValidSolanaAddress(tokenAddress)) {
+        return res.status(400).json({ error: 'Invalid Solana token address format' });
+      }
+      if (chain === 'base' && !isValidEvmAddress(tokenAddress)) {
+        return res.status(400).json({ error: 'Invalid Base token address format (must be 0x...)' });
       }
 
-      // ✅ PRECISION FIX: Parse SOL without floating-point math
-      let solSpent: bigint;
+      // ✅ PRECISION FIX: Parse native amount without floating-point math
+      let nativeSpent: bigint;
       try {
-        solSpent = parseSolToLamports(solAmount);
-        validateTradeAmount(solSpent);
+        nativeSpent = parseToBaseUnits(chain, solAmount);
+        validateTradeAmount(nativeSpent);
       } catch (e: any) {
-        return res.status(400).json({ error: e.message || 'Invalid SOL amount' });
+        return res.status(400).json({ error: e.message || `Invalid ${chain === 'base' ? 'ETH' : 'SOL'} amount` });
       }
 
       const user = await storage.getUserById(req.userId!);
@@ -1388,24 +1521,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'User not found' });
       }
 
-      // Pre-check balance (will be verified atomically in transaction too)
-      if (user.balance < solSpent) {
-        return res.status(400).json({ error: 'Insufficient balance' });
+      // Pre-check balance using per-chain balance (will be verified atomically in transaction too)
+      const userBalance = await storage.getUserBalance(req.userId!, chain);
+      if (userBalance < nativeSpent) {
+        const symbol = chain === 'base' ? 'ETH' : 'SOL';
+        return res.status(400).json({ error: `Insufficient ${symbol} balance` });
       }
 
       // ✅ ANTI-CHEAT: Fetch price BEFORE transaction (no external calls in tx)
-      const currentTokenData = await fetchDexScreenerPrice(tokenAddress);
-      if (!currentTokenData || !currentTokenData.priceLamports) {
-        return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
+      const tokenData = await marketDataService.getToken(tokenAddress, chain);
+      if (!tokenData || !tokenData.priceNative) {
+        return res.status(400).json({ error: `Could not fetch token price from ${chain}. Try again.` });
       }
 
       // ✅ ANTI-MANIPULATION: Check minimum liquidity requirements
       // Low-liquidity tokens can be easily manipulated
-      const liquidityUsd = currentTokenData.liquidityUsd || 0;
-      const volume24hUsd = currentTokenData.volume24hUsd || 0;
+      const liquidityUsd = tokenData.liquidity || 0;
+      const volume24hUsd = tokenData.volume24h || 0;
 
       if (!meetsLiquidityRequirements(liquidityUsd, volume24hUsd)) {
-        console.log(`⚠️ Token ${tokenSymbol} rejected: liquidity=$${liquidityUsd}, volume=$${volume24hUsd}`);
+        console.log(`⚠️ Token ${tokenSymbol} rejected on ${chain}: liquidity=$${liquidityUsd}, volume=$${volume24hUsd}`);
         return res.status(400).json({ 
           error: `Token does not meet minimum liquidity requirements ($${MIN_LIQUIDITY_USD} liquidity, $${MIN_VOLUME_24H_USD} 24h volume)`,
           liquidityUsd,
@@ -1414,40 +1549,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Server-side price is the ONLY price used for execution
-      const serverPriceLamports = BigInt(currentTokenData.priceLamports);
-      const decimals = currentTokenData.decimals || 6;
+      const serverPriceNative = tokenData.priceNative;
+      const decimals = tokenData.decimals || (chain === 'base' ? 18 : 6);
 
       // Apply simulated slippage (0.5% for paper trading realism)
       const SLIPPAGE_BPS = 50n; // 0.5% = 50 basis points
       const slippageMultiplier = 10000n + SLIPPAGE_BPS;
-      const executionPriceLamports = (serverPriceLamports * slippageMultiplier) / 10000n;
+      const executionPriceNative = (serverPriceNative * slippageMultiplier) / 10000n;
 
-      console.log(`💰 Server-side execution (ANTI-CHEAT):`);
-      console.log(`   DexScreener price: ${serverPriceLamports.toString()} lamports/token`);
-      console.log(`   Execution price (+0.5% slippage): ${executionPriceLamports.toString()} lamports/token`);
+      const nativeSymbol = chain === 'base' ? 'ETH' : 'SOL';
+      const nativeDecimals = chain === 'base' ? 18 : 9;
+
+      console.log(`💰 Server-side execution (ANTI-CHEAT) on ${chain}:`);
+      console.log(`   DexScreener price: ${serverPriceNative.toString()} ${nativeSymbol}/token`);
+      console.log(`   Execution price (+0.5% slippage): ${executionPriceNative.toString()} ${nativeSymbol}/token`);
 
       // Calculate tokens received using SERVER price
       const decimalMultiplier = BigInt(10 ** decimals);
-      const tokenAmount = (solSpent * decimalMultiplier) / executionPriceLamports;
+      const tokenAmount = (nativeSpent * decimalMultiplier) / executionPriceNative;
 
       if (tokenAmount <= 0n) {
-        return res.status(400).json({ error: 'SOL amount too small to buy tokens' });
+        return res.status(400).json({ error: `${nativeSymbol} amount too small to buy tokens` });
       }
 
       const tokensDisplay = Number(tokenAmount) / (10 ** decimals);
-      console.log(`📊 Buy: ${Number(solSpent) / 1e9} SOL → ${tokensDisplay.toFixed(6)} tokens`);
+      console.log(`📊 Buy on ${chain}: ${Number(nativeSpent) / (10 ** nativeDecimals)} ${nativeSymbol} → ${tokensDisplay.toFixed(6)} tokens`);
 
       // Execute atomic trade with server-side price
       try {
         const position = await storage.executeBuyTrade({
           userId: req.userId!,
+          chain,
           tokenAddress,
           tokenName,
           tokenSymbol,
           decimals,
-          entryPrice: executionPriceLamports,
+          entryPrice: executionPriceNative,
           amount: tokenAmount,
-          solSpent,
+          nativeSpent,
         });
 
         console.log(`✅ POSITION CREATED: ${tokenSymbol} (ID: ${position.id})`);
@@ -1455,12 +1594,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const newUser = await storage.getUserById(req.userId!);
 
         // ✅ IDEMPOTENCY: Cache successful response
+        const newBalance = await storage.getUserBalance(req.userId!, chain);
         const successResponse = { 
           message: 'Position processed successfully',
           positionId: position.id,
-          newBalance: newUser!.balance.toString(),
+          newBalance: newBalance.toString(),
           tokensReceived: tokenAmount.toString(),
-          executionPrice: executionPriceLamports.toString(),
+          executionPrice: executionPriceNative.toString(),
+          chain,
         };
 
         if (idempotencyKey) {
@@ -1531,38 +1672,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Get chain from position
+      const chain: Chain = position.chain || 'solana';
+      
       // ✅ ANTI-CHEAT: Fetch price BEFORE transaction (no external calls in tx)
-      const currentTokenData = await fetchDexScreenerPrice(position.tokenAddress);
-      if (!currentTokenData || !currentTokenData.priceLamports) {
-        return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
+      const tokenData = await marketDataService.getToken(position.tokenAddress, chain);
+      if (!tokenData || !tokenData.priceNative) {
+        return res.status(400).json({ error: `Could not fetch token price from ${chain}. Try again.` });
       }
 
       // Server-side price with negative slippage for sells
-      const serverPriceLamports = BigInt(currentTokenData.priceLamports);
+      const serverPriceNative = tokenData.priceNative;
       const SLIPPAGE_BPS = 50n;
       const slippageMultiplier = 10000n - SLIPPAGE_BPS;
-      const executionPriceLamports = (serverPriceLamports * slippageMultiplier) / 10000n;
+      const executionPriceNative = (serverPriceNative * slippageMultiplier) / 10000n;
 
       // Use position's decimals
       const decimals = position.decimals || 6;
       const decimalDivisor = BigInt(10 ** decimals);
 
-      // Calculate SOL received using SERVER price
-      const solReceived = (sellAmount * executionPriceLamports) / decimalDivisor;
+      // Calculate native token received using SERVER price
+      const nativeReceived = (sellAmount * executionPriceNative) / decimalDivisor;
 
       // Calculate profit/loss
-      const proportionalCost = (position.solSpent * sellAmount) / position.amount;
-      const profitLoss = solReceived - proportionalCost;
-
-      console.log(`📊 Sell (${isFullSell ? 'FULL' : 'PARTIAL'}): ${Number(sellAmount) / (10 ** decimals)} tokens → ${Number(solReceived) / 1e9} SOL`);
+      const proportionalCost = (position.nativeSpent * sellAmount) / position.amount;
+      const profitLoss = nativeReceived - proportionalCost;
+      
+      console.log(`📊 Sell (${isFullSell ? 'FULL' : 'PARTIAL'}): ${Number(sellAmount) / (10 ** decimals)} tokens on ${chain}`);
 
       // Execute atomic trade with server-side price
       await storage.executeSellTrade({
         userId: req.userId!,
         positionId,
+        chain,
         sellAmount,
-        exitPrice: executionPriceLamports,
-        solReceived,
+        exitPrice: executionPriceNative,
+        nativeReceived,
         profitLoss,
         proportionalCost,
       });
@@ -1571,8 +1716,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const successResponse = {
         message: 'Position closed successfully',
         profitLoss: profitLoss.toString(),
-        solReceived: solReceived.toString(),
-        executionPrice: executionPriceLamports.toString(),
+        nativeReceived: nativeReceived.toString(),
+        executionPrice: executionPriceNative.toString(),
+        chain,
       };
 
       if (idempotencyKey) {
@@ -1598,10 +1744,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const page = parseInt(req.query.page as string) || 1;
       const limit = 50;
       const offset = (page - 1) * limit;
+      
+      // TODO: Get chain from query params in Phase 3
+      const chain = req.query.chain as Chain | undefined;
 
       const [trades, totalCount] = await Promise.all([
-        storage.getUserTrades(req.userId!, limit, offset),
-        storage.getUserTradesCount(req.userId!)
+        storage.getUserTrades(req.userId!, chain, limit, offset),
+        storage.getUserTradesCount(req.userId!, chain)
       ]);
 
       res.json(serializeBigInts({

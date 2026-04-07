@@ -93,8 +93,8 @@ export default function History() {
                   </TableHeader>
                   <TableBody>
                     {trades.map((trade: Trade) => {
-                      const plPercent = trade.solSpent > 0n
-                        ? (Number(trade.profitLoss) / Number(trade.solSpent)) * 100
+                      const plPercent = trade.nativeSpent > 0n
+                        ? (Number(trade.profitLoss) / Number(trade.nativeSpent)) * 100
                         : 0;
                       
                       return (
@@ -117,10 +117,10 @@ export default function History() {
                             {formatPricePerTokenUSD(trade.exitPrice, 6)}
                           </TableCell>
                           <TableCell className="text-right font-mono">
-                            {formatUSD(trade.solSpent, 2)}
+                            {formatUSD(trade.nativeSpent, 2)}
                           </TableCell>
                           <TableCell className="text-right font-mono">
-                            {formatUSD(trade.solReceived, 2)}
+                            {formatUSD(trade.nativeReceived, 2)}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex flex-col items-end">
