@@ -81,18 +81,18 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <PriceProvider>
-          <AuthProvider>
-            <ChainProvider>
+        <AuthProvider>
+          <ChainProvider>
+            <PriceProvider>
               <Toaster />
               <WelcomePopup 
                 delay={800}
                 showOncePerSession={false}
               />
               <Router />
-            </ChainProvider>
-          </AuthProvider>
-        </PriceProvider>
+            </PriceProvider>
+          </ChainProvider>
+        </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
