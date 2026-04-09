@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/lib/auth-context';
+import { useChain } from '@/lib/chain-context';
+import { usePrice } from '@/lib/price-context';
+import { ChainSelector } from '@/components/ChainSelector';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -31,7 +34,7 @@ import {
   Sparkles,
   ChevronDown
 } from 'lucide-react';
-import { formatSol, formatUSD } from '@/lib/lamports';
+import { formatBalance, formatUSD as formatUsdValue } from '@/lib/token-format';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -49,7 +52,9 @@ interface SearchResult {
 
 export function Navigation() {
   const [location, setLocation] = useLocation();
-  const { user, logout, isAuthenticated } = useAuth();
+  const { user, logout, isAuthenticated, getBalance } = useAuth();
+  const { activeChain, nativeSymbol } = useChain();
+  const { solPriceUSD, ethPriceUSD, getPrice } = usePrice();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -252,8 +257,11 @@ export function Navigation() {
               </div>
             )}
 
-            {/* Right Side - Auth & Mobile Menu */}
+            {/* Right Side - Chain Selector, Auth & Mobile Menu */}
             <div className="flex items-center gap-3">
+              {/* Chain Selector - Always visible */}
+              <ChainSelector variant="compact" />
+              
               {isAuthenticated ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -269,10 +277,10 @@ export function Navigation() {
                       <div className="hidden sm:flex flex-col items-start">
                         <span className="text-sm font-medium">{user?.username}</span>
                         <span className="font-mono text-xs text-primary">
-                          {formatSol(user?.balance || 0, 2)} SOL
+                          {formatBalance(getBalance(activeChain), activeChain, 4)} {nativeSymbol}
                         </span>
                         <span className="font-mono text-[10px] text-muted-foreground">
-                          ≈ {formatUSD(user?.balance || 0, 2)}
+                          ≈ {formatUsdValue(getBalance(activeChain), getPrice(activeChain), activeChain)}
                         </span>
                       </div>
                       <ChevronDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
@@ -282,12 +290,26 @@ export function Navigation() {
                     <DropdownMenuLabel>
                       <div className="flex flex-col">
                         <span>{user?.username}</span>
+                        {/* Active Chain Balance */}
                         <span className="font-mono text-xs text-primary font-normal">
-                          {formatSol(user?.balance || 0, 2)} SOL
+                          {formatBalance(getBalance(activeChain), activeChain, 4)} {nativeSymbol}
                         </span>
                         <span className="font-mono text-[10px] text-muted-foreground font-normal">
-                          ≈ {formatUSD(user?.balance || 0, 2)}
+                          ≈ {formatUsdValue(getBalance(activeChain), getPrice(activeChain), activeChain)}
                         </span>
+                        {/* Other Chain Balance */}
+                        <div className="mt-2 pt-2 border-t border-border/50">
+                          <span className="text-[10px] text-muted-foreground">
+                            {activeChain === 'base' ? 'Solana' : 'Base'} Balance
+                          </span>
+                          <span className="font-mono text-xs text-muted-foreground block">
+                            {formatBalance(
+                              getBalance(activeChain === 'base' ? 'solana' : 'base'),
+                              activeChain === 'base' ? 'solana' : 'base',
+                              4
+                            )} {activeChain === 'base' ? 'SOL' : 'ETH'}
+                          </span>
+                        </div>
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />

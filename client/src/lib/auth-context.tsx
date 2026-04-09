@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import type { User } from '@shared/schema';
+import type { User, Chain } from '@shared/schema';
 import { apiRequest } from './queryClient';
 
 interface AuthContextType {
@@ -8,6 +8,9 @@ interface AuthContextType {
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
+  // Helper methods for dual balance
+  getBalance: (chain: Chain) => bigint;
+  getWalletAddress: (chain: Chain) => string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -63,12 +66,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  // Helper to get balance for specific chain
+  const getBalance = (chain: Chain): bigint => {
+    if (!user) return 0n;
+    if (chain === 'solana') {
+      return BigInt(user.balance || 0);
+    } else {
+      return BigInt(user.baseBalance || 0);
+    }
+  };
+
+  // Helper to get wallet address for specific chain
+  const getWalletAddress = (chain: Chain): string | null => {
+    if (!user) return null;
+    if (chain === 'solana') {
+      return user.solanaWalletAddress || user.walletAddress || null;
+    } else {
+      return user.baseWalletAddress || null;
+    }
+  };
+
   if (loading) {
     return null;
   }
 
   return (
-    <AuthContext.Provider value={{ user, setAuth, refreshUser, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      setAuth, 
+      refreshUser, 
+      logout, 
+      isAuthenticated: !!user,
+      getBalance,
+      getWalletAddress,
+    }}>
       {children}
     </AuthContext.Provider>
   );

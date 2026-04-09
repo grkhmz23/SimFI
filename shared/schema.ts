@@ -3,38 +3,65 @@ import { pgTable, text, varchar, bigint, integer, timestamp, unique, jsonb } fro
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// 1 SOL = 1,000,000,000 Lamports
+// =============================================================================
+// Chain Constants
+// =============================================================================
+
+// Solana: 1 SOL = 1,000,000,000 Lamports
 export const LAMPORTS_PER_SOL = 1_000_000_000;
+
+// Base/ETH: 1 ETH = 1,000,000,000,000,000,000 Wei (10^18)
+export const WEI_PER_ETH = 1_000_000_000_000_000_000n;
+
+// Chain type
+export type Chain = 'base' | 'solana';
+
+// =============================================================================
+// Database Tables
+// =============================================================================
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
-  walletAddress: text("wallet_address").notNull(),
-  balance: bigint("balance", { mode: "bigint" }).notNull().default(sql`10000000000`),
-  totalProfit: bigint("total_profit", { mode: "bigint" }).notNull().default(sql`0`),
+  // Solana wallet (kept for backward compatibility, but prefer solanaWalletAddress)
+  walletAddress: text("wallet_address"),
+  // Explicit chain-specific wallet addresses
+  solanaWalletAddress: text("solana_wallet_address"),
+  baseWalletAddress: text("base_wallet_address"),
+  // Chain-specific balances
+  balance: bigint("balance", { mode: "bigint" }).notNull().default(sql`10000000000`), // Solana balance (lamports)
+  baseBalance: bigint("base_balance", { mode: "bigint" }).notNull().default(sql`5000000000000000000`), // Base balance (wei) - 5 ETH default
+  // Profits
+  totalProfit: bigint("total_profit", { mode: "bigint" }).notNull().default(sql`0`), // Solana profit
+  baseTotalProfit: bigint("base_total_profit", { mode: "bigint" }).notNull().default(sql`0`), // Base profit
+  // User preferences
+  preferredChain: text("preferred_chain").notNull().default('base'),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const positions = pgTable("positions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
+  chain: text("chain").notNull().default('solana'), // 'base' | 'solana'
   tokenAddress: text("token_address").notNull(),
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
   decimals: integer("decimals").notNull().default(6),
-  entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(),
-  amount: bigint("amount", { mode: "bigint" }).notNull(),
-  solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(),
+  entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(), // lamports or wei per token
+  amount: bigint("amount", { mode: "bigint" }).notNull(), // token amount in smallest unit
+  solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(), // native token spent (lamports or wei)
   openedAt: timestamp("opened_at").defaultNow().notNull(),
 }, (table) => ({
-  userTokenUnique: unique().on(table.userId, table.tokenAddress),
+  // Unique constraint now includes chain
+  userTokenChainUnique: unique().on(table.userId, table.tokenAddress, table.chain),
 }));
 
 export const tradeHistory = pgTable("trade_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
+  chain: text("chain").notNull().default('solana'), // 'base' | 'solana'
   tokenAddress: text("token_address").notNull(),
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
@@ -42,8 +69,8 @@ export const tradeHistory = pgTable("trade_history", {
   entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(),
   exitPrice: bigint("exit_price", { mode: "bigint" }).notNull(),
   amount: bigint("amount", { mode: "bigint" }).notNull(),
-  solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(),
-  solReceived: bigint("sol_received", { mode: "bigint" }).notNull(),
+  solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(), // native token spent
+  solReceived: bigint("sol_received", { mode: "bigint" }).notNull(), // native token received
   profitLoss: bigint("profit_loss", { mode: "bigint" }).notNull(),
   openedAt: timestamp("opened_at").notNull(),
   closedAt: timestamp("closed_at").defaultNow().notNull(),
@@ -51,6 +78,7 @@ export const tradeHistory = pgTable("trade_history", {
 
 export const leaderboardPeriods = pgTable("leaderboard_periods", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  chain: text("chain").notNull().default('solana'), // 'base' | 'solana'
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time").notNull(),
   winnerId: varchar("winner_id").references(() => users.id),
@@ -67,7 +95,7 @@ export const telegramSessions = pgTable("telegram_sessions", {
 });
 
 // =============================================================================
-// Rewards Engine Tables (FINAL - keyed by leaderboard_period_id)
+// Rewards Engine Tables
 // =============================================================================
 
 export type PayoutPlanEntry = {
@@ -151,17 +179,31 @@ export const rewardsWinners = pgTable("rewards_winners", {
 // Insert Schemas
 // =============================================================================
 
+// Solana address validation regex
+const solanaAddressRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+// Base/EVM address validation regex (0x followed by 40 hex characters)
+const baseAddressRegex = /^0x[a-fA-F0-9]{40}$/;
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   balance: true,
+  baseBalance: true,
   totalProfit: true,
+  baseTotalProfit: true,
   createdAt: true,
+  walletAddress: true, // Legacy field
 }).extend({
   username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_-]+$/),
   email: z.string().email(),
   password: z.string().min(6),
-  walletAddress: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/),
-});
+  // Either Solana or Base wallet (or both) is required
+  solanaWalletAddress: z.string().regex(solanaAddressRegex).optional().or(z.literal('')),
+  baseWalletAddress: z.string().regex(baseAddressRegex).optional().or(z.literal('')),
+  preferredChain: z.enum(['base', 'solana']).default('base'),
+}).refine(
+  (data) => data.solanaWalletAddress || data.baseWalletAddress,
+  { message: "At least one wallet address (Solana or Base) is required" }
+);
 
 export const insertPositionSchema = createInsertSchema(positions).omit({
   id: true,
@@ -208,6 +250,7 @@ export interface Token {
   creator?: string;
   timestamp?: string;
   icon?: string;
+  chain?: Chain;
 }
 
 export interface LoginRequest {
@@ -226,14 +269,16 @@ export interface BuyRequest {
   tokenAddress: string;
   tokenName: string;
   tokenSymbol: string;
-  solAmount: number;
+  amount: number; // native token amount (SOL or ETH)
   price: number;
+  chain: Chain;
 }
 
 export interface SellRequest {
   positionId: string;
   amount?: number;
   exitPrice: number;
+  chain: Chain;
 }
 
 export interface LeaderboardEntry {
@@ -244,10 +289,11 @@ export interface LeaderboardEntry {
   periodProfit?: number;
   balance?: number;
   rank?: number;
+  chain?: Chain;
 }
 
 // =============================================================================
-// Utility Functions
+// Utility Functions - Solana
 // =============================================================================
 
 export function solToLamports(sol: number): number {
@@ -256,4 +302,46 @@ export function solToLamports(sol: number): number {
 
 export function lamportsToSol(lamports: number): number {
   return lamports / LAMPORTS_PER_SOL;
+}
+
+// =============================================================================
+// Utility Functions - Base/ETH
+// =============================================================================
+
+export function ethToWei(eth: number): bigint {
+  return BigInt(Math.floor(eth * 1e18));
+}
+
+export function weiToEth(wei: bigint): number {
+  return Number(wei) / 1e18;
+}
+
+export function formatWei(wei: bigint, decimals: number = 18): string {
+  const divisor = BigInt(10 ** decimals);
+  const wholePart = wei / divisor;
+  const fractionalPart = wei % divisor;
+  const paddedFraction = fractionalPart.toString().padStart(decimals, '0');
+  const trimmedFraction = paddedFraction.replace(/0+$/, '');
+  return trimmedFraction ? `${wholePart}.${trimmedFraction}` : wholePart.toString();
+}
+
+// =============================================================================
+// Address Validation
+// =============================================================================
+
+export function isValidSolanaAddress(address: string): boolean {
+  return solanaAddressRegex.test(address);
+}
+
+export function isValidBaseAddress(address: string): boolean {
+  return baseAddressRegex.test(address);
+}
+
+export function validateWalletAddress(chain: Chain, address: string): boolean {
+  if (chain === 'solana') {
+    return isValidSolanaAddress(address);
+  } else if (chain === 'base') {
+    return isValidBaseAddress(address);
+  }
+  return false;
 }

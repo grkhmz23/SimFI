@@ -16,7 +16,7 @@ import { heliusService } from "./helius-enhanced";
 import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest } from "@shared/schema";
 
 
-import { getSolPrice, getCachedSolPrice } from './solPrice';
+import { getSolPrice, getCachedSolPrice, fetchEthPrice } from './solPrice';
 import { registerMarketRoutes } from "./services/marketRoutes";
 import { registerRewardsRoutes } from "./services/rewardsRoutes";
 import { rewardsEngine } from "./services/rewardsEngine";
@@ -845,6 +845,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Username already taken' });
       }
 
+      // Validate at least one wallet address is provided
+      if (!data.solanaWalletAddress && !data.baseWalletAddress) {
+        return res.status(400).json({ error: 'At least one wallet address (Solana or Base) is required' });
+      }
+
       // Hash password
       const hashedPassword = await bcrypt.hash(data.password, 10);
 
@@ -977,6 +982,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get current ETH price (for Base chain)
+  app.get('/api/base/price', async (req, res) => {
+    try {
+      const price = await fetchEthPrice();
+
+      if (price === null) {
+        return res.status(503).json({ 
+          error: 'ETH price temporarily unavailable',
+          available: false,
+          retryAfter: 30,
+        });
+      }
+
+      res.json({ 
+        price, 
+        available: true,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      console.error('ETH price fetch error:', error);
+      res.status(503).json({ 
+        error: 'Could not fetch ETH price',
+        available: false,
+        retryAfter: 30,
+      });
+    }
+  });
+
   app.get('/api/auth/profile', authenticateToken, async (req, res) => {
     try {
       const user = await storage.getUserById(req.userId!);
@@ -994,7 +1027,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/auth/profile', authenticateToken, async (req, res) => {
     try {
-      const { username, walletAddress, password } = req.body;
+      const { username, solanaWalletAddress, baseWalletAddress, preferredChain, password } = req.body;
       const updates: any = {};
 
       if (username) {
@@ -1008,11 +1041,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.username = username;
       }
 
-      if (walletAddress) {
-        if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress)) {
+      if (solanaWalletAddress) {
+        if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(solanaWalletAddress)) {
           return res.status(400).json({ error: 'Invalid Solana wallet address' });
         }
-        updates.walletAddress = walletAddress;
+        updates.solanaWalletAddress = solanaWalletAddress;
+        updates.walletAddress = solanaWalletAddress; // Legacy compatibility
+      }
+
+      if (baseWalletAddress) {
+        if (!/^0x[a-fA-F0-9]{40}$/.test(baseWalletAddress)) {
+          return res.status(400).json({ error: 'Invalid Base wallet address' });
+        }
+        updates.baseWalletAddress = baseWalletAddress;
+      }
+
+      if (preferredChain) {
+        if (!['base', 'solana'].includes(preferredChain)) {
+          return res.status(400).json({ error: 'Invalid chain. Must be "base" or "solana"' });
+        }
+        updates.preferredChain = preferredChain;
       }
 
       if (password) {
@@ -1103,19 +1151,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Email, username, and password are required' });
       }
 
-      // Use same registration validation as web app
-      const validationSchema = insertUserSchema.extend({
+      // Validation for Telegram bot registration (Solana only for bot)
+      const validationSchema = z.object({
         email: z.string().email('Invalid email'),
         username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_-]+$/, 'Invalid username format'),
         password: z.string().min(6, 'Password must be at least 6 characters'),
-        walletAddress: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, 'Invalid Solana wallet'),
+        solanaWalletAddress: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, 'Invalid Solana wallet'),
       });
 
       const validationResult = validationSchema.safeParse({
         email,
         username,
         password,
-        walletAddress: walletAddress || 'So11111111111111111111111111111111111111112',
+        solanaWalletAddress: walletAddress || 'So11111111111111111111111111111111111111112',
       });
 
       if (!validationResult.success) {
@@ -1141,7 +1189,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email,
         username,
         password: hashedPassword,
-        walletAddress: walletAddress || 'So11111111111111111111111111111111111111112',
+        solanaWalletAddress: walletAddress || 'So11111111111111111111111111111111111111112',
       });
 
       // Generate token
@@ -1441,13 +1489,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const position = await storage.executeBuyTrade({
           userId: req.userId!,
+          chain: 'solana',
           tokenAddress,
           tokenName,
           tokenSymbol,
           decimals,
           entryPrice: executionPriceLamports,
           amount: tokenAmount,
-          solSpent,
+          nativeSpent: solSpent,
         });
 
         console.log(`✅ POSITION CREATED: ${tokenSymbol} (ID: ${position.id})`);
@@ -1562,7 +1611,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         positionId,
         sellAmount,
         exitPrice: executionPriceLamports,
-        solReceived,
+        nativeReceived: solReceived,
         profitLoss,
         proportionalCost,
       });
@@ -2365,7 +2414,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/leaderboard/overall', publicApiLimiter, async (req, res) => {
     try {
-      const leaders = await storage.getTopUsersByTotalProfit(100);
+      const { chain = 'solana' } = req.query;
+      const leaders = await storage.getTopUsersByTotalProfit(100, chain as 'solana' | 'base');
       res.json(serializeBigInts({ leaders: leaders.map((l, i) => ({ ...l, rank: i + 1 })) }));
     } catch (error: any) {
       console.error('Get overall leaderboard error:', error);
@@ -2375,8 +2425,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/leaderboard/current-period', publicApiLimiter, async (req, res) => {
     try {
+      const { chain = 'solana' } = req.query;
       // Get the actual current period from storage
-      const currentPeriod = await storage.getCurrentLeaderboardPeriod();
+      const currentPeriod = await storage.getCurrentLeaderboardPeriod(chain as 'solana' | 'base');
 
       if (!currentPeriod) {
         return res.json({ leaders: [], periodStart: new Date().toISOString(), periodEnd: new Date().toISOString() });
@@ -2386,7 +2437,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const leaders = await storage.getTopUsersByPeriodProfit(
         new Date(currentPeriod.startTime), 
         new Date(currentPeriod.endTime), 
-        100
+        100,
+        chain as 'solana' | 'base'
       );
 
       res.json(serializeBigInts({ 

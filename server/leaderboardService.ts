@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import type { Chain } from "@shared/schema";
 
 // Use standard pg Pool for Render PostgreSQL (not Neon)
 import pg from "pg";
@@ -12,8 +13,8 @@ class LeaderboardService {
   private timer: NodeJS.Timeout | null = null;
   private leaderCheckTimer: NodeJS.Timeout | null = null;
   private isLeader = false;
-  private dedicatedPool: Pool | null = null;
-  private dedicatedClient: any = null;
+  private dedicatedPool: InstanceType<typeof Pool> | null = null;
+  private dedicatedClient: InstanceType<typeof Pool>["connect"] extends () => Promise<infer T> ? T : never | null = null;
   private isStarted = false;
   private isStopped = false;
 
@@ -47,6 +48,7 @@ class LeaderboardService {
     try {
       if (this.isLeader && this.dedicatedClient) {
         try {
+          // @ts-ignore - query method exists on client
           await this.dedicatedClient.query("SELECT 1");
           return;
         } catch {
@@ -73,7 +75,7 @@ class LeaderboardService {
       );
 
       if (result.rows[0]?.acquired === true) {
-        this.dedicatedClient = client;
+        this.dedicatedClient = client as any;
         this.isLeader = true;
         console.log("👑 This instance is now the leader");
         await this.checkAndManagePeriods();
@@ -90,6 +92,7 @@ class LeaderboardService {
   private releaseLeadership() {
     if (this.dedicatedClient) {
       try {
+        // @ts-ignore - release method exists
         this.dedicatedClient.release();
       } catch {}
       this.dedicatedClient = null;
@@ -100,33 +103,42 @@ class LeaderboardService {
   async checkAndManagePeriods() {
     if (!this.isLeader) return;
 
-    try {
-      const currentPeriod = await storage.getCurrentLeaderboardPeriod();
-      const now = new Date();
-
-      if (currentPeriod && new Date(currentPeriod.endTime) <= now && !currentPeriod.winnerId) {
-        await this.closePeriod(currentPeriod.id, currentPeriod.startTime, currentPeriod.endTime);
+    // Manage periods for both chains
+    const chains: Chain[] = ['base', 'solana'];
+    
+    for (const chain of chains) {
+      try {
+        await this.managePeriodForChain(chain);
+      } catch (error) {
+        console.error(`Period management error for ${chain}:`, error);
       }
-
-      if (!currentPeriod || new Date(currentPeriod.endTime) <= now) {
-        const startTime = now;
-        const endTime = new Date(now.getTime() + PERIOD_DURATION_MS);
-        await storage.createLeaderboardPeriod(startTime, endTime);
-        console.log(`🎯 New period: ${startTime.toISOString()} - ${endTime.toISOString()}`);
-      }
-    } catch (error) {
-      console.error("Period management error:", error);
     }
   }
 
-  async closePeriod(periodId: string, startTime: Date, endTime: Date) {
+  private async managePeriodForChain(chain: Chain) {
+    const currentPeriod = await storage.getCurrentLeaderboardPeriod(chain);
+    const now = new Date();
+
+    if (currentPeriod && new Date(currentPeriod.endTime) <= now && !currentPeriod.winnerId) {
+      await this.closePeriod(currentPeriod.id, currentPeriod.startTime, currentPeriod.endTime, chain);
+    }
+
+    if (!currentPeriod || new Date(currentPeriod.endTime) <= now) {
+      const startTime = now;
+      const endTime = new Date(now.getTime() + PERIOD_DURATION_MS);
+      await storage.createLeaderboardPeriod(startTime, endTime, chain);
+      console.log(`🎯 New ${chain} period: ${startTime.toISOString()} - ${endTime.toISOString()}`);
+    }
+  }
+
+  async closePeriod(periodId: string, startTime: Date, endTime: Date, chain: Chain) {
     try {
-      const leaders = await storage.getTopUsersByPeriodProfit(startTime, endTime, 1);
+      const leaders = await storage.getTopUsersByPeriodProfit(startTime, endTime, 1, chain);
 
       if (leaders.length > 0) {
         const winner = leaders[0];
-        await storage.updateLeaderboardPeriodWinner(periodId, winner.id, winner.periodProfit || 0);
-        console.log(`🏅 Winner: ${winner.username}`);
+        await storage.updateLeaderboardPeriodWinner(periodId, winner.id, winner.periodProfit || 0n);
+        console.log(`🏅 ${chain} Winner: ${winner.username}`);
       }
     } catch (error) {
       console.error("Period close error:", error);

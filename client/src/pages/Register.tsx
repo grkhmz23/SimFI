@@ -9,21 +9,46 @@ import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@tanstack/react-query';
+import { ChainSelector } from '@/components/ChainSelector';
 import { TrendingUp, Mail, Lock, User, Wallet, ArrowRight, Sparkles, Gift, Trophy, Zap } from 'lucide-react';
-import { insertUserSchema, type RegisterRequest } from '@shared/schema';
+import { z } from 'zod';
+import type { RegisterRequest } from '@shared/schema';
+
+// Custom schema for registration with both wallets
+const registerSchema = z.object({
+  username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_-]+$/),
+  email: z.string().email(),
+  password: z.string().min(6),
+  solanaWalletAddress: z.string()
+    .regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, 'Invalid Solana address')
+    .optional()
+    .or(z.literal('')),
+  baseWalletAddress: z.string()
+    .regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid Base address')
+    .optional()
+    .or(z.literal('')),
+  preferredChain: z.enum(['base', 'solana']).default('base'),
+}).refine(
+  (data) => data.solanaWalletAddress || data.baseWalletAddress,
+  { message: "At least one wallet address (Solana or Base) is required", path: ['solanaWalletAddress'] }
+);
+
+type FormData = z.infer<typeof registerSchema>;
 
 export default function Register() {
   const [, setLocation] = useLocation();
   const { setAuth } = useAuth();
   const { toast } = useToast();
 
-  const form = useForm<RegisterRequest>({
-    resolver: zodResolver(insertUserSchema),
+  const form = useForm<FormData>({
+    resolver: zodResolver(registerSchema),
     defaultValues: {
       username: '',
       email: '',
       password: '',
-      walletAddress: '',
+      solanaWalletAddress: '',
+      baseWalletAddress: '',
+      preferredChain: 'base',
     },
   });
 
@@ -33,7 +58,7 @@ export default function Register() {
       setAuth(data.user);
       toast({
         title: 'Account Created! 🎉',
-        description: `Welcome ${data.user.username}! You have 10 SOL to start trading.`,
+        description: `Welcome ${data.user.username}! Start trading on Base or Solana.`,
       });
       setLocation('/');
     },
@@ -47,7 +72,16 @@ export default function Register() {
   });
 
   const onSubmit = form.handleSubmit((data) => {
-    registerMutation.mutate(data);
+    // Convert to API format
+    const apiData: RegisterRequest = {
+      username: data.username,
+      email: data.email,
+      password: data.password,
+      solanaWalletAddress: data.solanaWalletAddress || undefined,
+      baseWalletAddress: data.baseWalletAddress || undefined,
+      preferredChain: data.preferredChain,
+    };
+    registerMutation.mutate(apiData);
   });
 
   return (
@@ -103,9 +137,9 @@ export default function Register() {
           {/* Benefits */}
           <div className="flex justify-center gap-4 mb-6">
             {[
-              { icon: Gift, label: "10 SOL", color: "text-green-500" },
-              { icon: Trophy, label: "Rewards", color: "text-yellow-500" },
-              { icon: Zap, label: "Real-time", color: "text-primary" },
+              { icon: Gift, label: '5 ETH + 10 SOL', color: 'text-green-500' },
+              { icon: Trophy, label: 'Rewards', color: 'text-yellow-500' },
+              { icon: Zap, label: 'Multi-Chain', color: 'text-primary' },
             ].map((item, index) => (
               <div key={index} className="flex flex-col items-center gap-1">
                 <div className={`w-10 h-10 rounded-xl bg-muted flex items-center justify-center ${item.color}`}>
@@ -114,6 +148,12 @@ export default function Register() {
                 <span className="text-xs text-muted-foreground">{item.label}</span>
               </div>
             ))}
+          </div>
+
+          {/* Preferred Chain Selector */}
+          <div className="mb-6">
+            <label className="text-sm font-medium mb-2 block">Preferred Chain</label>
+            <ChainSelector variant="pill" className="w-full justify-center" />
           </div>
 
           {/* Form */}
@@ -187,30 +227,71 @@ export default function Register() {
                 )}
               />
 
+              {/* Base Wallet Address */}
               <FormField
                 control={form.control}
-                name="walletAddress"
+                name="baseWalletAddress"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium">Solana Wallet Address</FormLabel>
+                    <FormLabel className="text-sm font-medium flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      Base Wallet Address (for rewards)
+                    </FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="0x..."
+                          className="pl-10 h-11 rounded-xl border-border/50 bg-background/50 focus:border-primary font-mono text-sm"
+                          data-testid="input-base-wallet"
+                          {...field}
+                        />
+                      </div>
+                    </FormControl>
+                    <FormDescription className="text-xs text-muted-foreground">
+                      Required for Base trading and rewards
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Solana Wallet Address */}
+              <FormField
+                control={form.control}
+                name="solanaWalletAddress"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-purple-500" />
+                      Solana Wallet Address (for rewards)
+                    </FormLabel>
                     <FormControl>
                       <div className="relative">
                         <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           placeholder="7xKXtg2CW87d97TXJSDpbD5jBkhe..."
                           className="pl-10 h-11 rounded-xl border-border/50 bg-background/50 focus:border-primary font-mono text-sm"
-                          data-testid="input-wallet"
+                          data-testid="input-solana-wallet"
                           {...field}
                         />
                       </div>
                     </FormControl>
                     <FormDescription className="text-xs text-muted-foreground">
-                      Required for receiving leaderboard rewards
+                      Required for Solana trading and rewards
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              {/* Validation Message */}
+              {(form.formState.errors.solanaWalletAddress?.message?.includes('required') || 
+                form.formState.errors.baseWalletAddress?.message?.includes('required')) && (
+                <p className="text-xs text-destructive">
+                  At least one wallet address is required
+                </p>
+              )}
 
               <Button
                 type="submit"

@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { PriceProvider } from "@/lib/price-context";
+import { ChainProvider } from "@/lib/chain-context";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/ui/footer";
 import Login from "@/pages/Login";
@@ -82,12 +83,14 @@ function App() {
       <TooltipProvider>
         <PriceProvider>
           <AuthProvider>
-            <Toaster />
-            <WelcomePopup 
-              delay={800}
-              showOncePerSession={false}
-            />
-            <Router />
+            <ChainProvider>
+              <Toaster />
+              <WelcomePopup 
+                delay={800}
+                showOncePerSession={false}
+              />
+              <Router />
+            </ChainProvider>
           </AuthProvider>
         </PriceProvider>
       </TooltipProvider>

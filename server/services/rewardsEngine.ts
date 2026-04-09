@@ -727,7 +727,7 @@ class RewardsEngine {
   private async getTopWallets(startTime: Date, endTime: Date): Promise<TopWallet[]> {
     const rows = await db
       .select({
-        wallet: users.walletAddress,
+        wallet: users.solanaWalletAddress,
         profitLamports: sql<string>`COALESCE(SUM(${tradeHistory.profitLoss}), 0)::text`,
         tradeCount: sql<number>`COUNT(${tradeHistory.id})::int`,
         userId: sql<string>`MIN(${users.id})`,
@@ -737,20 +737,22 @@ class RewardsEngine {
       .where(
         and(
           sql`${tradeHistory.closedAt} >= ${startTime}`,
-          sql`${tradeHistory.closedAt} < ${endTime}`
+          sql`${tradeHistory.closedAt} < ${endTime}`,
+          eq(tradeHistory.chain, 'solana') // Only Solana trades for now
         )
       )
-      .groupBy(users.walletAddress)
+      .groupBy(users.solanaWalletAddress)
       .orderBy(desc(sql`COALESCE(SUM(${tradeHistory.profitLoss}), 0)`))
       .limit(20);
 
     return rows
       .map((r) => ({
-        wallet: r.wallet,
+        wallet: r.wallet || '',
         profitLamports: BigInt(r.profitLamports),
         tradeCount: r.tradeCount,
         userId: r.userId,
       }))
+      .filter((r) => r.wallet) // Filter out null wallets
       .filter((r) => r.tradeCount >= MIN_TRADES)
       .filter((r) => r.profitLamports > 0n)
       .filter((r) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(r.wallet))
