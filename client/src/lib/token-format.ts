@@ -101,12 +101,31 @@ export function parseTokenAmount(amount: string, decimals: number = 6): bigint {
 // USD Formatting
 // ============================================================================
 
+/**
+ * Format native amount to USD
+ * Backward compatible: can be called with (nativeAmount, decimals) for Solana-only
+ * or (nativeAmount, nativePriceUSD, chain, decimals) for multi-chain
+ */
 export function formatUSD(
   nativeAmount: bigint | number | string,
-  nativePriceUSD: number,
-  chain: Chain,
+  nativePriceUSDOrDecimals?: number | Chain,
+  chainOrDecimals?: Chain | number,
   decimals: number = 2
 ): string {
+  // Handle backward compatible call: formatUSD(amount, decimals)
+  if (typeof nativePriceUSDOrDecimals === 'number' && nativePriceUSDOrDecimals < 10 && !chainOrDecimals) {
+    const decimalsCount = nativePriceUSDOrDecimals;
+    const nativeValue = typeof nativeAmount === 'bigint' 
+      ? lamportsToSol(nativeAmount)
+      : Number(nativeAmount);
+    // Use a default SOL price of $0 (just format the raw value)
+    return `$${nativeValue.toFixed(decimalsCount)}`;
+  }
+  
+  // New multi-chain signature: formatUSD(amount, price, chain, decimals)
+  const nativePriceUSD = typeof nativePriceUSDOrDecimals === 'number' ? nativePriceUSDOrDecimals : 0;
+  const chain = typeof chainOrDecimals === 'string' ? chainOrDecimals : 'solana';
+  
   const nativeValue = typeof nativeAmount === 'bigint' 
     ? (chain === 'solana' ? lamportsToSol(nativeAmount) : weiToEth(nativeAmount))
     : Number(nativeAmount);
@@ -191,6 +210,29 @@ export function lamportsToTokens(lamports: bigint, decimals: number = 9): string
 
 export function lamportsToUSD(lamports: bigint, solPriceUSD: number): string {
   return formatUSD(lamports, solPriceUSD, 'solana');
+}
+
+// Multi-chain native token formatting (SOL/ETH)
+export function formatNative(
+  nativeAmount: bigint | number | string,
+  chain: Chain,
+  decimals: number = 4
+): string {
+  if (chain === 'solana') {
+    return formatSol(nativeAmount, decimals);
+  } else {
+    return formatEth(nativeAmount, decimals);
+  }
+}
+
+// Multi-chain native to token conversion
+export function nativeToTokens(nativeAmount: bigint, tokenDecimals: number = 9): string {
+  return formatTokenAmount(nativeAmount, tokenDecimals, 4);
+}
+
+// Multi-chain native to USD conversion
+export function nativeToUSD(nativeAmount: bigint, nativePriceUSD: number, chain: Chain): string {
+  return formatUSD(nativeAmount, nativePriceUSD, chain);
 }
 
 // ============================================================================

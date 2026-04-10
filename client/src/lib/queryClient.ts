@@ -41,17 +41,38 @@ export const getQueryFn: <T>(options: {
     return await res.json();
   };
 
+// Exponential backoff retry delay
+const retryDelay = (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30000);
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
+      staleTime: 60000, // 1 minute stale time
+      retry: (failureCount, error: any) => {
+        // Don't retry on 401/403 errors
+        if (error?.message?.includes('401') || error?.message?.includes('403')) {
+          return false;
+        }
+        // Retry up to 3 times for other errors
+        return failureCount < 3;
+      },
+      retryDelay,
     },
     mutations: {
-      retry: false,
+      retry: (failureCount, error: any) => {
+        // Don't retry auth errors or client errors (4xx)
+        if (error?.message?.includes('401') || 
+            error?.message?.includes('403') ||
+            error?.message?.includes('400')) {
+          return false;
+        }
+        // Retry network errors up to 2 times
+        return failureCount < 2;
+      },
+      retryDelay,
     },
   },
 });

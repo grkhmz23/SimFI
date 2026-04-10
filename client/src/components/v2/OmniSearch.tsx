@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useChain } from "@/lib/chain-context";
 import { Search, Loader2 } from "lucide-react";
 
 interface SearchResult {
@@ -28,6 +29,7 @@ function formatMarketCap(m?: number) {
 export function OmniSearch() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { activeChain } = useChain();
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -54,11 +56,11 @@ export function OmniSearch() {
   }, [query]);
 
   const { data, isLoading } = useQuery<{ results: SearchResult[] }>({
-    queryKey: ["/api/market/search", debounced],
+    queryKey: ["/api/market/search", debounced, activeChain],
     enabled: open && debounced.length >= 3,
     staleTime: 30_000,
     queryFn: async () => {
-      const res = await fetch(`/api/market/search?q=${encodeURIComponent(debounced)}`, { credentials: "include" });
+      const res = await fetch(`/api/market/search?q=${encodeURIComponent(debounced)}&chain=${activeChain}`, { credentials: "include" });
       if (!res.ok) {
         toast({
           title: "Search failed",

@@ -1,17 +1,20 @@
 // server/services/marketData.ts
-// Market Data Service with caching and request coalescing
+// Market Data Service with caching and request coalescing - Multi-chain support
+
+import type { Chain } from '@shared/schema';
 
 interface TokenData {
   tokenAddress: string;
   name: string;
   symbol: string;
-  priceLamports: number;
+  priceNative: bigint;        // Price in native token (lamports for Solana, wei for Base)
   priceUsd: number;
   marketCap: number;
   volume24h: number;
   liquidity: number;
   priceChange24h: number;
   decimals: number;
+  chain: Chain;
   icon?: string;
   lastUpdated: number;
 }
@@ -26,10 +29,12 @@ interface SearchResult {
   tokenAddress: string;
   name: string;
   symbol: string;
-  price: number;
+  price: bigint;              // Price in native token
   marketCap: number;
   volume24h: number;
   priceChange24h: number;
+  decimals: number;
+  chain: Chain;
   icon?: string;
 }
 
@@ -40,7 +45,20 @@ const TTL = {
   TOKEN_COLD: 30_000,     // 30s for inactive
   TRENDING: 30_000,       // 30s for trending list
   SEARCH: 60_000,         // 60s for search results
-  SOL_PRICE: 30_000,      // 30s for SOL/USD price
+};
+
+// Chain configuration
+const CHAIN_CONFIG = {
+  solana: {
+    decimals: 9,          // Lamports
+    dexScreenerChainId: 'solana',
+    defaultTokenDecimals: 6,
+  },
+  base: {
+    decimals: 18,         // Wei
+    dexScreenerChainId: 'base',
+    defaultTokenDecimals: 18, // Most ERC-20 tokens use 18 decimals
+  },
 };
 
 // Circuit breaker for external APIs
@@ -73,8 +91,8 @@ class MarketDataService {
   /**
    * Get token data with caching and coalescing
    */
-  async getToken(address: string): Promise<TokenData | null> {
-    const cacheKey = `token:${address}`;
+  async getToken(address: string, chain: Chain = 'solana'): Promise<TokenData | null> {
+    const cacheKey = `token:${chain}:${address}`;
 
     // 1. Check cache
     const cached = this.getFromCache<TokenData>(cacheKey);
@@ -93,7 +111,7 @@ class MarketDataService {
     }
 
     // 3. Make new request
-    const promise = this.fetchTokenFromUpstream(address);
+    const promise = this.fetchTokenFromUpstream(address, chain);
     this.inFlight.set(cacheKey, promise);
 
     try {
@@ -114,13 +132,13 @@ class MarketDataService {
   /**
    * Get multiple tokens in batch (for positions page)
    */
-  async getTokensBatch(addresses: string[]): Promise<Map<string, TokenData>> {
+  async getTokensBatch(addresses: string[], chain: Chain = 'solana'): Promise<Map<string, TokenData>> {
     const results = new Map<string, TokenData>();
     const uncached: string[] = [];
 
     // 1. Get what we can from cache
     for (const addr of addresses) {
-      const cached = this.getFromCache<TokenData>(`token:${addr}`);
+      const cached = this.getFromCache<TokenData>(`token:${chain}:${addr}`);
       if (cached) {
         results.set(addr, cached);
         this.stats.cacheHits++;
@@ -135,7 +153,7 @@ class MarketDataService {
       for (let i = 0; i < uncached.length; i += BATCH_SIZE) {
         const batch = uncached.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.all(
-          batch.map(addr => this.getToken(addr))
+          batch.map(addr => this.getToken(addr, chain))
         );
 
         batch.forEach((addr, idx) => {
@@ -150,10 +168,10 @@ class MarketDataService {
   }
 
   /**
-   * Get trending tokens
+   * Get trending tokens for a specific chain
    */
-  async getTrending(limit: number = 20): Promise<TokenData[]> {
-    const cacheKey = `trending:${limit}`;
+  async getTrending(limit: number = 20, chain: Chain = 'solana'): Promise<TokenData[]> {
+    const cacheKey = `trending:${chain}:${limit}`;
 
     const cached = this.getFromCache<TokenData[]>(cacheKey);
     if (cached) {
@@ -170,7 +188,7 @@ class MarketDataService {
       return existing;
     }
 
-    const promise = this.fetchTrendingFromUpstream(limit);
+    const promise = this.fetchTrendingFromUpstream(limit, chain);
     this.inFlight.set(cacheKey, promise);
 
     try {
@@ -183,11 +201,11 @@ class MarketDataService {
   }
 
   /**
-   * Search tokens
+   * Search tokens on a specific chain
    */
-  async search(query: string): Promise<SearchResult[]> {
+  async search(query: string, chain: Chain = 'solana'): Promise<SearchResult[]> {
     const normalizedQuery = query.toLowerCase().trim();
-    const cacheKey = `search:${normalizedQuery}`;
+    const cacheKey = `search:${chain}:${normalizedQuery}`;
 
     const cached = this.getFromCache<SearchResult[]>(cacheKey);
     if (cached) {
@@ -204,7 +222,7 @@ class MarketDataService {
       return existing;
     }
 
-    const promise = this.fetchSearchFromUpstream(normalizedQuery);
+    const promise = this.fetchSearchFromUpstream(normalizedQuery, chain);
     this.inFlight.set(cacheKey, promise);
 
     try {
@@ -220,21 +238,21 @@ class MarketDataService {
    * Get with stale-while-revalidate pattern
    * Returns cached data immediately (even if stale), refreshes in background
    */
-  async getTokenSWR(address: string): Promise<TokenData | null> {
-    const cacheKey = `token:${address}`;
+  async getTokenSWR(address: string, chain: Chain = 'solana'): Promise<TokenData | null> {
+    const cacheKey = `token:${chain}:${address}`;
     const cached = this.cache.get(cacheKey);
 
     if (cached) {
       // Check if expired
       if (Date.now() > cached.expiresAt) {
         // Trigger background refresh (don't await)
-        this.getToken(address).catch(() => {});
+        this.getToken(address, chain).catch(() => {});
       }
       return cached.data;
     }
 
     // No cache - must wait
-    return this.getToken(address);
+    return this.getToken(address, chain);
   }
 
   /**
@@ -337,7 +355,7 @@ class MarketDataService {
   // PRIVATE - UPSTREAM FETCHERS
   // =========================================================================
 
-  private async fetchTokenFromUpstream(address: string): Promise<TokenData | null> {
+  private async fetchTokenFromUpstream(address: string, chain: Chain): Promise<TokenData | null> {
     if (this.isCircuitOpen('dexscreener')) {
       console.log(`⏸️ DexScreener circuit open, skipping`);
       return null;
@@ -363,49 +381,54 @@ class MarketDataService {
       const data = await response.json();
       this.recordSuccess('dexscreener');
 
-      // Find best Solana pair
-      const pairs = data.pairs || [];
-      const solanaPairs = pairs.filter((p: any) => p.chainId === 'solana');
+      const config = CHAIN_CONFIG[chain];
+      const chainId = config.dexScreenerChainId;
 
-      if (solanaPairs.length === 0) return null;
+      // Find pairs for the specified chain
+      const pairs = data.pairs || [];
+      const chainPairs = pairs.filter((p: any) => p.chainId === chainId);
+
+      if (chainPairs.length === 0) {
+        console.warn(`No ${chain} pairs found for ${address}`);
+        return null;
+      }
 
       // Get highest liquidity pair
-      const bestPair = solanaPairs.reduce((best: any, current: any) => {
+      const bestPair = chainPairs.reduce((best: any, current: any) => {
         const bestLiq = best?.liquidity?.usd || 0;
         const currentLiq = current?.liquidity?.usd || 0;
         return currentLiq > bestLiq ? current : best;
-      }, solanaPairs[0]);
+      }, chainPairs[0]);
 
       if (!bestPair) return null;
 
-      // Parse price to lamports (9 decimal places)
-      const priceLamports = this.parseDecimalToLamports(bestPair.priceNative || '0');
+      // Parse price to native units (lamports/wei)
+      const priceNative = this.parseDecimalToNative(bestPair.priceNative || '0', chain);
+      const tokenDecimals = bestPair.baseToken?.decimals || config.defaultTokenDecimals;
 
       return {
         tokenAddress: address,
         name: bestPair.baseToken?.name || 'Unknown',
         symbol: bestPair.baseToken?.symbol || '???',
-        priceLamports,
+        priceNative,
         priceUsd: parseFloat(bestPair.priceUsd || '0'),
         marketCap: bestPair.marketCap || bestPair.fdv || 0,
         volume24h: bestPair.volume?.h24 || 0,
         liquidity: bestPair.liquidity?.usd || 0,
         priceChange24h: bestPair.priceChange?.h24 || 0,
-        decimals: 6, // Default for Solana tokens
+        decimals: tokenDecimals,
+        chain,
         icon: bestPair.info?.imageUrl,
         lastUpdated: Date.now(),
       };
     } catch (error: any) {
       this.recordFailure('dexscreener');
-      console.warn(`❌ Failed to fetch token ${address}:`, error.message);
+      console.warn(`❌ Failed to fetch token ${address} on ${chain}:`, error.message);
       return null;
     }
   }
 
-  private async fetchTrendingFromUpstream(limit: number): Promise<TokenData[]> {
-    // For now, use DexScreener boosted tokens as "trending"
-    // You can replace this with your own trending logic
-
+  private async fetchTrendingFromUpstream(limit: number, chain: Chain): Promise<TokenData[]> {
     if (this.isCircuitOpen('dexscreener')) {
       return [];
     }
@@ -430,15 +453,17 @@ class MarketDataService {
       const data = await response.json();
       this.recordSuccess('dexscreener');
 
-      // Filter for Solana tokens
-      const solanaTokens = (data || [])
-        .filter((t: any) => t.chainId === 'solana')
+      const config = CHAIN_CONFIG[chain];
+
+      // Filter for the specified chain
+      const chainTokens = (data || [])
+        .filter((t: any) => t.chainId === config.dexScreenerChainId)
         .slice(0, limit);
 
       // Fetch full data for each
       const results: TokenData[] = [];
-      for (const token of solanaTokens) {
-        const fullData = await this.getToken(token.tokenAddress);
+      for (const token of chainTokens) {
+        const fullData = await this.getToken(token.tokenAddress, chain);
         if (fullData) {
           results.push(fullData);
         }
@@ -447,12 +472,12 @@ class MarketDataService {
       return results;
     } catch (error: any) {
       this.recordFailure('dexscreener');
-      console.warn('❌ Failed to fetch trending:', error.message);
+      console.warn(`❌ Failed to fetch trending for ${chain}:`, error.message);
       return [];
     }
   }
 
-  private async fetchSearchFromUpstream(query: string): Promise<SearchResult[]> {
+  private async fetchSearchFromUpstream(query: string, chain: Chain): Promise<SearchResult[]> {
     if (this.isCircuitOpen('dexscreener')) {
       return [];
     }
@@ -477,25 +502,31 @@ class MarketDataService {
       const data = await response.json();
       this.recordSuccess('dexscreener');
 
-      // Filter for Solana pairs and dedupe by token address
+      const config = CHAIN_CONFIG[chain];
+
+      // Filter for the specified chain and dedupe by token address
       const seen = new Set<string>();
       const results: SearchResult[] = [];
 
       for (const pair of (data.pairs || [])) {
-        if (pair.chainId !== 'solana') continue;
+        if (pair.chainId !== config.dexScreenerChainId) continue;
 
         const addr = pair.baseToken?.address;
         if (!addr || seen.has(addr)) continue;
         seen.add(addr);
 
+        const tokenDecimals = pair.baseToken?.decimals || config.defaultTokenDecimals;
+
         results.push({
           tokenAddress: addr,
           name: pair.baseToken?.name || 'Unknown',
           symbol: pair.baseToken?.symbol || '???',
-          price: this.parseDecimalToLamports(pair.priceNative || '0'),
+          price: this.parseDecimalToNative(pair.priceNative || '0', chain),
           marketCap: pair.marketCap || pair.fdv || 0,
           volume24h: pair.volume?.h24 || 0,
           priceChange24h: pair.priceChange?.h24 || 0,
+          decimals: tokenDecimals,
+          chain,
           icon: pair.info?.imageUrl,
         });
 
@@ -505,7 +536,7 @@ class MarketDataService {
       return results;
     } catch (error: any) {
       this.recordFailure('dexscreener');
-      console.warn('❌ Failed to search:', error.message);
+      console.warn(`❌ Failed to search on ${chain}:`, error.message);
       return [];
     }
   }
@@ -514,24 +545,37 @@ class MarketDataService {
   // PRIVATE - HELPERS
   // =========================================================================
 
-  private parseDecimalToLamports(decimalString: string): number {
-    if (!decimalString || decimalString === '0') return 0;
+  /**
+   * Parse decimal string to native units (lamports for Solana, wei for Base)
+   */
+  private parseDecimalToNative(decimalString: string, chain: Chain): bigint {
+    if (!decimalString || decimalString === '0') return 0n;
+
+    const config = CHAIN_CONFIG[chain];
+    const nativeDecimals = config.decimals;
 
     const parts = decimalString.split('.');
     const wholePart = parts[0] || '0';
     let fracPart = parts[1] || '';
 
-    // Pad/truncate to 9 decimals (lamports)
-    if (fracPart.length > 9) {
-      fracPart = fracPart.slice(0, 9);
+    // Pad/truncate to native decimals
+    if (fracPart.length > nativeDecimals) {
+      fracPart = fracPart.slice(0, nativeDecimals);
     } else {
-      fracPart = fracPart.padEnd(9, '0');
+      fracPart = fracPart.padEnd(nativeDecimals, '0');
     }
 
     const cleanWhole = wholePart.replace(/^0+/, '') || '0';
-    const lamports = parseInt(cleanWhole + fracPart, 10);
+    const nativeUnits = BigInt(cleanWhole + fracPart);
 
-    return isNaN(lamports) ? 0 : Math.max(1, lamports);
+    return nativeUnits > 0n ? nativeUnits : 1n; // Return at least 1 for valid non-zero prices
+  }
+
+  /**
+   * Get chain configuration
+   */
+  getChainConfig(chain: Chain) {
+    return CHAIN_CONFIG[chain];
   }
 }
 

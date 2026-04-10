@@ -13,7 +13,7 @@ import { authenticateToken } from "./middleware/auth";
 import { fetchDexScreenerProfiles } from "./pumpportal";
 import { leaderboardService } from "./leaderboardService";
 import { heliusService } from "./helius-enhanced";
-import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest } from "@shared/schema";
+import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest, type Chain } from "@shared/schema";
 
 
 import { getSolPrice, getCachedSolPrice, fetchEthPrice } from './solPrice';
@@ -179,6 +179,16 @@ const botLimiter = createRateLimiter({
   keyGenerator: (req: any) => `bot:${req.headers['x-bot-secret'] || 'unknown'}`,
 });
 
+// Health check rate limiter - light protection to prevent abuse
+const healthLimiter = createRateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute per IP for health checks
+  message: { error: 'Too many health check requests' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req: any) => req.path !== '/api/health', // Only apply to health endpoint
+});
+
 // Require JWT_SECRET or SESSION_SECRET environment variable
 const JWT_SECRET: string = (() => {
   const secret = process.env.JWT_SECRET || process.env.SESSION_SECRET;
@@ -248,6 +258,161 @@ function validateTradeAmount(lamports: bigint): void {
 // Validate Solana address format
 function isValidSolanaAddress(address: string): boolean {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
+}
+
+// Validate Base/EVM address format
+function isValidBaseAddress(address: string): boolean {
+  return /^0x[a-fA-F0-9]{40}$/.test(address);
+}
+
+// Validate address based on chain
+function isValidChainAddress(chain: Chain, address: string): boolean {
+  if (chain === 'solana') {
+    return isValidSolanaAddress(address);
+  } else if (chain === 'base') {
+    return isValidBaseAddress(address);
+  }
+  return false;
+}
+
+// Valid chains
+const VALID_CHAINS: Chain[] = ['solana', 'base'];
+
+function isValidChain(chain: string): chain is Chain {
+  return VALID_CHAINS.includes(chain as Chain);
+}
+
+// Chain configuration for trading
+const CHAIN_CONFIG = {
+  solana: {
+    nativeDecimals: 9,
+    nativeSymbol: 'SOL',
+    minTradeAmount: 1_000_000n, // 0.001 SOL
+    maxTradeAmount: 100_000_000_000n, // 100 SOL
+  },
+  base: {
+    nativeDecimals: 18,
+    nativeSymbol: 'ETH',
+    minTradeAmount: 1_000_000_000_000_000n, // 0.001 ETH
+    maxTradeAmount: 100_000_000_000_000_000_000n, // 100 ETH
+  },
+};
+
+// Multi-chain trade amount validation
+function validateTradeAmountForChain(nativeAmount: bigint, chain: Chain): void {
+  const config = CHAIN_CONFIG[chain];
+  if (nativeAmount <= 0n) {
+    throw new Error('Trade amount must be positive');
+  }
+  if (nativeAmount < config.minTradeAmount) {
+    throw new Error(`Trade amount too small (minimum 0.001 ${config.nativeSymbol})`);
+  }
+  if (nativeAmount > config.maxTradeAmount) {
+    throw new Error(`Trade amount too large (maximum 100 ${config.nativeSymbol})`);
+  }
+}
+
+// Parse native amount string (SOL or ETH) to native units (lamports or wei)
+function parseNativeAmount(amountStr: string, nativeDecimals: number): bigint {
+  const amountString = String(amountStr);
+
+  if (amountString.length > 30) {
+    throw new Error('Amount too large');
+  }
+
+  if (!/^-?\d*\.?\d+$/.test(amountString)) {
+    throw new Error('Invalid amount format');
+  }
+
+  const parts = amountString.split('.');
+  const wholePart = parts[0] || '0';
+  let fracPart = parts[1] || '';
+
+  if (fracPart.length > nativeDecimals) {
+    fracPart = fracPart.slice(0, nativeDecimals);
+  } else {
+    fracPart = fracPart.padEnd(nativeDecimals, '0');
+  }
+
+  const nativeUnitsStr = wholePart + fracPart;
+
+  if (nativeUnitsStr.length > 30) {
+    throw new Error('Amount exceeds maximum precision');
+  }
+
+  return BigInt(nativeUnitsStr);
+}
+
+// Parse decimal string to native units (lamports or wei)
+function parseDecimalToNativeUnits(decimalString: string, nativeDecimals: number): bigint {
+  if (!decimalString || decimalString === '0') return 0n;
+
+  const str = decimalString.trim();
+  if (!/^\d*\.?\d+$/.test(str)) {
+    console.warn(`Invalid price format: ${str}`);
+    return 0n;
+  }
+
+  const parts = str.split('.');
+  const wholePart = parts[0] || '0';
+  let fracPart = parts[1] || '';
+
+  if (fracPart.length > nativeDecimals) {
+    fracPart = fracPart.slice(0, nativeDecimals);
+  } else {
+    fracPart = fracPart.padEnd(nativeDecimals, '0');
+  }
+
+  const cleanWhole = wholePart.replace(/^0+/, '') || '0';
+  const nativeUnits = BigInt(cleanWhole + fracPart);
+
+  if (nativeUnits > 0n) return nativeUnits;
+  return str !== '0' && parseFloat(str) > 0 ? 1n : 0n;
+}
+
+// Fetch token price from DexScreener for a specific chain
+async function fetchDexScreenerPriceForChain(
+  tokenAddress: string, 
+  chain: Chain
+): Promise<{ priceNative: bigint; decimals: number; liquidityUsd: number; volume24hUsd: number } | null> {
+  try {
+    const dexResponse = await fetchWithTimeout(
+      `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 
+      3000
+    );
+    
+    if (dexResponse.ok) {
+      const dexData = await dexResponse.json();
+      const pairs = dexData.pairs || [];
+      
+      const chainId = chain === 'solana' ? 'solana' : 'base';
+      const chainPairs = pairs.filter((p: any) => p.chainId === chainId);
+      
+      if (chainPairs.length === 0) return null;
+      
+      const bestPair = chainPairs.reduce((best: any, current: any) => {
+        const bestLiq = best?.liquidity?.usd || 0;
+        const currentLiq = current?.liquidity?.usd || 0;
+        return currentLiq > bestLiq ? current : best;
+      }, chainPairs[0]);
+      
+      if (!bestPair || !bestPair.priceNative) return null;
+      
+      const nativeDecimals = chain === 'solana' ? 9 : 18;
+      const priceNative = parseDecimalToNativeUnits(bestPair.priceNative, nativeDecimals);
+      
+      return {
+        priceNative,
+        decimals: bestPair.baseToken?.decimals || (chain === 'base' ? 18 : 6),
+        liquidityUsd: parseFloat(bestPair.liquidity?.usd || '0'),
+        volume24hUsd: parseFloat(bestPair.volume?.h24 || '0'),
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error(`DexScreener fetch error for ${tokenAddress} on ${chain}:`, error);
+    return null;
+  }
 }
 
 // ✅ PRECISION FIX: Parse decimal price string to lamports without float math
@@ -807,7 +972,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Health Check Endpoint (for load balancers and monitoring)
   // ============================================================================
 
-  app.get('/api/health', async (req, res) => {
+  app.get('/api/health', healthLimiter, async (req, res) => {
     try {
       // Check database connectivity
       await db.execute(sql`SELECT 1`);
@@ -860,14 +1025,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Generate token
-      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
 
       // Set HttpOnly cookie
       res.cookie('token', token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
       });
 
       console.log('✅ User registered, cookie set for:', user.username);
@@ -923,14 +1088,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Invalid credentials' });
       }
 
-      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
 
       // Set HttpOnly cookie
       res.cookie('token', token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
       });
 
       console.log('✅ User logged in, cookie set for:', user.username);
@@ -1193,7 +1358,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Generate token
-      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
 
       console.log('✅ Telegram bot user registered:', user.username);
 
@@ -1247,7 +1412,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`✅ Password valid for user: ${user.username}`);
 
       // Generate token
-      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
 
       console.log('✅ Telegram bot user logged in:', user.username);
 
@@ -1321,7 +1486,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/trades/positions', authenticateToken, async (req, res) => {
     try {
-      const positions = await storage.getUserPositions(req.userId!);
+      const chainParam = req.query.chain as string | undefined;
+      const chain = chainParam && isValidChain(chainParam) ? chainParam : undefined;
+      const positions = await storage.getUserPositions(req.userId!, chain);
 
       // Fetch current prices for all unique tokens
       const uniqueTokenAddresses = positions.map(p => p.tokenAddress);
@@ -1410,25 +1577,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const { tokenAddress, tokenName, tokenSymbol, solAmount } = req.body;
+      const { tokenAddress, tokenName, tokenSymbol, amount, chain } = req.body;
       // NOTE: Client 'price' is intentionally IGNORED for execution
 
       // ✅ INPUT VALIDATION
-      if (!tokenAddress || !tokenName || !tokenSymbol) {
+      if (!tokenAddress || !tokenName || !tokenSymbol || !chain) {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
-      if (!isValidSolanaAddress(tokenAddress)) {
-        return res.status(400).json({ error: 'Invalid token address format' });
+      if (!isValidChain(chain)) {
+        return res.status(400).json({ error: 'Invalid chain. Must be "solana" or "base"' });
       }
 
-      // ✅ PRECISION FIX: Parse SOL without floating-point math
-      let solSpent: bigint;
+      if (!isValidChainAddress(chain, tokenAddress)) {
+        return res.status(400).json({ error: `Invalid ${chain} token address format` });
+      }
+
+      const chainConfig = CHAIN_CONFIG[chain];
+
+      // ✅ PRECISION FIX: Parse native amount without floating-point math
+      let nativeSpent: bigint;
       try {
-        solSpent = parseSolToLamports(solAmount);
-        validateTradeAmount(solSpent);
+        nativeSpent = parseNativeAmount(amount, chainConfig.nativeDecimals);
+        validateTradeAmountForChain(nativeSpent, chain);
       } catch (e: any) {
-        return res.status(400).json({ error: e.message || 'Invalid SOL amount' });
+        return res.status(400).json({ error: e.message || `Invalid ${chainConfig.nativeSymbol} amount` });
       }
 
       const user = await storage.getUserById(req.userId!);
@@ -1437,13 +1610,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Pre-check balance (will be verified atomically in transaction too)
-      if (user.balance < solSpent) {
+      const userBalance = chain === 'solana' ? user.balance : user.baseBalance;
+      if (userBalance < nativeSpent) {
         return res.status(400).json({ error: 'Insufficient balance' });
       }
 
       // ✅ ANTI-CHEAT: Fetch price BEFORE transaction (no external calls in tx)
-      const currentTokenData = await fetchDexScreenerPrice(tokenAddress);
-      if (!currentTokenData || !currentTokenData.priceLamports) {
+      const currentTokenData = await fetchDexScreenerPriceForChain(tokenAddress, chain);
+      if (!currentTokenData || !currentTokenData.priceNative) {
         return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
       }
 
@@ -1462,54 +1636,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Server-side price is the ONLY price used for execution
-      const serverPriceLamports = BigInt(currentTokenData.priceLamports);
-      const decimals = currentTokenData.decimals || 6;
+      const serverPriceNative = currentTokenData.priceNative;
+      const decimals = currentTokenData.decimals || (chain === 'base' ? 18 : 6);
 
       // Apply simulated slippage (0.5% for paper trading realism)
       const SLIPPAGE_BPS = 50n; // 0.5% = 50 basis points
       const slippageMultiplier = 10000n + SLIPPAGE_BPS;
-      const executionPriceLamports = (serverPriceLamports * slippageMultiplier) / 10000n;
+      const executionPriceNative = (serverPriceNative * slippageMultiplier) / 10000n;
 
-      console.log(`💰 Server-side execution (ANTI-CHEAT):`);
-      console.log(`   DexScreener price: ${serverPriceLamports.toString()} lamports/token`);
-      console.log(`   Execution price (+0.5% slippage): ${executionPriceLamports.toString()} lamports/token`);
+      console.log(`💰 Server-side execution (ANTI-CHEAT) on ${chain}:`);
+      console.log(`   DexScreener price: ${serverPriceNative.toString()} native units/token`);
+      console.log(`   Execution price (+0.5% slippage): ${executionPriceNative.toString()} native units/token`);
 
       // Calculate tokens received using SERVER price
       const decimalMultiplier = BigInt(10 ** decimals);
-      const tokenAmount = (solSpent * decimalMultiplier) / executionPriceLamports;
+      const tokenAmount = (nativeSpent * decimalMultiplier) / executionPriceNative;
 
       if (tokenAmount <= 0n) {
-        return res.status(400).json({ error: 'SOL amount too small to buy tokens' });
+        return res.status(400).json({ error: `${chainConfig.nativeSymbol} amount too small to buy tokens` });
       }
 
       const tokensDisplay = Number(tokenAmount) / (10 ** decimals);
-      console.log(`📊 Buy: ${Number(solSpent) / 1e9} SOL → ${tokensDisplay.toFixed(6)} tokens`);
+      const nativeDisplay = Number(nativeSpent) / (10 ** chainConfig.nativeDecimals);
+      console.log(`📊 Buy: ${nativeDisplay} ${chainConfig.nativeSymbol} → ${tokensDisplay.toFixed(6)} tokens`);
 
       // Execute atomic trade with server-side price
       try {
         const position = await storage.executeBuyTrade({
           userId: req.userId!,
-          chain: 'solana',
+          chain,
           tokenAddress,
           tokenName,
           tokenSymbol,
           decimals,
-          entryPrice: executionPriceLamports,
+          entryPrice: executionPriceNative,
           amount: tokenAmount,
-          nativeSpent: solSpent,
+          nativeSpent,
         });
 
-        console.log(`✅ POSITION CREATED: ${tokenSymbol} (ID: ${position.id})`);
+        console.log(`✅ POSITION CREATED: ${tokenSymbol} on ${chain} (ID: ${position.id})`);
 
         const newUser = await storage.getUserById(req.userId!);
+        const newBalance = chain === 'solana' ? newUser!.balance : newUser!.baseBalance;
 
         // ✅ IDEMPOTENCY: Cache successful response
         const successResponse = { 
           message: 'Position processed successfully',
           positionId: position.id,
-          newBalance: newUser!.balance.toString(),
+          newBalance: newBalance.toString(),
           tokensReceived: tokenAmount.toString(),
-          executionPrice: executionPriceLamports.toString(),
+          executionPrice: executionPriceNative.toString(),
+          chain,
         };
 
         if (idempotencyKey) {
@@ -1540,7 +1717,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const { positionId, amountLamports } = req.body as any;
+      const { positionId, amountLamports, chain } = req.body as any;
       // NOTE: Client exitPriceLamports is intentionally IGNORED
 
       if (!positionId) {
@@ -1550,6 +1727,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const position = await storage.getPositionById(positionId);
       if (!position || position.userId !== req.userId) {
         return res.status(404).json({ error: 'Position not found' });
+      }
+
+      // Use position's chain if not provided in request
+      const positionChain = chain || position.chain || 'solana';
+      if (!isValidChain(positionChain)) {
+        return res.status(400).json({ error: 'Invalid chain' });
       }
 
       // ✅ FIX: Determine sell type upfront
@@ -1581,37 +1764,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // ✅ ANTI-CHEAT: Fetch price BEFORE transaction (no external calls in tx)
-      const currentTokenData = await fetchDexScreenerPrice(position.tokenAddress);
-      if (!currentTokenData || !currentTokenData.priceLamports) {
+      const currentTokenData = await fetchDexScreenerPriceForChain(position.tokenAddress, positionChain as Chain);
+      if (!currentTokenData || !currentTokenData.priceNative) {
         return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
       }
 
       // Server-side price with negative slippage for sells
-      const serverPriceLamports = BigInt(currentTokenData.priceLamports);
+      const serverPriceNative = currentTokenData.priceNative;
       const SLIPPAGE_BPS = 50n;
       const slippageMultiplier = 10000n - SLIPPAGE_BPS;
-      const executionPriceLamports = (serverPriceLamports * slippageMultiplier) / 10000n;
+      const executionPriceNative = (serverPriceNative * slippageMultiplier) / 10000n;
 
       // Use position's decimals
-      const decimals = position.decimals || 6;
+      const decimals = position.decimals || (positionChain === 'base' ? 18 : 6);
       const decimalDivisor = BigInt(10 ** decimals);
 
-      // Calculate SOL received using SERVER price
-      const solReceived = (sellAmount * executionPriceLamports) / decimalDivisor;
+      // Calculate native received using SERVER price
+      const nativeReceived = (sellAmount * executionPriceNative) / decimalDivisor;
 
       // Calculate profit/loss
       const proportionalCost = (position.solSpent * sellAmount) / position.amount;
-      const profitLoss = solReceived - proportionalCost;
+      const profitLoss = nativeReceived - proportionalCost;
 
-      console.log(`📊 Sell (${isFullSell ? 'FULL' : 'PARTIAL'}): ${Number(sellAmount) / (10 ** decimals)} tokens → ${Number(solReceived) / 1e9} SOL`);
+      const chainConfig = CHAIN_CONFIG[positionChain as Chain];
+      console.log(`📊 Sell (${isFullSell ? 'FULL' : 'PARTIAL'}): ${Number(sellAmount) / (10 ** decimals)} tokens → ${Number(nativeReceived) / (10 ** chainConfig.nativeDecimals)} ${chainConfig.nativeSymbol} on ${positionChain}`);
 
       // Execute atomic trade with server-side price
       await storage.executeSellTrade({
         userId: req.userId!,
         positionId,
         sellAmount,
-        exitPrice: executionPriceLamports,
-        nativeReceived: solReceived,
+        exitPrice: executionPriceNative,
+        nativeReceived,
         profitLoss,
         proportionalCost,
       });
@@ -1620,8 +1804,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const successResponse = {
         message: 'Position closed successfully',
         profitLoss: profitLoss.toString(),
-        solReceived: solReceived.toString(),
-        executionPrice: executionPriceLamports.toString(),
+        nativeReceived: nativeReceived.toString(),
+        executionPrice: executionPriceNative.toString(),
+        chain: positionChain,
       };
 
       if (idempotencyKey) {
@@ -1647,10 +1832,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const page = parseInt(req.query.page as string) || 1;
       const limit = 50;
       const offset = (page - 1) * limit;
+      
+      const chainParam = req.query.chain as string | undefined;
+      const chain = chainParam && isValidChain(chainParam) ? chainParam : undefined;
 
       const [trades, totalCount] = await Promise.all([
-        storage.getUserTrades(req.userId!, limit, offset),
-        storage.getUserTradesCount(req.userId!)
+        storage.getUserTrades(req.userId!, chain, limit, offset),
+        storage.getUserTradesCount(req.userId!, chain)
       ]);
 
       res.json(serializeBigInts({
@@ -1676,7 +1864,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get trending tokens based on user activity (most bought/sold by user count)
   app.get('/api/trending', publicApiLimiter, async (req, res) => {
     try {
-      // Get top tokens by number of unique users who bought them
+      const chainParam = (req.query.chain as string) || 'solana';
+      
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: 'Invalid chain. Must be "solana" or "base"' });
+      }
+      
+      const chain = chainParam as Chain;
+      
+      // Get top tokens by number of unique users who bought them (filtered by chain)
       const buyActivity = await db
         .select({
           tokenAddress: positions.tokenAddress,
@@ -1686,17 +1882,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           buyerCount: sql`COUNT(DISTINCT ${positions.userId})`.as('buyerCount'),
         })
         .from(positions)
+        .where(sql`${positions.chain} = ${chain}`)
         .groupBy(positions.tokenAddress, positions.tokenName, positions.tokenSymbol, positions.decimals)
         .orderBy(sql`COUNT(DISTINCT ${positions.userId})`)
         .limit(30);
 
-      // Get sell activity (users who closed positions)
+      // Get sell activity (users who closed positions) - filtered by chain
       const sellActivity = await db
         .select({
           tokenAddress: tradeHistory.tokenAddress,
           sellerCount: sql`COUNT(DISTINCT ${tradeHistory.userId})`.as('sellerCount'),
         })
         .from(tradeHistory)
+        .where(sql`${tradeHistory.chain} = ${chain}`)
         .groupBy(tradeHistory.tokenAddress)
         .limit(100);
 
@@ -1746,7 +1944,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Fetch current prices for trending tokens
       const trendingAddresses = trending.map(t => t.tokenAddress);
-      const priceMap = new Map<string, bigint>();
+      const priceMap = new Map<string, string>();
+      const chainId = chain === 'solana' ? 'solana' : 'base';
+      const nativeDecimals = chain === 'solana' ? 9 : 18;
 
       if (trendingAddresses.length > 0) {
         try {
@@ -1765,11 +1965,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const pairs = dexData.pairs || [];
 
               for (const addr of batch) {
-                const bestPair = findBestSolanaPair(pairs, addr);
+                // Find best pair for this chain
+                const chainPairs = pairs.filter((p: any) => p.chainId === chainId && p.baseToken?.address === addr);
+                if (chainPairs.length === 0) continue;
+                
+                const bestPair = chainPairs.reduce((best: any, current: any) => {
+                  const bestLiq = best?.liquidity?.usd || 0;
+                  const currentLiq = current?.liquidity?.usd || 0;
+                  return currentLiq > bestLiq ? current : best;
+                }, chainPairs[0]);
+                
                 if (bestPair && bestPair.priceNative) {
                   // ✅ PRECISION FIX: Parse without float math
-                  const priceLamports = BigInt(Math.max(1, parseDecimalToLamports(bestPair.priceNative)));
-                  priceMap.set(addr, priceLamports);
+                  const priceNative = parseDecimalToNativeUnits(bestPair.priceNative, nativeDecimals);
+                  if (priceNative > 0n) {
+                    priceMap.set(addr, priceNative.toString());
+                  }
                 }
               }
             }
@@ -1782,7 +1993,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Enrich with prices
       const enrichedTrending = trending.map(t => ({
         ...t,
-        currentPrice: priceMap.get(t.tokenAddress)?.toString() || '0',
+        currentPrice: priceMap.get(t.tokenAddress) || '0',
+        chain,
       }));
 
       res.json({ trending: enrichedTrending });
@@ -1792,18 +2004,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Input sanitization helper
+  function sanitizeSearchQuery(query: string): string {
+    // Remove special characters that could be used for injection
+    return query.replace(/[<>'"&]/g, '').trim();
+  }
+
   app.get('/api/tokens/search', searchLimiter, async (req, res) => {
     try {
       const query = req.query.q as string || '';
-      const searchTerm = query.toLowerCase().trim();
+      // Sanitize input to prevent injection attacks
+      const searchTerm = sanitizeSearchQuery(query).toLowerCase();
+      const chainParam = (req.query.chain as string) || 'solana';
+      
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: 'Invalid chain. Must be "solana" or "base"' });
+      }
+      
+      const chain = chainParam as Chain;
 
-      console.log(`🔍 Search request: "${searchTerm}"`);
+      console.log(`🔍 Search request: "${searchTerm}" on ${chain}`);
 
       if (!searchTerm || searchTerm.length < 3) {
         return res.json({ results: [] });
       }
 
       const results: any[] = [];
+      const chainId = chain === 'solana' ? 'solana' : 'base';
 
       // Search DexScreener API for token results
       try {
@@ -1812,31 +2039,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (dexResponse?.ok) {
           const dexData = await dexResponse.json();
 
-          // Filter for Solana pairs only
-          const solanaPairs = dexData.pairs?.filter((pair: any) => pair.chainId === 'solana') || [];
-          console.log(`📊 DexScreener returned ${solanaPairs.length} Solana pairs for "${searchTerm}"`);
+          // Filter for specified chain pairs only
+          const chainPairs = dexData.pairs?.filter((pair: any) => pair.chainId === chainId) || [];
+          console.log(`📊 DexScreener returned ${chainPairs.length} ${chain} pairs for "${searchTerm}"`);
 
-          for (const pair of solanaPairs.slice(0, 15)) {
+          const nativeDecimals = chain === 'solana' ? 9 : 18;
+          
+          for (const pair of chainPairs.slice(0, 15)) {
             const tokenAddress = pair.baseToken?.address;
             if (!tokenAddress) continue;
 
             // Skip if already found
             if (results.some(r => r.tokenAddress === tokenAddress)) continue;
 
-            // Use native price (already in SOL) instead of USD price
+            // Use native price (already in native units) instead of USD price
             // ✅ PRECISION FIX: Parse without float math
-            const priceLamports = pair.priceNative ? parseDecimalToLamports(pair.priceNative) : 0;
+            const priceNative = pair.priceNative 
+              ? parseDecimalToNativeUnits(pair.priceNative, nativeDecimals).toString() 
+              : '0';
 
             results.push({
               tokenAddress,
               name: pair.baseToken?.name || 'Unknown',
               symbol: pair.baseToken?.symbol || '???',
               marketCap: pair.marketCap || pair.fdv || 0,
-              price: priceLamports,
+              price: priceNative,
               icon: pair.info?.imageUrl,
               dexId: pair.dexId,
               volume24h: pair.volume?.h24 || 0,
               priceChange24h: pair.priceChange?.h24 || 0,
+              chain,
             });
           }
         }
@@ -1850,7 +2082,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const profiles = await fetchDexScreenerProfiles();
 
         for (const p of profiles) {
-          if (p.chainId !== 'solana') continue;
+          if (p.chainId !== chainId) continue;
 
           const address = p.tokenAddress?.toLowerCase() || '';
           const description = p.description?.toLowerCase() || '';

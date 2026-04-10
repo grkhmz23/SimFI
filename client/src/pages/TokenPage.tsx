@@ -9,7 +9,8 @@ import TokenChart from '@/components/TokenChart';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, TrendingUp, ExternalLink, Copy } from 'lucide-react';
-import { formatSol, formatTokenAmount, toBigInt, formatUSD, formatPricePerToken, formatPricePerTokenUSD } from '@/lib/lamports';
+import { formatNative, formatTokenAmount, toBigInt, formatUSD, formatPricePerToken, formatPricePerTokenUSD } from '@/lib/token-format';
+import { useChain } from '@/lib/chain-context';
 import type { Token, Position } from '@shared/schema';
 
 export default function TokenPage() {
@@ -18,6 +19,7 @@ export default function TokenPage() {
   const [location, setLocation] = useLocation();
   const { isAuthenticated } = useAuth();
   const { toast } = useToast();
+  const { activeChain } = useChain();
   
   // Get token from location state (passed from navigation)
   const locationState = (typeof window !== 'undefined' && (window.history.state as any)?.state) || {};
@@ -30,12 +32,19 @@ export default function TokenPage() {
 
   // Fetch token from API with auto-refresh every 5 seconds (real-time updates)
   const { data: tokenData, isLoading: tokenLoading, error: tokenError, dataUpdatedAt } = useQuery<{ token: Token }>({
-    queryKey: [`/api/tokens/${tokenAddress}`],
+    queryKey: [`/api/tokens/${tokenAddress}`, activeChain],
+    queryFn: async () => {
+      const res = await fetch(`/api/market/token/${tokenAddress}?chain=${activeChain}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to fetch token');
+      return res.json();
+    },
     enabled: !!tokenAddress,
-    refetchInterval: 5000, // Real-time: Refresh every 5 seconds
-    refetchIntervalInBackground: true, // Continue refreshing even when tab is not focused
-    retry: 3, // Retry failed requests
-    retryDelay: 1000, // Wait 1 second between retries
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
+    retry: 3,
+    retryDelay: 1000,
   });
 
   // Reset price tracking state when navigating to a different token
@@ -72,7 +81,14 @@ export default function TokenPage() {
 
   // Fetch user's positions to check if they own this token
   const { data: positionsData } = useQuery<{ positions: Position[] }>({
-    queryKey: ['/api/trades/positions'],
+    queryKey: ['/api/trades/positions', activeChain],
+    queryFn: async () => {
+      const res = await fetch(`/api/trades/positions?chain=${activeChain}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to fetch positions');
+      return res.json();
+    },
     enabled: isAuthenticated,
   });
 

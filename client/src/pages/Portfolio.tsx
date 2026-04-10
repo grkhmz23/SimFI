@@ -16,7 +16,8 @@ import { TradeModal } from '@/components/TradeModal';
 import { useAuth } from '@/lib/auth-context';
 import { useSolPrice } from '@/lib/price-context';
 import { Link } from 'wouter';
-import { formatSol, lamportsToSol, toBigInt, formatTokenAmount, formatPricePerTokenUSD, formatUSD } from '@/lib/lamports';
+import { formatNative, nativeToDisplay, toBigInt, formatTokenAmount, formatPricePerTokenUSD, formatUSD } from '@/lib/token-format';
+import { useChain } from '@/lib/chain-context';
 import { TrendingUp, TrendingDown, Package, LogIn, ExternalLink } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -26,11 +27,19 @@ export default function Portfolio() {
   const { isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
   const solPrice = useSolPrice();
+  const { activeChain, nativeSymbol } = useChain();
   const [selectedPosition, setSelectedPosition] = useState<Position & { currentPrice: number } | null>(null);
   const { toast } = useToast();
 
   const { data: positionsData, isLoading, isError, error } = useQuery<{ positions: Position[] }>({
-    queryKey: ['/api/trades/positions'],
+    queryKey: ['/api/trades/positions', activeChain],
+    queryFn: async () => {
+      const res = await fetch(`/api/trades/positions?chain=${activeChain}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to fetch positions');
+      return res.json();
+    },
     enabled: isAuthenticated,
     refetchInterval: 2500,
     refetchIntervalInBackground: true,
@@ -168,7 +177,7 @@ export default function Portfolio() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Invested</p>
-              <p className="text-2xl font-bold font-mono">{formatSol(totalInvested, 2)} SOL</p>
+              <p className="text-2xl font-bold font-mono">{formatNative(totalInvested, activeChain, 2)} {nativeSymbol}</p>
               <p className="text-sm text-muted-foreground font-mono">≈ {formatUSD(totalInvested, 2)}</p>
             </div>
           </div>
@@ -181,7 +190,7 @@ export default function Portfolio() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Current Value</p>
-              <p className="text-2xl font-bold font-mono">{formatSol(totalCurrentValue, 2)} SOL</p>
+              <p className="text-2xl font-bold font-mono">{formatNative(totalCurrentValue, activeChain, 2)} {nativeSymbol}</p>
               <p className="text-sm text-muted-foreground font-mono">≈ {formatUSD(totalCurrentValue, 2)}</p>
             </div>
           </div>
@@ -199,7 +208,7 @@ export default function Portfolio() {
             <div>
               <p className="text-sm text-muted-foreground">Total P/L</p>
               <p className={`text-2xl font-bold font-mono ${totalPL >= 0n ? 'text-success' : 'text-destructive'}`}>
-                {totalPL >= 0n ? '+' : ''}{formatSol(totalPL, 2)} SOL
+                {totalPL >= 0n ? '+' : ''}{formatNative(totalPL, activeChain, 2)} {nativeSymbol}
               </p>
               <p className="text-sm text-muted-foreground font-mono">
                 ≈ {totalPL >= 0n ? '+' : ''}{formatUSD(totalPL, 2)}

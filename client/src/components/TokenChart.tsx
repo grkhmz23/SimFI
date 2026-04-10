@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi, type CandlestickData, type HistogramData } from 'lightweight-charts';
+import { useChain } from '@/lib/chain-context';
 import { AlertCircle } from 'lucide-react';
 
 interface TokenChartProps {
@@ -25,6 +26,7 @@ const TokenChart = ({
   liquidity = 0,
   height = '500px' 
 }: TokenChartProps) => {
+  const { activeChain } = useChain();
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -158,7 +160,7 @@ const TokenChart = ({
       }
       setError(null);
 
-      const response = await fetch(`/api/tokens/${tokenAddress}/ohlcv?timeframe=${tf}`);
+      const response = await fetch(`/api/tokens/${tokenAddress}/ohlcv?timeframe=${tf}&chain=${activeChain}`);
       if (!response.ok) {
         throw new Error(`API returned ${response.status}: Failed to fetch chart data`);
       }

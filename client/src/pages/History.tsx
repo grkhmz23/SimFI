@@ -11,7 +11,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatSol, formatUSD, formatPricePerTokenUSD } from '@/lib/lamports';
+import { formatNative, formatUSD, formatPricePerTokenUSD } from '@/lib/token-format';
+import { useChain } from '@/lib/chain-context';
 import { History as HistoryIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Trade } from '@shared/schema';
 
@@ -26,11 +27,12 @@ interface HistoryResponse {
 
 export default function History() {
   const [page, setPage] = useState(1);
+  const { activeChain, nativeSymbol } = useChain();
 
   const { data, isLoading } = useQuery<HistoryResponse>({
-    queryKey: ['/api/trades/history', page],
+    queryKey: ['/api/trades/history', page, activeChain],
     queryFn: async () => {
-      const res = await fetch(`/api/trades/history?page=${page}`, {
+      const res = await fetch(`/api/trades/history?page=${page}&chain=${activeChain}`, {
         credentials: 'include',
       });
       if (!res.ok) {

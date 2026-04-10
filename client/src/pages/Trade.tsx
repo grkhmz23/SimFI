@@ -22,6 +22,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth-context';
+import { useChain } from '@/lib/chain-context';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
@@ -247,6 +248,7 @@ export default function Trade() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const { isAuthenticated, user } = useAuth();
+  const { activeChain } = useChain();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
@@ -256,9 +258,9 @@ export default function Trade() {
   }, [searchQuery]);
 
   const { data: searchResults, isLoading: isSearching } = useQuery<{ results: SearchResult[] }>({
-    queryKey: ['/api/market/search', debouncedQuery],
+    queryKey: ['/api/market/search', debouncedQuery, activeChain],
     queryFn: async () => {
-      const response = await fetch(`/api/market/search?q=${encodeURIComponent(debouncedQuery)}`);
+      const response = await fetch(`/api/market/search?q=${encodeURIComponent(debouncedQuery)}&chain=${activeChain}`);
       if (!response.ok) throw new Error('Search failed');
       return response.json();
     },
@@ -480,7 +482,7 @@ export default function Trade() {
             variants={containerVariants}
           >
             {[
-              { icon: <Coins className="h-6 w-6 text-primary" />, title: "Virtual Currency", description: "Start with 10 SOL of virtual currency. No real money at risk." },
+              { icon: <Coins className="h-6 w-6 text-primary" />, title: "Virtual Currency", description: `Start with ${activeChain === 'solana' ? '10 SOL' : '5 ETH'} of virtual currency. No real money at risk.` },
               { icon: <TrendingUp className="h-6 w-6 text-primary" />, title: "Real-Time Prices", description: "Trade real tokens with live market data from pump.fun." },
               { icon: <Trophy className="h-6 w-6 text-primary" />, title: "Win Real SOL", description: "Top 3 traders every 6 hours win real SOL rewards." },
               { icon: <Shield className="h-6 w-6 text-primary" />, title: "Zero Risk", description: "Learn from mistakes without financial consequences." },

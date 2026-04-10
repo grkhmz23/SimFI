@@ -2,7 +2,8 @@ import { useLocation } from 'wouter';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp } from 'lucide-react';
-import { formatSol } from '@/lib/lamports';
+import { formatNative } from '@/lib/token-format';
+import { useChain } from '@/lib/chain-context';
 import type { Token } from '@shared/schema';
 
 interface TokenCardProps {
@@ -11,6 +12,7 @@ interface TokenCardProps {
 
 export function TokenCard({ token }: TokenCardProps) {
   const [, setLocation] = useLocation();
+  const { activeChain, nativeSymbol } = useChain();
 
   const formatMarketCap = (mc: number) => {
     if (mc >= 1_000_000_000) return `$${(mc / 1_000_000_000).toFixed(2)}B`;
@@ -56,9 +58,9 @@ export function TokenCard({ token }: TokenCardProps) {
 
         <div className="space-y-3">
           <div>
-            <p className="text-xs text-muted-foreground mb-1">Price (SOL)</p>
+            <p className="text-xs text-muted-foreground mb-1">Price ({nativeSymbol})</p>
             <p className="text-2xl font-bold font-mono text-primary" data-testid="text-price">
-              {formatSol(token.price, 8)}
+              {formatNative(token.price, activeChain, 8)}
             </p>
           </div>
 
