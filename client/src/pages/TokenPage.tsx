@@ -287,10 +287,11 @@ export default function TokenPage() {
                   <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
                 <a
-                  href={`https://solscan.io/token/${tokenAddress}`}
+                  href={activeChain === 'base' ? `https://basescan.org/token/${tokenAddress}` : `https://solscan.io/token/${tokenAddress}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-muted-foreground hover:text-primary transition-colors"
+                  title={activeChain === 'base' ? 'View on BaseScan' : 'View on Solscan'}
                 >
                   <ExternalLink className="h-4 w-4" />
                 </a>

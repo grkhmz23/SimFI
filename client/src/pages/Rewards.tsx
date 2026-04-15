@@ -108,9 +108,10 @@ export default function Rewards() {
     }
   };
 
-  const getSolscanUrl = (signature: string) => {
-    return `https://solscan.io/tx/${signature}`;
-  };
+  let rewardChain = 'solana' as 'solana' | 'base';
+  const rewardSymbol = rewardChain === 'base' ? 'ETH' : 'SOL';
+  const rewardExplorerUrl = (signature: string) =>
+    rewardChain === 'base' ? `https://basescan.org/tx/${signature}` : `https://solscan.io/tx/${signature}`;
 
   const status = statusData;
   const rules = rulesData;
@@ -124,7 +125,7 @@ export default function Rewards() {
           <h1 className="text-4xl font-bold text-foreground">Rewards</h1>
         </div>
         <p className="text-muted-foreground">
-          Earn real SOL by trading! Top 3 traders every {rules?.epochDurationHours || 6} hours win rewards.
+          Earn real rewards by trading! Top 3 traders every {rules?.epochDurationHours || 6} hours win prizes.
         </p>
       </div>
 
@@ -170,13 +171,13 @@ export default function Rewards() {
                 <div>
                   <p className="text-sm text-muted-foreground">Carry Over</p>
                   <p className="text-2xl font-bold text-foreground">
-                    {status?.carryOver ? formatSol(BigInt(status.carryOver)) : '0'} SOL
+                    {status?.carryOver ? formatSol(BigInt(status.carryOver)) : '0'} {rewardSymbol}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Vault Balance</p>
                   <p className="text-2xl font-bold text-success">
-                    {status?.vaultBalance ? formatSol(BigInt(status.vaultBalance)) : '0'} SOL
+                    {status?.vaultBalance ? formatSol(BigInt(status.vaultBalance)) : '0'} {rewardSymbol}
                   </p>
                 </div>
               </div>
@@ -192,7 +193,7 @@ export default function Rewards() {
                   <h3 className="text-lg font-semibold">Last Payout (Epoch #{status.lastPayout.epoch})</h3>
                   {status.lastPayout.txSignature && (
                     <a
-                      href={getSolscanUrl(status.lastPayout.txSignature)}
+                      href={rewardExplorerUrl(status.lastPayout.txSignature)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-1 text-sm text-primary hover:underline"
@@ -216,7 +217,7 @@ export default function Rewards() {
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-success">
-                          +{formatSol(BigInt(winner.amount))} SOL
+                          +{formatSol(BigInt(winner.amount))} {rewardSymbol}
                         </p>
                       </div>
                     </div>
@@ -225,7 +226,7 @@ export default function Rewards() {
                 <div className="mt-4 pt-4 border-t">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Total Paid</span>
-                    <span className="font-bold">{formatSol(BigInt(status.lastPayout.totalPaid))} SOL</span>
+                    <span className="font-bold">{formatSol(BigInt(status.lastPayout.totalPaid))} {rewardSymbol}</span>
                   </div>
                 </div>
               </Card>
@@ -269,7 +270,7 @@ export default function Rewards() {
                         <Badge variant="default">Completed</Badge>
                         {epoch.txSignature && (
                           <a
-                            href={getSolscanUrl(epoch.txSignature)}
+                            href={rewardExplorerUrl(epoch.txSignature)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
@@ -290,11 +291,11 @@ export default function Rewards() {
                           <div className="flex-1">
                             <span className="font-medium">{winner.username}</span>
                             <span className="text-xs text-muted-foreground ml-2">
-                              (Profit: {formatSol(BigInt(winner.profit))} SOL)
+                              (Profit: {formatSol(BigInt(winner.profit))} {rewardSymbol})
                             </span>
                           </div>
                           <span className="font-bold text-success">
-                            +{formatSol(BigInt(winner.amount))} SOL
+                            +{formatSol(BigInt(winner.amount))} {rewardSymbol}
                           </span>
                         </div>
                       ))}
@@ -302,7 +303,7 @@ export default function Rewards() {
                     
                     <div className="mt-3 pt-3 border-t text-sm">
                       <span className="text-muted-foreground">Total:</span>
-                      <span className="font-bold ml-2">{formatSol(BigInt(epoch.totalPaid))} SOL</span>
+                      <span className="font-bold ml-2">{formatSol(BigInt(epoch.totalPaid))} {rewardSymbol}</span>
                     </div>
                   </div>
                 ))}
@@ -323,7 +324,7 @@ export default function Rewards() {
                   Prize Distribution
                 </h3>
                 <p className="text-muted-foreground mb-4">
-                  Every {rules?.epochDurationHours || 6} hours, the top 3 profitable traders receive real SOL rewards:
+                  Every {rules?.epochDurationHours || 6} hours, the top 3 profitable traders receive real {rewardSymbol} rewards:
                 </p>
                 <div className="grid gap-3">
                   {(rules?.payoutPercentages || [
@@ -359,7 +360,7 @@ export default function Rewards() {
                     <strong>Positive profit:</strong> Must have net positive profit in the epoch
                   </li>
                   <li>
-                    <strong>Connected wallet:</strong> Must have a Solana wallet connected to your account
+                    <strong>Connected wallet:</strong> Must have a {rewardSymbol === 'ETH' ? 'Base' : 'Solana'} wallet connected to your account
                   </li>
                 </ul>
               </div>
@@ -374,8 +375,8 @@ export default function Rewards() {
                   <li>Epoch runs for {rules?.epochDurationHours || 6} hours</li>
                   <li>At epoch end, fees are claimed from Bags.fm</li>
                   <li>Top 3 eligible traders are determined by epoch profit</li>
-                  <li>SOL is distributed directly to winners' wallets</li>
-                  <li>If pot is below {rules?.minPayoutSol || '0.1'} SOL, it carries over to next epoch</li>
+                  <li>{rewardSymbol} is distributed directly to winners' wallets</li>
+                  <li>If pot is below {rules?.minPayoutSol || '0.1'} {rewardSymbol}, it carries over to next epoch</li>
                 </ol>
               </div>
 
@@ -383,7 +384,7 @@ export default function Rewards() {
               <div className="bg-muted/50 rounded-lg p-4">
                 <h4 className="font-semibold mb-2">⚠️ Important Notes</h4>
                 <ul className="text-sm text-muted-foreground space-y-1">
-                  <li>• Rewards are paid in real SOL to your connected wallet</li>
+                  <li>• Rewards are paid in real {rewardSymbol} to your connected wallet</li>
                   <li>• Profit is calculated from closed trades only</li>
                   <li>• Ranking is determined by total epoch profit, not percentage gains</li>
                   <li>• Anti-farming measures are in place to ensure fair competition</li>

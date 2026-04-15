@@ -116,13 +116,13 @@ export function WelcomePopup({
                 {/* Content */}
                 <div className="px-8 pb-8">
                   <p className="text-center text-muted-foreground mb-6">
-                    Practice trading Solana memecoins risk-free with 10 SOL paper balance
+                    Practice trading Base and Solana memecoins risk-free with 5 ETH + 10 SOL paper balance
                   </p>
 
                   {/* Features */}
                   <div className="space-y-3 mb-6">
                     {[
-                      { icon: Zap, text: "Real-time prices from Pump.fun", color: "text-yellow-500" },
+                      { icon: Zap, text: "Real-time prices from live DEX data", color: "text-yellow-500" },
                       { icon: Trophy, text: "Compete on the global leaderboard", color: "text-primary" },
                       { icon: Sparkles, text: "Track your portfolio in real-time", color: "text-accent" },
                     ].map((feature, index) => (

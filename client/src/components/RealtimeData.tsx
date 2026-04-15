@@ -264,7 +264,7 @@ export default function RealtimeData() {
                 size="sm"
                 onClick={() => addToWatchlist('So11111111111111111111111111111111111111112')}
               >
-                Add SOL
+                Add WSOL
               </Button>
             </div>
           </CardContent>
@@ -278,7 +278,7 @@ export default function RealtimeData() {
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
           <ul className="list-disc list-inside space-y-1">
-            <li>Live price data from DexScreener, Birdeye, and Jupiter APIs</li>
+            <li>Live price data from DexScreener, Birdeye, and DEX APIs</li>
             <li>Real-time price charts and candlestick data</li>
             <li>Volume, liquidity, and market cap tracking</li>
             <li>Price alerts and notifications</li>

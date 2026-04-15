@@ -289,7 +289,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
             )}
           </DialogTitle>
           <DialogDescription id="trade-modal-description" className="sr-only">
-            {isBuying ? `Buy ${symbol} tokens with SOL` : `Sell ${symbol} tokens for SOL`}
+            {isBuying ? `Buy ${symbol} tokens with ${nativeSymbol}` : `Sell ${symbol} tokens for ${nativeSymbol}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -326,7 +326,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                   name="amount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Amount to Spend (SOL)</FormLabel>
+                      <FormLabel>Amount to Spend ({nativeSymbol})</FormLabel>
                       <FormControl>
                         <Input
                           type="number"

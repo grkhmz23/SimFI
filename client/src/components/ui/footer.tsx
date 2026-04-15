@@ -17,7 +17,7 @@ interface FooterProps extends React.HTMLAttributes<HTMLElement> {
 export const Footer: FC<FooterProps> = ({
   logoSrc = '/simfi-logo.png',
   companyName = 'SimFi',
-  description = 'Practice trading Solana memecoins risk-free. Master strategies, compete on leaderboards, and learn without losing real money.',
+  description = 'Practice trading Base and Solana memecoins risk-free. Master strategies, compete on leaderboards, and learn without losing real money.',
   usefulLinks = [
     { label: 'Trade', href: '/trade' },
     { label: 'Leaderboard', href: '/leaderboard' },

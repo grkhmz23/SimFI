@@ -320,7 +320,7 @@ export default function TokenAnalyzer() {
             className="grid grid-cols-1 md:grid-cols-3 gap-8"
           >
             {[
-              { icon: Zap, title: "Helius Powered", desc: "Real-time Solana data" },
+              { icon: Zap, title: "Helius Powered", desc: "Real-time multi-chain data" },
               { icon: Target, title: "Pro Analysis", desc: "Advanced trading tools" },
               { icon: GraduationCap, title: "Learn & Earn", desc: "Educational content" },
             ].map((item, index) => (

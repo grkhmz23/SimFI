@@ -335,7 +335,7 @@ export default function Trade() {
             </motion.p>
 
             <motion.p variants={itemVariants} className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-              Practice trading Solana memecoins with virtual SOL. Master your strategy, compete on leaderboards, and climb the ranks.
+              Practice trading Base and Solana memecoins risk-free with virtual ETH and SOL. Master your strategy, compete on leaderboards, and climb the ranks.
             </motion.p>
 
             {/* Animated Search Bar */}
@@ -463,7 +463,7 @@ export default function Trade() {
             {!showSearchResults && (
               <motion.div variants={itemVariants} className="mt-12 grid grid-cols-3 gap-6 max-w-lg mx-auto">
                 {[
-                  { value: "10 SOL", label: "Starting Balance" },
+                  { value: "5 ETH + 10 SOL", label: "Starting Balance" },
                   { value: "6h", label: "Trading Periods" },
                   { value: "Ranks", label: "Leaderboard" },
                 ].map((stat, i) => (
@@ -514,7 +514,7 @@ export default function Trade() {
           >
             {[
               { icon: <Coins className="h-6 w-6 text-primary" />, title: "Virtual Currency", description: `Start with ${activeChain === 'solana' ? '10 SOL' : '5 ETH'} of virtual currency. No real money at risk.` },
-              { icon: <TrendingUp className="h-6 w-6 text-primary" />, title: "Real-Time Prices", description: "Trade real tokens with live market data from pump.fun." },
+              { icon: <TrendingUp className="h-6 w-6 text-primary" />, title: "Real-Time Prices", description: `Trade real tokens with live market data from ${activeChain === 'solana' ? 'pump.fun' : 'Base DEXs'}.` },
               { icon: <Trophy className="h-6 w-6 text-primary" />, title: "Win Leaderboard Ranks", description: "Top traders every 6 hours get featured on the global leaderboard." },
               { icon: <Shield className="h-6 w-6 text-primary" />, title: "Zero Risk", description: "Learn from mistakes without financial consequences." },
               { icon: <BarChart3 className="h-6 w-6 text-primary" />, title: "Track Progress", description: "Monitor your portfolio and improve your strategy." },

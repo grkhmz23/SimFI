@@ -34,7 +34,7 @@ export default function About() {
               <span className="text-foreground">Educational Trading Platform</span>
             </h1>
             <p className="text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto">
-              Practice trading Solana memecoins in a risk-free environment. Master your strategy, 
+              Practice trading Base and Solana memecoins in a risk-free environment. Master your strategy, 
               learn market dynamics, and compete with others—all without risking real money.
             </p>
           </div>
@@ -57,7 +57,7 @@ export default function About() {
               </p>
               <p className="text-lg text-muted-foreground leading-relaxed">
                 Our platform is especially valuable for those who struggle with gambling tendencies in crypto markets. 
-                By simulating real trading with virtual SOL, you can satisfy the excitement of trading while developing 
+                By simulating real trading with virtual currency, you can satisfy the excitement of trading while developing 
                 healthy habits and strategic thinking.
               </p>
             </div>
@@ -80,7 +80,7 @@ export default function About() {
               <ul className="space-y-2 text-muted-foreground">
                 <li className="flex items-start gap-2">
                   <Shield className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                  <span><strong>Zero Financial Risk:</strong> Trade with virtual SOL, never real money</span>
+                  <span><strong>Zero Financial Risk:</strong> Trade with virtual currency, never real money</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Target className="h-5 w-5 text-primary shrink-0 mt-0.5" />
@@ -111,8 +111,8 @@ export default function About() {
                 <div>
                   <h3 className="text-xl font-semibold mb-2">Virtual Currency</h3>
                   <p className="text-muted-foreground">
-                    Start with 10 SOL of virtual currency. Use it to practice trading real Solana memecoins 
-                    with live market prices from pump.fun.
+                    Start with 5 ETH + 10 SOL of virtual currency. Use it to practice trading real memecoins 
+                    with live market prices from top DEXs.
                   </p>
                 </div>
               </div>

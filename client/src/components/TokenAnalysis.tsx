@@ -162,7 +162,7 @@ export default function TokenAnalysis() {
                         className="text-primary hover:underline flex items-center gap-1"
                       >
                         <ExternalLink className="w-3 h-3" />
-                        View on Solscan
+                        View on Explorer
                       </a>
                     </CardDescription>
                   </div>

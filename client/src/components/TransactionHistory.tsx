@@ -185,6 +185,7 @@ export default function TransactionHistory() {
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-primary hover:underline flex items-center gap-1"
+                              title="View on Explorer"
                             >
                               <ExternalLink className="w-3 h-3" />
                             </a>
