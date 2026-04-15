@@ -111,9 +111,9 @@ export function Navigation() {
   }, [location]);
 
   const { data: searchResults, isLoading: isSearching } = useQuery<{ results: SearchResult[] }>({
-    queryKey: ['/api/market/search', debouncedQuery],
+    queryKey: ['/api/market/search', debouncedQuery, activeChain],
     queryFn: async () => {
-      const response = await fetch(`/api/market/search?q=${encodeURIComponent(debouncedQuery)}`);
+      const response = await fetch(`/api/market/search?q=${encodeURIComponent(debouncedQuery)}&chain=${activeChain}`);
       if (!response.ok) {
         toast({
           title: 'Search Failed',

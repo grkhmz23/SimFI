@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useLocation, Link } from 'wouter';
+import { useParams, useLocation, Link, useSearch } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -13,14 +13,39 @@ import { formatNative, formatTokenAmount, toBigInt, formatUSD, formatPricePerTok
 import { useChain } from '@/lib/chain-context';
 import type { Token, Position } from '@shared/schema';
 
+const SUPPORTED_CHAINS = ['solana', 'base'] as const;
+type SupportedChain = (typeof SUPPORTED_CHAINS)[number];
+
+function isSupportedChain(chain: string): chain is SupportedChain {
+  return SUPPORTED_CHAINS.includes(chain as SupportedChain);
+}
+
+function getExplorerUrl(chain: string, tokenAddress: string): string {
+  if (chain === 'base') return `https://basescan.org/token/${tokenAddress}`;
+  if (chain === 'solana') return `https://solscan.io/token/${tokenAddress}`;
+  return `https://dexscreener.com/${chain}/${tokenAddress}`;
+}
+
+function getExplorerName(chain: string): string {
+  if (chain === 'base') return 'BaseScan';
+  if (chain === 'solana') return 'Solscan';
+  return 'Explorer';
+}
+
 export default function TokenPage() {
   const params = useParams();
   const tokenAddress = params.address;
   const [location, setLocation] = useLocation();
-  const { isAuthenticated } = useAuth();
+  const searchStr = useSearch();
   const { toast } = useToast();
+  const { isAuthenticated } = useAuth();
   const { activeChain } = useChain();
-  
+
+  // Read chain from URL query param, fallback to active chain
+  const urlParams = new URLSearchParams(searchStr);
+  const pageChain = urlParams.get('chain') || activeChain;
+  const chainSupported = isSupportedChain(pageChain);
+
   // Get token from location state (passed from navigation)
   const locationState = (typeof window !== 'undefined' && (window.history.state as any)?.state) || {};
   const [token, setToken] = useState<Token | null>(locationState.token || null);
@@ -29,19 +54,32 @@ export default function TokenPage() {
   const [priceChange, setPriceChange] = useState<number>(0);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [previousPrice, setPreviousPrice] = useState<number | null>(null);
+  const [notifiedUnsupported, setNotifiedUnsupported] = useState(false);
+
+  // Notify once if viewing an unsupported chain
+  useEffect(() => {
+    if (!chainSupported && !notifiedUnsupported) {
+      setNotifiedUnsupported(true);
+      toast({
+        title: 'Chain not supported',
+        description: `Trading on ${pageChain} is not supported yet. You can view the chart, but buying and selling are disabled.`,
+        variant: 'default',
+      });
+    }
+  }, [chainSupported, pageChain, notifiedUnsupported, toast]);
 
   // Fetch token from API with auto-refresh every 5 seconds (real-time updates)
   const { data: tokenData, isLoading: tokenLoading, error: tokenError, dataUpdatedAt } = useQuery<{ token: Token }>({
-    queryKey: [`/api/tokens/${tokenAddress}`, activeChain],
+    queryKey: [`/api/tokens/${tokenAddress}`, pageChain],
     queryFn: async () => {
-      const res = await fetch(`/api/market/token/${tokenAddress}?chain=${activeChain}`, {
+      const res = await fetch(`/api/market/token/${tokenAddress}?chain=${pageChain}`, {
         credentials: 'include',
       });
       if (!res.ok) throw new Error('Failed to fetch token');
       return res.json();
     },
     enabled: !!tokenAddress,
-    refetchInterval: 5000,
+    refetchInterval: chainSupported ? 5000 : 15000,
     refetchIntervalInBackground: true,
     retry: 3,
     retryDelay: 1000,
@@ -52,7 +90,8 @@ export default function TokenPage() {
     setPriceChange(0);
     setPreviousPrice(null);
     setLastUpdate(null);
-  }, [tokenAddress]);
+    setNotifiedUnsupported(false);
+  }, [tokenAddress, pageChain]);
 
   // Update token state and calculate price change when API data is available
   useEffect(() => {
@@ -65,12 +104,12 @@ export default function TokenPage() {
           const change = ((newToken.price - previousPrice) / previousPrice) * 100;
           setPriceChange(change);
         }
-        
+
         // Update previous price for next comparison
         if (newToken.price) {
           setPreviousPrice(newToken.price);
         }
-        
+
         setToken(newToken);
         setLastUpdate(new Date(dataUpdatedAt));
       } else {
@@ -79,7 +118,7 @@ export default function TokenPage() {
     }
   }, [tokenData, dataUpdatedAt]);
 
-  // Fetch user's positions to check if they own this token
+  // Fetch user's positions to check if they own this token (only for supported chains)
   const { data: positionsData } = useQuery<{ positions: Position[] }>({
     queryKey: ['/api/trades/positions', activeChain],
     queryFn: async () => {
@@ -89,7 +128,7 @@ export default function TokenPage() {
       if (!res.ok) throw new Error('Failed to fetch positions');
       return res.json();
     },
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && chainSupported,
   });
 
   const userPosition = positionsData?.positions?.find(
@@ -173,9 +212,9 @@ export default function TokenPage() {
     );
   }
 
-  // Validate token price - prevent crashes from invalid/missing price data  
+  // Validate token price - prevent crashes from invalid/missing price data
   const hasValidPrice = token?.price && !isNaN(token.price) && isFinite(token.price) && token.price > 0;
-  
+
   if (!hasValidPrice) {
     return (
       <div className="min-h-screen bg-background">
@@ -233,6 +272,9 @@ export default function TokenPage() {
     }
   };
 
+  const explorerUrl = getExplorerUrl(pageChain, tokenAddress!);
+  const explorerName = getExplorerName(pageChain);
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-6 max-w-7xl">
@@ -249,8 +291,8 @@ export default function TokenPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2 flex-wrap">
                 {token.icon && (
-                  <img 
-                    src={token.icon} 
+                  <img
+                    src={token.icon}
                     alt={token.symbol}
                     className="w-12 h-12 rounded-full shrink-0"
                     onError={(e) => {
@@ -268,12 +310,20 @@ export default function TokenPage() {
                   </Badge>
                 </div>
                 {/* Live Indicator */}
-                <Badge 
-                  variant="outline" 
+                <Badge
+                  variant="outline"
                   className="shrink-0 border-destructive/50 bg-destructive/10 text-destructive animate-pulse"
                   data-testid="badge-live"
                 >
                   🔴 LIVE
+                </Badge>
+                {/* Chain Badge */}
+                <Badge
+                  variant={chainSupported ? 'secondary' : 'destructive'}
+                  className="shrink-0 w-fit capitalize"
+                  data-testid="badge-chain"
+                >
+                  {pageChain}
                 </Badge>
               </div>
 
@@ -287,11 +337,11 @@ export default function TokenPage() {
                   <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
                 <a
-                  href={activeChain === 'base' ? `https://basescan.org/token/${tokenAddress}` : `https://solscan.io/token/${tokenAddress}`}
+                  href={explorerUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-muted-foreground hover:text-primary transition-colors"
-                  title={activeChain === 'base' ? 'View on BaseScan' : 'View on Solscan'}
+                  title={`View on ${explorerName}`}
                 >
                   <ExternalLink className="h-4 w-4" />
                 </a>
@@ -327,14 +377,14 @@ export default function TokenPage() {
                     {token.priceUsd !== undefined ? `$${token.priceUsd < 0.01 ? token.priceUsd.toFixed(6) : token.priceUsd.toFixed(4)}` : formatUSD(token.price)}
                   </span>
                   {(token.priceChange24h !== undefined && token.priceChange24h !== 0) ? (
-                    <span 
+                    <span
                       className={`text-sm font-semibold ${token.priceChange24h >= 0 ? 'text-green-500' : 'text-red-500'}`}
                       data-testid="text-price-change"
                     >
                       {token.priceChange24h >= 0 ? '▲' : '▼'} {Math.abs(token.priceChange24h).toFixed(2)}%
                     </span>
                   ) : priceChange !== 0 && (
-                    <span 
+                    <span
                       className={`text-sm font-semibold ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
                       data-testid="text-price-change"
                     >
@@ -366,26 +416,37 @@ export default function TokenPage() {
               </div>
 
               {/* Trade Buttons */}
-              <div className="flex flex-col gap-3">
-                <Button
-                  size="lg"
-                  onClick={() => openTradeModal('buy')}
-                  data-testid="button-buy"
-                  className="w-full"
-                >
-                  Buy {token.symbol}
-                </Button>
-                <Button
-                  size="lg"
-                  variant="destructive"
-                  onClick={() => openTradeModal('sell')}
-                  disabled={!userPosition}
-                  data-testid="button-sell"
-                  className="w-full"
-                >
-                  Sell {token.symbol}
-                </Button>
-              </div>
+              {chainSupported ? (
+                <div className="flex flex-col gap-3">
+                  <Button
+                    size="lg"
+                    onClick={() => openTradeModal('buy')}
+                    data-testid="button-buy"
+                    className="w-full"
+                  >
+                    Buy {token.symbol}
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="destructive"
+                    onClick={() => openTradeModal('sell')}
+                    disabled={!userPosition}
+                    data-testid="button-sell"
+                    className="w-full"
+                  >
+                    Sell {token.symbol}
+                  </Button>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-center">
+                  <p className="text-sm font-medium text-destructive">
+                    Trading not available on {pageChain}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    You can view the chart, but buying and selling are not supported yet.
+                  </p>
+                </div>
+              )}
             </Card>
 
             {/* Position Info (if user owns this token) */}
@@ -435,7 +496,7 @@ export default function TokenPage() {
       </div>
 
       {/* Trade Modal */}
-      {showModal && (
+      {showModal && chainSupported && (
         <TradeModal
           token={tradeMode === 'buy' ? token : undefined}
           position={tradeMode === 'sell' && userPosition ? userPosition : undefined}

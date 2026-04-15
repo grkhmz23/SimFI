@@ -41,11 +41,9 @@ export function registerMarketRoutes(
         return res.status(400).json({ error: 'Invalid token address' });
       }
 
-      if (!isValidChain(chainParam)) {
-        return res.status(400).json({ error: 'Invalid chain. Must be "solana" or "base"' });
-      }
-
-      const token = await marketDataService.getToken(address, chainParam);
+      const token = isValidChain(chainParam)
+        ? await marketDataService.getToken(address, chainParam)
+        : await marketDataService.getTokenByChainId(address, chainParam);
 
       if (!token) {
         return res.status(404).json({ error: 'Token not found' });
@@ -222,10 +220,6 @@ export function registerMarketRoutes(
     try {
       const query = req.query.q as string;
       const chainParam = (req.query.chain as string) || 'solana';
-
-      if (!isValidChain(chainParam)) {
-        return res.status(400).json({ error: 'Invalid chain. Must be "solana" or "base"' });
-      }
 
       if (!query || query.length < 2) {
         return res.json({ results: [] });
