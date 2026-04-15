@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useLocation, useSearch } from 'wouter';
@@ -6,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { useAuth } from '@/lib/auth-context';
+import { useChain } from '@/lib/chain-context';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@tanstack/react-query';
@@ -42,6 +44,7 @@ export default function Register() {
   const referralCode = params.get('ref') || undefined;
   const { setAuth } = useAuth();
   const { toast } = useToast();
+  const { activeChain } = useChain();
 
   const form = useForm<FormData>({
     resolver: zodResolver(registerSchema),
@@ -51,9 +54,14 @@ export default function Register() {
       password: '',
       solanaWalletAddress: '',
       baseWalletAddress: '',
-      preferredChain: 'base',
+      preferredChain: activeChain,
     },
   });
+
+  // Sync global chain selector with form field
+  useEffect(() => {
+    form.setValue('preferredChain', activeChain);
+  }, [activeChain, form]);
 
   const registerMutation = useMutation<{ user: Omit<import('@shared/schema').User, 'password'> }, Error, RegisterRequest & { referralCode?: string }>({
     mutationFn: (data) => apiRequest('POST', '/api/auth/register', data),
@@ -66,6 +74,7 @@ export default function Register() {
       setLocation('/');
     },
     onError: (error: any) => {
+      console.error('Registration failed:', error);
       toast({
         title: 'Registration Failed',
         description: error.message || 'Could not create account',
@@ -77,14 +86,15 @@ export default function Register() {
   const onSubmit = form.handleSubmit((data) => {
     // Convert to API format
     const apiData: RegisterRequest & { referralCode?: string } = {
-      username: data.username,
-      email: data.email,
+      username: data.username.trim(),
+      email: data.email.trim(),
       password: data.password,
-      solanaWalletAddress: data.solanaWalletAddress || undefined,
-      baseWalletAddress: data.baseWalletAddress || undefined,
+      solanaWalletAddress: data.solanaWalletAddress?.trim() || undefined,
+      baseWalletAddress: data.baseWalletAddress?.trim() || undefined,
       preferredChain: data.preferredChain,
       referralCode,
     };
+    console.log('Register payload:', apiData);
     registerMutation.mutate(apiData);
   });
 
