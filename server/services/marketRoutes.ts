@@ -49,9 +49,10 @@ export function registerMarketRoutes(
         return res.status(404).json({ error: 'Token not found' });
       }
 
-      // Serialize BigInt values for JSON
+      // Serialize BigInt values for JSON and map to frontend Token shape
       const serializedToken = {
         ...token,
+        price: Number(token.priceNative),
         priceNative: token.priceNative.toString(),
       };
 
