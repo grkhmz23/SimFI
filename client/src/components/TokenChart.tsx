@@ -187,7 +187,7 @@ const TokenChart = ({
       const candleData: CandlestickData[] = [];
       const volumeData: HistogramData[] = [];
 
-      console.log(`📊 Processing ${candles.length} candles for chart...`);
+      console.log(`Processing ${candles.length} candles for chart...`);
       
       candles.forEach((candle: any, index: number) => {
         try {
@@ -232,7 +232,7 @@ const TokenChart = ({
         }
       });
       
-      console.log(`✅ Successfully formatted ${candleData.length} candles for TradingView`);
+      console.log(`Successfully formatted ${candleData.length} candles for TradingView`);
 
       // Update chart data
       if (candleSeriesRef.current && volumeSeriesRef.current) {

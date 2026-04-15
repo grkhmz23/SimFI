@@ -138,7 +138,7 @@ export const Footer: FC<FooterProps> = ({
                   className="animate-in fade-in absolute inset-0 flex items-center justify-center rounded-lg bg-background/80 text-center backdrop-blur-sm"
                 >
                   {subscriptionStatus === 'success' ? (
-                    <span className="font-semibold text-green-500">Subscribed! 🎉</span>
+                    <span className="font-semibold text-green-500">Subscribed!</span>
                   ) : (
                     <span className="font-semibold text-destructive">Failed. Try again.</span>
                   )}

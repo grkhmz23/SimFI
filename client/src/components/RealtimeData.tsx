@@ -274,7 +274,7 @@ export default function RealtimeData() {
       {/* Future Integration Notice */}
       <Card className="border-dashed">
         <CardHeader>
-          <CardTitle className="text-base">🚀 Coming Soon: Real-time Price Integration</CardTitle>
+          <CardTitle className="text-base">Coming Soon: Real-time Price Integration</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
           <ul className="list-disc list-inside space-y-1">

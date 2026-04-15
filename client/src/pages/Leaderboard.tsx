@@ -69,13 +69,18 @@ export default function Leaderboard() {
     return `${address.slice(0, 4)}...${address.slice(-4)}`;
   };
 
-  const getRankIcon = (index: number) => {
-    switch (index) {
-      case 0: return '🥇';
-      case 1: return '🥈';
-      case 2: return '🥉';
-      default: return `#${index + 1}`;
-    }
+  const getRankBadge = (index: number) => {
+    const colors = [
+      'bg-yellow-500/10 text-yellow-500 border-yellow-500/30',
+      'bg-slate-400/10 text-slate-400 border-slate-400/30',
+      'bg-amber-700/10 text-amber-700 border-amber-700/30',
+    ];
+    const label = index < 3 ? `${index + 1}` : `#${index + 1}`;
+    return (
+      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full border text-sm font-bold ${index < 3 ? colors[index] : 'bg-muted text-muted-foreground border-border'}`}>
+        {label}
+      </span>
+    );
   };
 
   const renderPeriodGroups = (groups: any[]) => {
@@ -135,8 +140,8 @@ export default function Leaderboard() {
               }`}
               data-testid={`leaderboard-entry-${index}`}
             >
-              <div className="text-2xl font-bold w-12 text-center">
-                {isTopThree ? getRankIcon(index) : <span className="text-muted-foreground">#{index + 1}</span>}
+              <div className="flex items-center justify-center w-12">
+                {getRankBadge(index)}
               </div>
 
               <div className="flex-1">

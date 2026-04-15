@@ -3,8 +3,6 @@ import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AsciiOrb } from '@/components/ui/ascii-orb';
-import { ProceduralGroundBackground } from '@/components/ui/procedural-ground-background';
 import { 
   Search, 
   Loader2, 
@@ -35,117 +33,6 @@ interface SearchResult {
   marketCap?: number;
   price?: number;
 }
-
-// =============================================================================
-// LIGHTNING BACKGROUND (WebGL) - GREEN HUE (172 = primary color)
-// =============================================================================
-const Lightning = memo(({ hue = 172, intensity = 0.4 }: { hue?: number; intensity?: number }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const resizeCanvas = () => {
-      canvas.width = canvas.clientWidth;
-      canvas.height = canvas.clientHeight;
-    };
-    resizeCanvas();
-    window.addEventListener("resize", resizeCanvas);
-
-    const gl = canvas.getContext("webgl");
-    if (!gl) return;
-
-    const vertexShaderSource = `attribute vec2 aPosition; void main() { gl_Position = vec4(aPosition, 0.0, 1.0); }`;
-    const fragmentShaderSource = `
-      precision mediump float;
-      uniform vec2 iResolution;
-      uniform float iTime;
-      uniform float uHue;
-      uniform float uIntensity;
-      #define OCTAVE_COUNT 10
-      vec3 hsv2rgb(vec3 c) {
-        vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0,4.0,2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
-        return c.z * mix(vec3(1.0), rgb, c.y);
-      }
-      float hash11(float p) { p = fract(p * .1031); p *= p + 33.33; p *= p + p; return fract(p); }
-      float hash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
-      mat2 rotate2d(float t) { float c = cos(t), s = sin(t); return mat2(c, -s, s, c); }
-      float noise(vec2 p) {
-        vec2 ip = floor(p), fp = fract(p);
-        float a = hash12(ip), b = hash12(ip + vec2(1.0, 0.0)), c = hash12(ip + vec2(0.0, 1.0)), d = hash12(ip + vec2(1.0, 1.0));
-        vec2 t = smoothstep(0.0, 1.0, fp);
-        return mix(mix(a, b, t.x), mix(c, d, t.x), t.y);
-      }
-      float fbm(vec2 p) {
-        float value = 0.0, amplitude = 0.5;
-        for (int i = 0; i < OCTAVE_COUNT; ++i) { value += amplitude * noise(p); p *= rotate2d(0.45); p *= 2.0; amplitude *= 0.5; }
-        return value;
-      }
-      void main() {
-        vec2 uv = gl_FragCoord.xy / iResolution.xy;
-        uv = 2.0 * uv - 1.0;
-        uv.x *= iResolution.x / iResolution.y;
-        uv += 2.0 * fbm(uv * 2.0 + 0.8 * iTime * 1.2) - 1.0;
-        float dist = abs(uv.x);
-        vec3 baseColor = hsv2rgb(vec3(uHue / 360.0, 0.7, 0.8));
-        vec3 col = baseColor * pow(mix(0.0, 0.07, hash11(iTime * 1.2)) / dist, 1.0) * uIntensity;
-        gl_FragColor = vec4(col, 1.0);
-      }
-    `;
-
-    const compileShader = (source: string, type: number) => {
-      const shader = gl.createShader(type);
-      if (!shader) return null;
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      return gl.getShaderParameter(shader, gl.COMPILE_STATUS) ? shader : null;
-    };
-
-    const vs = compileShader(vertexShaderSource, gl.VERTEX_SHADER);
-    const fs = compileShader(fragmentShaderSource, gl.FRAGMENT_SHADER);
-    if (!vs || !fs) return;
-
-    const program = gl.createProgram();
-    if (!program) return;
-    gl.attachShader(program, vs);
-    gl.attachShader(program, fs);
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return;
-    gl.useProgram(program);
-
-    const vertices = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
-    const buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-    const pos = gl.getAttribLocation(program, "aPosition");
-    gl.enableVertexAttribArray(pos);
-    gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
-
-    const iRes = gl.getUniformLocation(program, "iResolution");
-    const iTime = gl.getUniformLocation(program, "iTime");
-    const uHue = gl.getUniformLocation(program, "uHue");
-    const uInt = gl.getUniformLocation(program, "uIntensity");
-
-    const start = performance.now();
-    let animId: number;
-    const render = () => {
-      resizeCanvas();
-      gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.uniform2f(iRes, canvas.width, canvas.height);
-      gl.uniform1f(iTime, (performance.now() - start) / 1000);
-      gl.uniform1f(uHue, hue);
-      gl.uniform1f(uInt, intensity);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-      animId = requestAnimationFrame(render);
-    };
-    animId = requestAnimationFrame(render);
-
-    return () => { window.removeEventListener("resize", resizeCanvas); cancelAnimationFrame(animId); };
-  }, [hue, intensity]);
-
-  return <canvas ref={canvasRef} className="w-full h-full absolute inset-0" />;
-});
 
 // =============================================================================
 // ANIMATED SEARCH BAR
@@ -276,37 +163,14 @@ export default function Trade() {
 
   return (
     <div className="min-h-screen">
-      {/* Topographic Ground Background - lowest z-index, covers entire page */}
-      <ProceduralGroundBackground />
+      {/* Subtle gradient background */}
+      <div className="fixed inset-0 -z-10 bg-gradient-to-br from-background via-background to-muted" />
 
       {/* ===== HERO SECTION ===== */}
       <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden">
-        {/* Lightning Background - GREEN HUE - with radial fade to remove box edges */}
-        <div 
-          className="absolute inset-0 z-0"
-          style={{
-            maskImage: 'radial-gradient(ellipse 80% 70% at 50% 50%, black 40%, transparent 100%)',
-            WebkitMaskImage: 'radial-gradient(ellipse 80% 70% at 50% 50%, black 40%, transparent 100%)'
-          }}
-        >
-          <Lightning hue={172} intensity={0.35} />
-        </div>
-
-        {/* Gradient orbs */}
-        <div className="absolute inset-0 z-[1] pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-primary/15 rounded-full blur-[100px] animate-pulse" />
-          <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-accent/15 rounded-full blur-[80px] animate-pulse" style={{ animationDelay: '1s' }} />
-        </div>
-
-        {/* ASCII Glitch Orb - GREEN (primary hsl 172) - with radial fade */}
-        <div 
-          className="absolute top-[55%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-[2] pointer-events-none hidden md:block"
-          style={{
-            maskImage: 'radial-gradient(circle, black 20%, transparent 70%)',
-            WebkitMaskImage: 'radial-gradient(circle, black 20%, transparent 70%)'
-          }}
-        >
-          <AsciiOrb hue={172} size={450} />
+        {/* Soft radial glow */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[120px]" />
         </div>
 
         {/* Content */}

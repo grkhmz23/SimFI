@@ -312,10 +312,14 @@ export default function TokenPage() {
                 {/* Live Indicator */}
                 <Badge
                   variant="outline"
-                  className="shrink-0 border-destructive/50 bg-destructive/10 text-destructive animate-pulse"
+                  className="shrink-0 border-destructive/50 bg-destructive/10 text-destructive animate-pulse flex items-center gap-1.5"
                   data-testid="badge-live"
                 >
-                  🔴 LIVE
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" />
+                  </span>
+                  LIVE
                 </Badge>
                 {/* Chain Badge */}
                 <Badge

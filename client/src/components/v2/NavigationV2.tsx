@@ -5,7 +5,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { formatNative } from "@/lib/token-format";
 import { useChain } from "@/lib/chain-context";
 import { Trophy, TrendingUp, Microscope, Info, User, LogOut, Wallet, History, BarChart3 } from "lucide-react";
-import logoUrl from "@assets/simfilogo_1761226731940.png";
+const logoUrl = '/simfi-logo.png';
 import { OmniSearch } from "@/components/v2/OmniSearch";
 
 const nav = [

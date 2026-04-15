@@ -109,11 +109,11 @@ export default function Portfolio() {
     return acc;
   }, new Map<string, Position[]>());
 
-  // ✅ NEW: Mutation for selling all positions using server-authoritative quotes
+  // Mutation for selling all positions using server-authoritative quotes
   const sellAllMutation = useMutation({
     mutationFn: async ({ tokenAddress, totalTokens }: { tokenAddress: string; totalTokens: bigint }) => {
       // Call sell-all directly - server handles price server-side
-      console.log('💰 Executing sell-all for token:', tokenAddress);
+      console.log('Executing sell-all for token:', tokenAddress);
       return await apiRequest('POST', '/api/trades/sell-all', { 
         tokenAddress,
         amountTokens: totalTokens.toString(),

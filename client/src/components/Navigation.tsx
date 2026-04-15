@@ -62,7 +62,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import logoUrl from '@assets/simfilogo_1761226731940.png';
+const logoUrl = '/simfi-logo.png';
 
 interface SearchResult {
   tokenAddress: string;

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Trophy, Clock, Gift, History, ExternalLink, Info } from 'lucide-react';
+import { Trophy, Clock, Gift, History, ExternalLink, Info, AlertTriangle } from 'lucide-react';
 import { formatSol } from '@/lib/lamports';
 import { useState, useEffect } from 'react';
 
@@ -99,13 +99,14 @@ export default function Rewards() {
     return `${address.slice(0, 4)}...${address.slice(-4)}`;
   };
 
-  const getRankEmoji = (rank: number) => {
-    switch (rank) {
-      case 1: return '🥇';
-      case 2: return '🥈';
-      case 3: return '🥉';
-      default: return `#${rank}`;
-    }
+  const getRankLabel = (rank: number) => {
+    const colors = [
+      'text-yellow-500',
+      'text-slate-400',
+      'text-amber-700',
+    ];
+    const color = rank <= 3 ? colors[rank - 1] : 'text-muted-foreground';
+    return <span className={`font-bold ${color}`}>#{rank}</span>;
   };
 
   let rewardChain = 'solana' as 'solana' | 'base';
@@ -208,7 +209,7 @@ export default function Rewards() {
                       key={`${winner.rank}-${winner.wallet}`}
                       className="flex items-center gap-4 p-3 rounded-lg bg-muted/50"
                     >
-                      <div className="text-2xl w-12 text-center">{getRankEmoji(winner.rank)}</div>
+                      <div className="text-2xl w-12 text-center">{getRankLabel(winner.rank)}</div>
                       <div className="flex-1">
                         <p className="font-semibold">{winner.username}</p>
                         <p className="text-xs text-muted-foreground font-mono">
@@ -287,7 +288,7 @@ export default function Rewards() {
                           key={`${epoch.epoch}-${winner.rank}`}
                           className="flex items-center gap-3 p-2 rounded bg-muted/30"
                         >
-                          <span className="text-xl">{getRankEmoji(winner.rank)}</span>
+                          <span className="text-xl">{getRankLabel(winner.rank)}</span>
                           <div className="flex-1">
                             <span className="font-medium">{winner.username}</span>
                             <span className="text-xs text-muted-foreground ml-2">
@@ -336,7 +337,7 @@ export default function Rewards() {
                       key={payout.rank}
                       className="flex items-center gap-4 p-3 rounded-lg border"
                     >
-                      <span className="text-2xl">{getRankEmoji(payout.rank)}</span>
+                      <span className="text-2xl">{getRankLabel(payout.rank)}</span>
                       <div className="flex-1">
                         <p className="font-semibold">{payout.description}</p>
                       </div>
@@ -382,7 +383,7 @@ export default function Rewards() {
 
               {/* Important Notes */}
               <div className="bg-muted/50 rounded-lg p-4">
-                <h4 className="font-semibold mb-2">⚠️ Important Notes</h4>
+                <h4 className="font-semibold mb-2 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Important Notes</h4>
                 <ul className="text-sm text-muted-foreground space-y-1">
                   <li>• Rewards are paid in real {rewardSymbol} to your connected wallet</li>
                   <li>• Profit is calculated from closed trades only</li>

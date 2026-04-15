@@ -60,7 +60,7 @@ export default function Register() {
     onSuccess: (data) => {
       setAuth(data.user);
       toast({
-        title: 'Account Created! 🎉',
+        title: 'Account Created!',
         description: `Welcome ${data.user.username}! Start trading on Base or Solana.`,
       });
       setLocation('/');

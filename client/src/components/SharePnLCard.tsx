@@ -94,7 +94,7 @@ export function SharePnLCard({ title, value, subtext, chain, trigger }: SharePnL
   };
 
   const tweet = () => {
-    const text = `I just ${title.toLowerCase()} ${value} ${subtext} on SimFi paper trading 🔥 Try it free:`;
+    const text = `I just ${title.toLowerCase()} ${value} ${subtext} on SimFi paper trading. Try it free:`;
     const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent("https://simfi.fun")}`;
     window.open(url, "_blank");
   };

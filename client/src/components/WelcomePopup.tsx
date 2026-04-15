@@ -109,7 +109,7 @@ export function WelcomePopup({
 
                   {/* Title */}
                   <h3 className="text-xl font-semibold text-center text-foreground">
-                    Welcome to SimFi! 🚀
+                    Welcome to SimFi!
                   </h3>
                 </div>
 

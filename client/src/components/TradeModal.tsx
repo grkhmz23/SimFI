@@ -168,7 +168,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
 
   const profitLossBigInt = !isBuying ? sellValueBigInt - proportionalCostBigInt : BigInt(0);
 
-  // ✅ Trade mutation - server enforces price (no client manipulation possible)
+  // Trade mutation - server enforces price (no client manipulation possible)
   const tradeMutation = useMutation({
     mutationFn: async (data: { 
       side: 'buy' | 'sell'; 
@@ -181,7 +181,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     }) => {
       // Execute trade directly - server fetches price server-side (anti-cheat)
       if (data.side === 'buy') {
-        console.log(`🛒 Executing BUY: ${data.amountSol} ${nativeSymbol} for ${data.tokenSymbol} on ${activeChain}`);
+        console.log(`Executing BUY: ${data.amountSol} ${nativeSymbol} for ${data.tokenSymbol} on ${activeChain}`);
         return apiRequest('POST', '/api/trades/buy', {
           tokenAddress: data.tokenAddress,
           tokenName: data.tokenName,
@@ -190,7 +190,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
           chain: activeChain,
         });
       } else {
-        console.log(`💰 Executing SELL: ${data.amountTokens} tokens of position ${data.positionId} on ${activeChain}`);
+        console.log(`Executing SELL: ${data.amountTokens} tokens of position ${data.positionId} on ${activeChain}`);
         return apiRequest('POST', '/api/trades/sell', {
           positionId: data.positionId,
           amountLamports: data.amountTokens,
@@ -243,7 +243,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     }
 
     // Execute buy trade (server handles price)
-    console.log('🛒 BUY TRANSACTION:', data.amount, nativeSymbol, 'for', activeToken.symbol || symbol);
+    console.log('BUY TRANSACTION:', data.amount, nativeSymbol, 'for', activeToken.symbol || symbol);
     tradeMutation.mutate({
       side: 'buy',
       tokenAddress: tokenAddress,
@@ -260,7 +260,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     const sellAmountLamports = (toBigInt(position.amount) * BigInt(data.percentage)) / BigInt(100);
 
     // Execute sell trade (server handles price)
-    console.log('💰 SELL TRANSACTION:', data.percentage + '%', 'of position', position.id);
+    console.log('SELL TRANSACTION:', data.percentage + '%', 'of position', position.id);
     tradeMutation.mutate({
       side: 'sell',
       tokenAddress: position.tokenAddress,

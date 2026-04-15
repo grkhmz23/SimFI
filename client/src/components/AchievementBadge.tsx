@@ -1,6 +1,7 @@
 import { BADGE_METADATA } from "@/lib/achievements";
 import type { BadgeId } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import { Target, Circle, TrendingUp, Trophy, Gem, Sparkles, Sun } from "lucide-react";
 
 interface AchievementBadgeProps {
   badgeId: BadgeId;
@@ -8,6 +9,16 @@ interface AchievementBadgeProps {
   size?: "sm" | "md" | "lg";
   showTooltip?: boolean;
 }
+
+const ICON_MAP = {
+  target: Target,
+  circle: Circle,
+  "trending-up": TrendingUp,
+  trophy: Trophy,
+  gem: Gem,
+  sparkles: Sparkles,
+  sun: Sun,
+};
 
 export function AchievementBadge({
   badgeId,
@@ -17,10 +28,18 @@ export function AchievementBadge({
   const meta = BADGE_METADATA[badgeId];
   if (!meta) return null;
 
+  const Icon = ICON_MAP[meta.icon];
+
   const sizeClasses = {
-    sm: "w-10 h-10 text-lg",
-    md: "w-14 h-14 text-2xl",
-    lg: "w-20 h-20 text-3xl",
+    sm: "w-10 h-10",
+    md: "w-14 h-14",
+    lg: "w-20 h-20",
+  };
+
+  const iconSizes = {
+    sm: 16,
+    md: 24,
+    lg: 32,
   };
 
   const ringClasses = {
@@ -43,7 +62,7 @@ export function AchievementBadge({
           boxShadow: unlocked ? `0 0 20px ${meta.color}30` : undefined,
         }}
       >
-        {meta.icon}
+        {Icon && <Icon size={iconSizes[size]} style={{ color: meta.color }} />}
       </div>
       <span
         className={cn(
