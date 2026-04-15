@@ -69,7 +69,7 @@ export default function TokenPage() {
   }, [chainSupported, pageChain, notifiedUnsupported, toast]);
 
   // Fetch token from API with auto-refresh every 5 seconds (real-time updates)
-  const { data: tokenData, isLoading: tokenLoading, error: tokenError, dataUpdatedAt } = useQuery<{ token: Token }>({
+  const { data: tokenData, isLoading: tokenLoading, error: tokenError, dataUpdatedAt } = useQuery<Token & { cached?: boolean; ageMs?: number }>({
     queryKey: [`/api/tokens/${tokenAddress}`, pageChain],
     queryFn: async () => {
       const res = await fetch(`/api/market/token/${tokenAddress}?chain=${pageChain}`, {
@@ -95,9 +95,9 @@ export default function TokenPage() {
 
   // Update token state and calculate price change when API data is available
   useEffect(() => {
-    if (tokenData?.token) {
+    if (tokenData) {
       // Validate token data before setting state
-      const newToken = tokenData.token;
+      const newToken = tokenData;
       if (newToken.tokenAddress && newToken.name && newToken.symbol) {
         // Calculate price change if we have a previous price
         if (previousPrice !== null && newToken.price && previousPrice !== newToken.price && previousPrice > 0) {
