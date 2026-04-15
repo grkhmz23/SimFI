@@ -17,7 +17,8 @@ import {
   Coins, 
   GraduationCap, 
   ChevronDown, 
-  Sparkles
+  Sparkles,
+  Flame
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
@@ -334,7 +335,7 @@ export default function Trade() {
             </motion.p>
 
             <motion.p variants={itemVariants} className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-              Practice trading Solana memecoins with virtual SOL. Master your strategy, compete on leaderboards, and win real rewards.
+              Practice trading Solana memecoins with virtual SOL. Master your strategy, compete on leaderboards, and climb the ranks.
             </motion.p>
 
             {/* Animated Search Bar */}
@@ -348,6 +349,22 @@ export default function Trade() {
                 placeholder="Search tokens by name or address..."
                 isLoading={isSearching}
               />
+              <div className="mt-4 flex items-center justify-center gap-3">
+                <button
+                  onClick={() => setLocation('/trending')}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-card/50 border border-border/50 hover:border-primary/50 hover:bg-card transition-all text-sm"
+                >
+                  <Flame className="h-4 w-4 text-primary" />
+                  Browse Trending
+                </button>
+                <button
+                  onClick={() => setLocation('/leaderboard')}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-card/50 border border-border/50 hover:border-primary/50 hover:bg-card transition-all text-sm"
+                >
+                  <Trophy className="h-4 w-4 text-primary" />
+                  Leaderboard
+                </button>
+              </div>
             </motion.div>
 
             {/* Search Results */}
@@ -409,6 +426,20 @@ export default function Trade() {
               </motion.div>
             )}
 
+            {/* Trending CTA */}
+            {!showSearchResults && (
+              <motion.div variants={itemVariants} className="flex justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation('/trending')}
+                  className="gap-2 rounded-full border-primary/30 hover:border-primary"
+                >
+                  <Flame className="h-4 w-4 text-orange-500" />
+                  Explore Trending Tokens
+                </Button>
+              </motion.div>
+            )}
+
             {/* CTAs */}
             {!isAuthenticated && !showSearchResults && (
               <motion.div variants={itemVariants} className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -434,7 +465,7 @@ export default function Trade() {
                 {[
                   { value: "10 SOL", label: "Starting Balance" },
                   { value: "6h", label: "Trading Periods" },
-                  { value: "Real SOL", label: "Prizes" },
+                  { value: "Ranks", label: "Leaderboard" },
                 ].map((stat, i) => (
                   <div key={i} className="text-center">
                     <div className="text-2xl md:text-3xl font-bold text-primary">{stat.value}</div>
@@ -484,7 +515,7 @@ export default function Trade() {
             {[
               { icon: <Coins className="h-6 w-6 text-primary" />, title: "Virtual Currency", description: `Start with ${activeChain === 'solana' ? '10 SOL' : '5 ETH'} of virtual currency. No real money at risk.` },
               { icon: <TrendingUp className="h-6 w-6 text-primary" />, title: "Real-Time Prices", description: "Trade real tokens with live market data from pump.fun." },
-              { icon: <Trophy className="h-6 w-6 text-primary" />, title: "Win Real SOL", description: "Top 3 traders every 6 hours win real SOL rewards." },
+              { icon: <Trophy className="h-6 w-6 text-primary" />, title: "Win Leaderboard Ranks", description: "Top traders every 6 hours get featured on the global leaderboard." },
               { icon: <Shield className="h-6 w-6 text-primary" />, title: "Zero Risk", description: "Learn from mistakes without financial consequences." },
               { icon: <BarChart3 className="h-6 w-6 text-primary" />, title: "Track Progress", description: "Monitor your portfolio and improve your strategy." },
               { icon: <GraduationCap className="h-6 w-6 text-primary" />, title: "Learn Trading", description: "Build confidence before trading with real money." },

@@ -1,10 +1,10 @@
-import { eq, desc, and, sql, gt } from 'drizzle-orm';
+import { eq, desc, asc, and, sql, gt } from 'drizzle-orm';
 import { db } from './db';
 import { 
-  users, positions, tradeHistory, leaderboardPeriods, telegramSessions, 
-  type User, type Position, type Trade, type TelegramSession, 
+  users, positions, tradeHistory, leaderboardPeriods, telegramSessions, userAchievements, referrals, follows,
+  type User, type Position, type Trade, type TelegramSession, type UserAchievement, type Referral, type Follow,
   type InsertUser, type InsertPosition, type InsertTrade, 
-  LAMPORTS_PER_SOL, WEI_PER_ETH, type Chain 
+  LAMPORTS_PER_SOL, WEI_PER_ETH, type Chain, type BadgeId
 } from '@shared/schema';
 
 export interface IStorage {
@@ -71,6 +71,36 @@ export interface IStorage {
   getAllActiveTelegramSessions(): Promise<TelegramSession[]>;
   deleteTelegramSession(telegramUserId: string): Promise<void>;
   deleteExpiredTelegramSessions(): Promise<void>;
+
+  // Achievement operations (Phase 2)
+  getUserAchievements(userId: string): Promise<UserAchievement[]>;
+  unlockAchievement(userId: string, badgeId: BadgeId): Promise<UserAchievement | undefined>;
+  hasAchievement(userId: string, badgeId: BadgeId): Promise<boolean>;
+
+  // Referral operations (Phase 4)
+  getReferralByReferee(refereeId: string): Promise<Referral | undefined>;
+  createReferral(referrerId: string, refereeId: string, code: string): Promise<Referral>;
+  convertReferral(refereeId: string): Promise<void>;
+  getReferralStats(userId: string): Promise<{ total: number; converted: number; pending: number }>;
+  getTopReferrers(limit: number): Promise<any[]>;
+
+  // Follow operations (Phase 5)
+  followUser(followerId: string, followingId: string): Promise<void>;
+  unfollowUser(followerId: string, followingId: string): Promise<void>;
+  isFollowing(followerId: string, followingId: string): Promise<boolean>;
+  getFollowerCount(userId: string): Promise<number>;
+  getFollowingCount(userId: string): Promise<number>;
+
+  // Public trader stats (Phase 5)
+  getPublicTraderStats(username: string): Promise<any | undefined>;
+  getBestWorstTrades(userId: string, chain?: Chain): Promise<{ best: Trade | undefined; worst: Trade | undefined }>;
+  getTradeWinLoss(userId: string, chain?: Chain): Promise<{ winCount: number; lossCount: number; totalCount: number }>;
+  getAverageHoldTime(userId: string): Promise<number>;
+
+  // Streak operations (Phase 8)
+  getUserStreak(userId: string): Promise<{ streakCount: number; lastStreakDate: Date | null }>;
+  updateUserStreak(userId: string, streakCount: number, lastStreakDate: Date | null): Promise<void>;
+  claimStreakBonus(userId: string, bonusWei: bigint): Promise<void>;
 }
 
 class DbStorage implements IStorage {
@@ -82,12 +112,12 @@ class DbStorage implements IStorage {
     // Use provided wallet addresses, fallback to legacy walletAddress for Solana
     const [user] = await db.insert(users).values({
       ...data,
-      walletAddress: data.solanaWalletAddress || data.walletAddress, // Legacy compatibility
+      walletAddress: data.solanaWalletAddress || (data as any).walletAddress, // Legacy compatibility
       balance: solanaBalance,
       baseBalance: baseBalance,
       totalProfit: 0n,
       baseTotalProfit: 0n,
-    }).returning();
+    } as any).returning();
     return user;
   }
 
@@ -627,6 +657,195 @@ class DbStorage implements IStorage {
         if (deleted.length === 0) throw new Error("Position already closed");
       }
     });
+  }
+
+  // ============================================================================
+  // Achievements (Phase 2)
+  // ============================================================================
+
+  async getUserAchievements(userId: string): Promise<UserAchievement[]> {
+    return db.select().from(userAchievements).where(eq(userAchievements.userId, userId));
+  }
+
+  async unlockAchievement(userId: string, badgeId: BadgeId): Promise<UserAchievement | undefined> {
+    try {
+      const [achievement] = await db.insert(userAchievements)
+        .values({ userId, badgeId })
+        .onConflictDoNothing()
+        .returning();
+      return achievement;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async hasAchievement(userId: string, badgeId: BadgeId): Promise<boolean> {
+    const [row] = await db.select({ count: sql<number>`count(*)` })
+      .from(userAchievements)
+      .where(and(eq(userAchievements.userId, userId), eq(userAchievements.badgeId, badgeId)));
+    return (row?.count || 0) > 0;
+  }
+
+  // ============================================================================
+  // Referrals (Phase 4)
+  // ============================================================================
+
+  async getReferralByReferee(refereeId: string): Promise<Referral | undefined> {
+    const [row] = await db.select().from(referrals).where(eq(referrals.refereeId, refereeId));
+    return row;
+  }
+
+  async createReferral(referrerId: string, refereeId: string, code: string): Promise<Referral> {
+    const [row] = await db.insert(referrals)
+      .values({ referrerId, refereeId, code })
+      .returning();
+    return row;
+  }
+
+  async convertReferral(refereeId: string): Promise<void> {
+    await db.update(referrals)
+      .set({ status: 'converted' })
+      .where(and(eq(referrals.refereeId, refereeId), eq(referrals.status, 'pending')));
+  }
+
+  async getReferralStats(userId: string): Promise<{ total: number; converted: number; pending: number }> {
+    const [totalRow] = await db.select({ count: sql<number>`count(*)` })
+      .from(referrals)
+      .where(eq(referrals.referrerId, userId));
+    const [convertedRow] = await db.select({ count: sql<number>`count(*)` })
+      .from(referrals)
+      .where(and(eq(referrals.referrerId, userId), eq(referrals.status, 'converted')));
+    const total = totalRow?.count || 0;
+    const converted = convertedRow?.count || 0;
+    return { total, converted, pending: total - converted };
+  }
+
+  async getTopReferrers(limit: number): Promise<any[]> {
+    return db.select({
+      id: users.id,
+      username: users.username,
+      totalReferrals: sql<number>`count(${referrals.id})`,
+      convertedReferrals: sql<number>`sum(CASE WHEN ${referrals.status} = 'converted' THEN 1 ELSE 0 END)`,
+    })
+    .from(users)
+    .leftJoin(referrals, eq(referrals.referrerId, users.id))
+    .groupBy(users.id)
+    .orderBy(desc(sql`count(${referrals.id})`))
+    .limit(limit);
+  }
+
+  // ============================================================================
+  // Follows (Phase 5)
+  // ============================================================================
+
+  async followUser(followerId: string, followingId: string): Promise<void> {
+    await db.insert(follows)
+      .values({ followerId, followingId })
+      .onConflictDoNothing();
+  }
+
+  async unfollowUser(followerId: string, followingId: string): Promise<void> {
+    await db.delete(follows)
+      .where(and(eq(follows.followerId, followerId), eq(follows.followingId, followingId)));
+  }
+
+  async isFollowing(followerId: string, followingId: string): Promise<boolean> {
+    const [row] = await db.select({ count: sql<number>`count(*)` })
+      .from(follows)
+      .where(and(eq(follows.followerId, followerId), eq(follows.followingId, followingId)));
+    return (row?.count || 0) > 0;
+  }
+
+  async getFollowerCount(userId: string): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)` })
+      .from(follows)
+      .where(eq(follows.followingId, userId));
+    return row?.count || 0;
+  }
+
+  async getFollowingCount(userId: string): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)` })
+      .from(follows)
+      .where(eq(follows.followerId, userId));
+    return row?.count || 0;
+  }
+
+  // ============================================================================
+  // Public Trader Stats (Phase 5)
+  // ============================================================================
+
+  async getPublicTraderStats(username: string): Promise<any | undefined> {
+    const [user] = await db.select({
+      id: users.id,
+      username: users.username,
+      createdAt: users.createdAt,
+      solanaWalletAddress: users.solanaWalletAddress,
+      baseWalletAddress: users.baseWalletAddress,
+      balance: users.balance,
+      baseBalance: users.baseBalance,
+      totalProfit: users.totalProfit,
+      baseTotalProfit: users.baseTotalProfit,
+    })
+    .from(users)
+    .where(eq(users.username, username));
+    return user;
+  }
+
+  async getBestWorstTrades(userId: string, chain?: Chain): Promise<{ best: Trade | undefined; worst: Trade | undefined }> {
+    let whereClause = eq(tradeHistory.userId, userId);
+    if (chain) {
+      whereClause = and(whereClause, eq(tradeHistory.chain, chain)) as any;
+    }
+    const [best] = await db.select().from(tradeHistory).where(whereClause).orderBy(desc(tradeHistory.profitLoss)).limit(1);
+    const [worst] = await db.select().from(tradeHistory).where(whereClause).orderBy(asc(tradeHistory.profitLoss)).limit(1);
+    return { best, worst };
+  }
+
+  async getTradeWinLoss(userId: string, chain?: Chain): Promise<{ winCount: number; lossCount: number; totalCount: number }> {
+    let whereClause = eq(tradeHistory.userId, userId);
+    if (chain) {
+      whereClause = and(whereClause, eq(tradeHistory.chain, chain)) as any;
+    }
+    const [totalRow] = await db.select({ count: sql<number>`count(*)` }).from(tradeHistory).where(whereClause);
+    const [winRow] = await db.select({ count: sql<number>`count(*)` }).from(tradeHistory).where(and(whereClause, gt(tradeHistory.profitLoss, 0n)));
+    const [lossRow] = await db.select({ count: sql<number>`count(*)` }).from(tradeHistory).where(and(whereClause, sql`${tradeHistory.profitLoss} < 0`));
+    return {
+      totalCount: totalRow?.count || 0,
+      winCount: winRow?.count || 0,
+      lossCount: lossRow?.count || 0,
+    };
+  }
+
+  async getAverageHoldTime(userId: string): Promise<number> {
+    const [row] = await db.select({
+      avgSeconds: sql<number>`COALESCE(AVG(EXTRACT(EPOCH FROM (${tradeHistory.closedAt} - ${tradeHistory.openedAt}))), 0)`
+    })
+    .from(tradeHistory)
+    .where(eq(tradeHistory.userId, userId));
+    return row?.avgSeconds || 0;
+  }
+
+  // ============================================================================
+  // Streaks (Phase 8)
+  // ============================================================================
+
+  async getUserStreak(userId: string): Promise<{ streakCount: number; lastStreakDate: Date | null }> {
+    const [user] = await db.select({ streakCount: users.streakCount, lastStreakDate: users.lastStreakDate })
+      .from(users)
+      .where(eq(users.id, userId));
+    return { streakCount: user?.streakCount || 0, lastStreakDate: user?.lastStreakDate || null };
+  }
+
+  async updateUserStreak(userId: string, streakCount: number, lastStreakDate: Date | null): Promise<void> {
+    await db.update(users)
+      .set({ streakCount, lastStreakDate: lastStreakDate ? new Date(lastStreakDate) : null })
+      .where(eq(users.id, userId));
+  }
+
+  async claimStreakBonus(userId: string, bonusWei: bigint): Promise<void> {
+    await db.update(users)
+      .set({ baseBalance: sql`${users.baseBalance} + ${bonusWei}` })
+      .where(eq(users.id, userId));
   }
 }
 

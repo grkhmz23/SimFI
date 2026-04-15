@@ -13,15 +13,17 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { TradeModal } from '@/components/TradeModal';
+import { PortfolioCharts } from '@/components/PortfolioChart';
 import { useAuth } from '@/lib/auth-context';
 import { useSolPrice } from '@/lib/price-context';
 import { Link } from 'wouter';
-import { formatNative, nativeToDisplay, toBigInt, formatTokenAmount, formatPricePerTokenUSD, formatUSD } from '@/lib/token-format';
+import { formatNative, toBigInt, formatTokenAmount, formatPricePerTokenUSD, formatUSD } from '@/lib/token-format';
 import { useChain } from '@/lib/chain-context';
-import { TrendingUp, TrendingDown, Package, LogIn, ExternalLink } from 'lucide-react';
+import { TrendingUp, TrendingDown, Package, LogIn, ExternalLink, Share2 } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import type { Position } from '@shared/schema';
+import type { Position, Trade } from '@shared/schema';
+import { SharePnLCard } from '@/components/SharePnLCard';
 
 export default function Portfolio() {
   const { isAuthenticated } = useAuth();
@@ -44,6 +46,24 @@ export default function Portfolio() {
     refetchInterval: 2500,
     refetchIntervalInBackground: true,
     staleTime: 2000,
+  });
+
+  const { data: analyticsData } = useQuery<{
+    balanceHistory: { date: string; balance: number }[];
+    winCount: number;
+    lossCount: number;
+    bestTrade: Trade | null;
+    worstTrade: Trade | null;
+    dailyPnl: { date: string; pnl: number }[];
+  }>({
+    queryKey: ['/api/portfolio/analytics', activeChain],
+    queryFn: async () => {
+      const res = await fetch(`/api/portfolio/analytics?chain=${activeChain}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch analytics');
+      return res.json();
+    },
+    enabled: isAuthenticated,
+    staleTime: 300000,
   });
 
   if (!isAuthenticated) {
@@ -218,6 +238,56 @@ export default function Portfolio() {
         </Card>
       </div>
 
+      {/* Best / Worst Trade Cards */}
+      {analyticsData && (analyticsData.bestTrade || analyticsData.worstTrade) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          {analyticsData.bestTrade && (
+            <Card className="p-5 border-l-4 border-l-green-500">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Best Trade</p>
+                  <p className="text-xl font-bold">${analyticsData.bestTrade.tokenSymbol}</p>
+                  <p className="text-lg font-mono text-success">
+                    +{Number(analyticsData.bestTrade.profitLoss) / (activeChain === 'base' ? 1e18 : 1e9)} {nativeSymbol}
+                  </p>
+                </div>
+                <SharePnLCard
+                  title="Best Trade"
+                  value={`+${((Number(analyticsData.bestTrade.profitLoss) / Number(analyticsData.bestTrade.solSpent)) * 100).toFixed(1)}%`}
+                  subtext={`on $${analyticsData.bestTrade.tokenSymbol}`}
+                  chain={activeChain}
+                  trigger={
+                    <Button variant="ghost" size="icon">
+                      <Share2 className="h-4 w-4" />
+                    </Button>
+                  }
+                />
+              </div>
+            </Card>
+          )}
+          {analyticsData.worstTrade && (
+            <Card className="p-5 border-l-4 border-l-red-500">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Worst Trade</p>
+                  <p className="text-xl font-bold">${analyticsData.worstTrade.tokenSymbol}</p>
+                  <p className="text-lg font-mono text-destructive">
+                    {Number(analyticsData.worstTrade.profitLoss) / (activeChain === 'base' ? 1e18 : 1e9)} {nativeSymbol}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Charts */}
+      {analyticsData && (
+        <div className="mb-8">
+          <PortfolioCharts analytics={analyticsData} chain={activeChain} />
+        </div>
+      )}
+
       <Card className="overflow-hidden">
         <div className="p-4 border-b border-border">
           <h2 className="text-xl font-semibold">Open Positions</h2>
@@ -319,10 +389,10 @@ export default function Portfolio() {
                           {formatTokenAmount(position.amount, 2, position.decimals || 6)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm" data-testid={`text-entry-price-${position.id}`}>
-                          {formatPricePerTokenUSD(position.entryPrice, 6, solPrice)}
+                          {formatPricePerTokenUSD(Number(position.entryPrice), 6)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm" data-testid={`text-current-price-${position.id}`}>
-                          {formatPricePerTokenUSD(positionWithPrice.currentPrice, 6, solPrice)}
+                          {formatPricePerTokenUSD(Number(positionWithPrice.currentPrice), 6)}
                         </TableCell>
                         <TableCell className="text-right font-mono" data-testid={`text-invested-${position.id}`}>
                           {formatUSD(position.solSpent, 2)}

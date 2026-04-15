@@ -123,8 +123,8 @@ export function WelcomePopup({
                   <div className="space-y-3 mb-6">
                     {[
                       { icon: Zap, text: "Real-time prices from Pump.fun", color: "text-yellow-500" },
-                      { icon: Trophy, text: "Compete on leaderboard for real SOL", color: "text-primary" },
-                      { icon: Sparkles, text: "Win rewards every 6 hours", color: "text-accent" },
+                      { icon: Trophy, text: "Compete on the global leaderboard", color: "text-primary" },
+                      { icon: Sparkles, text: "Track your portfolio in real-time", color: "text-accent" },
                     ].map((feature, index) => (
                       <motion.div
                         key={index}

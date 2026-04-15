@@ -28,12 +28,35 @@ import {
   Loader2, 
   Microscope, 
   BarChart3, 
-  Gift,
   Menu,
   X,
   Sparkles,
-  ChevronDown
+  Flame,
+  ChevronDown,
+  Users,
+  Gift,
 } from 'lucide-react';
+
+// Custom whale icon since lucide doesn't export Whale
+const WhaleIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M12 8c-3.3 0-6 2.7-6 6 0 1.5.5 2.8 1.4 3.8" />
+    <path d="M18 14c0-3.3-2.7-6-6-6" />
+    <path d="M12 20c4.4 0 8-3.6 8-8 0-2.1-.8-4-2.1-5.4" />
+    <path d="M18 6c-1.7-1.7-4-2.6-6.4-2.5C8.5 3.7 5.8 5.3 4.2 7.8c-2.3 3.6-1.8 8.3 1.2 11.3" />
+    <path d="M4 14c-1.1 0-2-.9-2-2s.9-2 2-2" />
+    <path d="M20 10c1.1 0 2 .9 2 2s-.9 2-2 2" />
+  </svg>
+);
 import { formatBalance, formatUSD as formatUsdValue } from '@/lib/token-format';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
@@ -113,9 +136,10 @@ export function Navigation() {
 
   const navItems = [
     { path: '/', label: 'Trade', icon: TrendingUp },
+    { path: '/trending', label: 'Trending', icon: Flame },
+    { path: '/whales', label: 'Whales', icon: WhaleIcon },
     { path: '/study', label: 'Study', icon: Microscope },
     { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
-    { path: '/rewards', label: 'Rewards', icon: Gift },
     { path: '/about', label: 'About', icon: Info },
   ];
 
@@ -324,6 +348,10 @@ export function Navigation() {
                     <DropdownMenuItem onClick={() => setLocation('/history')} data-testid="menu-history">
                       <History className="mr-2 h-4 w-4" />
                       History
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setLocation('/referrals')} data-testid="menu-referrals">
+                      <Gift className="mr-2 h-4 w-4" />
+                      Referrals
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive" data-testid="menu-logout">

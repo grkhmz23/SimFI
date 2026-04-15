@@ -1,6 +1,6 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Link, useLocation } from 'wouter';
+import { Link, useLocation, useSearch } from 'wouter';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +37,9 @@ type FormData = z.infer<typeof registerSchema>;
 
 export default function Register() {
   const [, setLocation] = useLocation();
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const referralCode = params.get('ref') || undefined;
   const { setAuth } = useAuth();
   const { toast } = useToast();
 
@@ -52,7 +55,7 @@ export default function Register() {
     },
   });
 
-  const registerMutation = useMutation<{ user: Omit<import('@shared/schema').User, 'password'> }, Error, RegisterRequest>({
+  const registerMutation = useMutation<{ user: Omit<import('@shared/schema').User, 'password'> }, Error, RegisterRequest & { referralCode?: string }>({
     mutationFn: (data) => apiRequest('POST', '/api/auth/register', data),
     onSuccess: (data) => {
       setAuth(data.user);
@@ -73,13 +76,14 @@ export default function Register() {
 
   const onSubmit = form.handleSubmit((data) => {
     // Convert to API format
-    const apiData: RegisterRequest = {
+    const apiData: RegisterRequest & { referralCode?: string } = {
       username: data.username,
       email: data.email,
       password: data.password,
       solanaWalletAddress: data.solanaWalletAddress || undefined,
       baseWalletAddress: data.baseWalletAddress || undefined,
       preferredChain: data.preferredChain,
+      referralCode,
     };
     registerMutation.mutate(apiData);
   });
@@ -149,6 +153,13 @@ export default function Register() {
               </div>
             ))}
           </div>
+
+          {referralCode && (
+            <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-3 text-center text-sm">
+              You were referred by <span className="font-semibold text-primary">@{referralCode}</span>
+              <p className="text-xs text-muted-foreground mt-1">You&apos;ll get +1 ETH bonus on signup</p>
+            </div>
+          )}
 
           {/* Preferred Chain Selector */}
           <div className="mb-6">

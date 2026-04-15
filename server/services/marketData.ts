@@ -16,6 +16,7 @@ interface TokenData {
   decimals: number;
   chain: Chain;
   icon?: string;
+  pairCreatedAt?: number;
   lastUpdated: number;
 }
 
@@ -256,6 +257,70 @@ class MarketDataService {
   }
 
   /**
+   * Get new pairs for a specific chain (filtered by age)
+   */
+  async getNewPairs(ageHours: number = 24, chain: Chain = 'solana'): Promise<TokenData[]> {
+    const cacheKey = `newpairs:${chain}:${ageHours}`;
+
+    const cached = this.getFromCache<TokenData[]>(cacheKey);
+    if (cached) {
+      this.stats.cacheHits++;
+      return cached;
+    }
+
+    this.stats.cacheMisses++;
+
+    const existing = this.inFlight.get(cacheKey);
+    if (existing) {
+      this.stats.coalescedRequests++;
+      return existing;
+    }
+
+    const promise = this.fetchNewPairsFromUpstream(ageHours, chain);
+    this.inFlight.set(cacheKey, promise);
+
+    try {
+      const data = await promise;
+      this.setCache(cacheKey, data, TTL.TOKEN_COLD);
+      return data;
+    } finally {
+      this.inFlight.delete(cacheKey);
+    }
+  }
+
+  /**
+   * Get hot tokens by volume/liquidity momentum
+   */
+  async getHotTokens(limit: number = 20, chain: Chain = 'solana'): Promise<TokenData[]> {
+    const cacheKey = `hot:${chain}:${limit}`;
+
+    const cached = this.getFromCache<TokenData[]>(cacheKey);
+    if (cached) {
+      this.stats.cacheHits++;
+      return cached;
+    }
+
+    this.stats.cacheMisses++;
+
+    const existing = this.inFlight.get(cacheKey);
+    if (existing) {
+      this.stats.coalescedRequests++;
+      return existing;
+    }
+
+    const promise = this.fetchHotFromUpstream(limit, chain);
+    this.inFlight.set(cacheKey, promise);
+
+    try {
+      const data = await promise;
+      this.setCache(cacheKey, data, TTL.TRENDING);
+      return data;
+    } finally {
+      this.inFlight.delete(cacheKey);
+    }
+  }
+
+  /**
    * Get cache statistics
    */
   getStats() {
@@ -419,6 +484,7 @@ class MarketDataService {
         decimals: tokenDecimals,
         chain,
         icon: bestPair.info?.imageUrl,
+        pairCreatedAt: bestPair.pairCreatedAt,
         lastUpdated: Date.now(),
       };
     } catch (error: any) {
@@ -475,6 +541,77 @@ class MarketDataService {
       console.warn(`❌ Failed to fetch trending for ${chain}:`, error.message);
       return [];
     }
+  }
+
+  private async fetchNewPairsFromUpstream(ageHours: number, chain: Chain): Promise<TokenData[]> {
+    if (this.isCircuitOpen('dexscreener')) {
+      return [];
+    }
+
+    this.stats.upstreamCalls++;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      // Use latest token profiles as a proxy for new token launches
+      const response = await fetch(
+        'https://api.dexscreener.com/token-profiles/latest/v1',
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        this.recordFailure('dexscreener');
+        return [];
+      }
+
+      const data = await response.json();
+      this.recordSuccess('dexscreener');
+
+      const config = CHAIN_CONFIG[chain];
+      const cutoff = Date.now() - (ageHours * 60 * 60 * 1000);
+
+      // Filter for specified chain
+      const chainTokens = (data || [])
+        .filter((t: any) => t.chainId === config.dexScreenerChainId)
+        .slice(0, 40);
+
+      // Fetch full details and filter by pair creation time
+      const results: TokenData[] = [];
+      for (const token of chainTokens) {
+        const fullData = await this.getToken(token.tokenAddress, chain);
+        if (fullData) {
+          // Include if pairCreatedAt is within age window OR if no creation time but very fresh profile
+          const createdAt = fullData.pairCreatedAt || 0;
+          if (createdAt >= cutoff || (createdAt === 0 && ageHours >= 24)) {
+            results.push(fullData);
+          }
+        }
+      }
+
+      return results
+        .sort((a, b) => (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0))
+        .slice(0, 30);
+    } catch (error: any) {
+      this.recordFailure('dexscreener');
+      console.warn(`❌ Failed to fetch new pairs for ${chain}:`, error.message);
+      return [];
+    }
+  }
+
+  private async fetchHotFromUpstream(limit: number, chain: Chain): Promise<TokenData[]> {
+    // Hot = highest volume-to-liquidity ratio from trending + top boosted
+    const trending = await this.getTrending(limit * 3, chain);
+
+    const scored = trending.map((t) => ({
+      ...t,
+      hotScore: t.liquidity > 1000 ? t.volume24h / t.liquidity : 0,
+    }));
+
+    return scored
+      .sort((a, b) => b.hotScore - a.hotScore)
+      .slice(0, limit);
   }
 
   private async fetchSearchFromUpstream(query: string, chain: Chain): Promise<SearchResult[]> {

@@ -38,6 +38,9 @@ export const users = pgTable("users", {
   baseTotalProfit: bigint("base_total_profit", { mode: "bigint" }).notNull().default(sql`0`), // Base profit
   // User preferences
   preferredChain: text("preferred_chain").notNull().default('base'),
+  // Streak tracking (Phase 8)
+  streakCount: integer("streak_count").notNull().default(0),
+  lastStreakDate: timestamp("last_streak_date"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -93,6 +96,61 @@ export const telegramSessions = pgTable("telegram_sessions", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
 });
+
+// =============================================================================
+// Achievement Badges (Phase 2)
+// =============================================================================
+
+export const BADGE_IDS = [
+  'first_trade',
+  'base_beginner',
+  'solana_veteran',
+  'green_day',
+  'top_10',
+  'diamond_hands',
+  'profit_1eth',
+  'profit_10sol',
+] as const;
+
+export type BadgeId = typeof BADGE_IDS[number];
+
+export const userAchievements = pgTable("user_achievements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  badgeId: text("badge_id").notNull(),
+  unlockedAt: timestamp("unlocked_at").defaultNow().notNull(),
+}, (t) => ({
+  userBadgeUnique: unique("user_achievements_user_badge_unique").on(t.userId, t.badgeId),
+}));
+
+// =============================================================================
+// Referrals (Phase 4)
+// =============================================================================
+
+export const referrals = pgTable("referrals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  referrerId: varchar("referrer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  refereeId: varchar("referee_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  status: text("status").notNull().default('pending'), // pending, converted
+  rewardClaimed: integer("reward_claimed").notNull().default(0), // 0 = false, 1 = true
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  refereeUnique: unique("referrals_referee_unique").on(t.refereeId),
+}));
+
+// =============================================================================
+// Social Follows (Phase 5)
+// =============================================================================
+
+export const follows = pgTable("follows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  followerId: varchar("follower_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  followingId: varchar("following_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  followUnique: unique("follows_follower_following_unique").on(t.followerId, t.followingId),
+}));
 
 // =============================================================================
 // Rewards Engine Tables
@@ -232,6 +290,9 @@ export type RewardsEpoch = typeof rewardsEpochs.$inferSelect;
 export type RewardsWinner = typeof rewardsWinners.$inferSelect;
 export type InsertPosition = z.infer<typeof insertPositionSchema>;
 export type InsertTrade = z.infer<typeof insertTradeSchema>;
+export type UserAchievement = typeof userAchievements.$inferSelect;
+export type Referral = typeof referrals.$inferSelect;
+export type Follow = typeof follows.$inferSelect;
 
 // =============================================================================
 // Interfaces

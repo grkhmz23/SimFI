@@ -12,8 +12,10 @@ import { usePrice } from '@/lib/price-context';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { formatBalance, formatUSD, formatSol, formatEth, shortenAddress } from '@/lib/token-format';
-import { Wallet, TrendingUp, Activity, LogIn, Sparkles, ArrowUpRight, ArrowDownRight, Zap, Circle } from 'lucide-react';
-import type { User } from '@shared/schema';
+import { Wallet, TrendingUp, Activity, LogIn, Sparkles, ArrowUpRight, ArrowDownRight, Zap, Circle, Flame } from 'lucide-react';
+import { AchievementBadge } from '@/components/AchievementBadge';
+import { ALL_BADGE_IDS } from '@/lib/achievements';
+import type { User, UserAchievement } from '@shared/schema';
 
 const updateProfileSchema = z.object({
   username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_-]+$/),
@@ -231,7 +233,19 @@ export default function Dashboard() {
     refetchInterval: 5000,
   });
 
+  const { data: achievementsData } = useQuery<{ achievements: UserAchievement[] }>({
+    queryKey: ['/api/achievements'],
+    enabled: !!user,
+  });
+
+  const { data: streakData } = useQuery<{ streakCount: number; lastStreakDate: string | null; canClaim: boolean; nextBonus: number }>({
+    queryKey: ['/api/streak'],
+    enabled: !!user,
+    refetchInterval: 30000,
+  });
+
   const currentUser = profile || user;
+  const unlockedBadges = new Set(achievementsData?.achievements.map(a => a.badgeId) || []);
   
   // Get balances for both chains
   const solanaBalance = getBalance('solana');
@@ -324,6 +338,44 @@ export default function Dashboard() {
             delay={200}
           />
         </div>
+
+        {/* Streak Card */}
+        {streakData && (
+          <div className="mb-8">
+            <Card className="p-6 glow-card">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-orange-500/10 text-3xl">
+                    <Flame className="h-8 w-8 text-orange-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Daily Streak</p>
+                    <p className="text-3xl font-bold">{streakData.streakCount} day{streakData.streakCount === 1 ? '' : 's'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Next bonus: +{streakData.nextBonus} ETH
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  disabled={!streakData.canClaim}
+                  onClick={async () => {
+                    const res = await fetch('/api/streak/claim', { method: 'POST', credentials: 'include' });
+                    const data = await res.json();
+                    if (res.ok) {
+                      toast({ title: 'Bonus Claimed!', description: `+${data.bonusEth} ETH added to your Base balance.` });
+                      queryClient.invalidateQueries({ queryKey: ['/api/streak'] });
+                      queryClient.invalidateQueries({ queryKey: ['/api/auth/profile'] });
+                    } else {
+                      toast({ title: 'Claim Failed', description: data.error, variant: 'destructive' });
+                    }
+                  }}
+                >
+                  {streakData.canClaim ? 'Claim Bonus' : 'Claimed Today'}
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
 
         {/* Account Status */}
         <div className="mb-8">
@@ -464,6 +516,28 @@ export default function Dashboard() {
                 </Button>
               </form>
             </Form>
+          </Card>
+        </div>
+
+        {/* Achievements */}
+        <div className="opacity-0 animate-slide-up mt-8" style={{ animationDelay: '500ms', animationFillMode: 'forwards' }}>
+          <Card className="glow-card p-8">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 rounded-lg bg-yellow-500/10">
+                <TrendingUp className="h-5 w-5 text-yellow-500" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground">Achievement Badges</h2>
+            </div>
+            <div className="flex flex-wrap gap-6">
+              {ALL_BADGE_IDS.map((badgeId) => (
+                <AchievementBadge
+                  key={badgeId}
+                  badgeId={badgeId}
+                  unlocked={unlockedBadges.has(badgeId)}
+                  size="md"
+                />
+              ))}
+            </div>
           </Card>
         </div>
       </div>

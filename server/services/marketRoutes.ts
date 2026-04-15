@@ -152,6 +152,69 @@ export function registerMarketRoutes(
   });
 
   /**
+   * GET /api/market/new-pairs?chain=solana|base&age=1|6|24
+   * Recently launched pairs
+   */
+  app.get('/api/market/new-pairs', async (req, res) => {
+    try {
+      const chainParam = (req.query.chain as string) || 'solana';
+      const ageHours = Math.min(168, Math.max(1, parseInt(req.query.age as string) || 24));
+
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: 'Invalid chain. Must be "solana" or "base"' });
+      }
+
+      const newPairs = await marketDataService.getNewPairs(ageHours, chainParam);
+
+      const serialized = newPairs.map(token => ({
+        ...token,
+        priceNative: token.priceNative.toString(),
+      }));
+
+      res.json({
+        newPairs: serialized,
+        ageHours,
+        count: newPairs.length,
+        cachedAt: Date.now(),
+      });
+    } catch (error: any) {
+      console.error('Market new-pairs error:', error);
+      res.status(500).json({ error: 'Failed to fetch new pairs' });
+    }
+  });
+
+  /**
+   * GET /api/market/hot?chain=solana|base&limit=20
+   * Hot tokens by volume/liquidity momentum
+   */
+  app.get('/api/market/hot', async (req, res) => {
+    try {
+      const chainParam = (req.query.chain as string) || 'solana';
+      const limit = Math.min(50, parseInt(req.query.limit as string) || 20);
+
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: 'Invalid chain. Must be "solana" or "base"' });
+      }
+
+      const hot = await marketDataService.getHotTokens(limit, chainParam);
+
+      const serialized = hot.map(token => ({
+        ...token,
+        priceNative: token.priceNative.toString(),
+      }));
+
+      res.json({
+        hot: serialized,
+        count: hot.length,
+        cachedAt: Date.now(),
+      });
+    } catch (error: any) {
+      console.error('Market hot error:', error);
+      res.status(500).json({ error: 'Failed to fetch hot tokens' });
+    }
+  });
+
+  /**
    * GET /api/market/search?q=bonk&chain=solana|base
    * Search tokens (cached 60s per query)
    */

@@ -248,13 +248,13 @@ export default function Positions() {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Entry Price (Jupiter Swap)</span>
                         <span className="font-mono" data-testid={`text-entry-price-${position.id}`}>
-                          {formatPricePerTokenUSD(position.entryPrice, 6, solPrice)}
+                          {formatPricePerTokenUSD(Number(position.entryPrice), 6)}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Current Price</span>
                         <span className="font-mono" data-testid={`text-current-price-${position.id}`}>
-                          {formatPricePerTokenUSD(position.currentPrice, 6, solPrice)}
+                          {formatPricePerTokenUSD(Number(position.currentPrice), 6)}
                         </span>
                       </div>
                     </div>

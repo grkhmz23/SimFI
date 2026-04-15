@@ -4,7 +4,7 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
-import { sql } from "drizzle-orm";
+import { sql, and, eq } from "drizzle-orm";
 import rateLimit from "express-rate-limit";
 import { db } from "./db";
 import { positions, tradeHistory } from "@shared/schema";
@@ -13,13 +13,16 @@ import { authenticateToken } from "./middleware/auth";
 import { fetchDexScreenerProfiles } from "./pumpportal";
 import { leaderboardService } from "./leaderboardService";
 import { heliusService } from "./helius-enhanced";
-import { insertUserSchema, solToLamports, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest, type Chain } from "@shared/schema";
+import { insertUserSchema, solToLamports, WEI_PER_ETH, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest, type Chain } from "@shared/schema";
 
 
 import { getSolPrice, getCachedSolPrice, fetchEthPrice } from './solPrice';
 import { registerMarketRoutes } from "./services/marketRoutes";
 import { registerRewardsRoutes } from "./services/rewardsRoutes";
 import { rewardsEngine } from "./services/rewardsEngine";
+import { achievementEngine } from "./services/achievementEngine";
+import { portfolioAnalytics } from "./services/portfolioAnalytics";
+import { whaleFeed } from "./services/whaleFeed";
 
 // ============================================================================
 // RATE LIMITING WITH REDIS STORE (for multi-instance deployments)
@@ -1018,11 +1021,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Hash password
       const hashedPassword = await bcrypt.hash(data.password, 10);
 
+      // Handle referral code if provided
+      const referralCode = req.body.referralCode as string | undefined;
+      let referrerId: string | undefined;
+      if (referralCode) {
+        const referrer = await storage.getUserByUsername(referralCode);
+        if (referrer && referrer.username !== data.username) {
+          referrerId = referrer.id;
+        }
+      }
+
       // Create user
       const user = await storage.createUser({
         ...data,
         password: hashedPassword,
       });
+
+      // Apply referral bonus if valid referrer
+      if (referrerId) {
+        try {
+          await storage.createReferral(referrerId, user.id, referralCode!);
+          // Referee gets +1 ETH Base balance
+          await storage.updateUserBalance(user.id, WEI_PER_ETH, 'base');
+        } catch (e) {
+          console.error('Referral creation error:', e);
+        }
+      }
 
       // Generate token
       const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
@@ -1354,6 +1378,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email,
         username,
         password: hashedPassword,
+        preferredChain: 'solana',
         solanaWalletAddress: walletAddress || 'So11111111111111111111111111111111111111112',
       });
 
@@ -1799,6 +1824,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         profitLoss,
         proportionalCost,
       });
+
+      // Check achievements and referrals asynchronously (don't block response)
+      const chainForAchievements = positionChain as Chain;
+      achievementEngine.runAllChecks(req.userId!, chainForAchievements).catch(console.error);
+      achievementEngine.checkGreenDay(req.userId!).catch(console.error);
+
+      // Convert referral if this is the user's first trade
+      storage.getReferralByReferee(req.userId!).then(async (referral) => {
+        if (referral && referral.status === 'pending' && !referral.rewardClaimed) {
+          const tradeCount = await storage.getUserTradesCount(req.userId!, 'base');
+          if (tradeCount >= 1) {
+            await storage.convertReferral(req.userId!);
+            // Referrer gets +0.5 ETH
+            await storage.updateUserBalance(referral.referrerId, WEI_PER_ETH / 2n, 'base');
+          }
+        }
+      }).catch(console.error);
 
       // ✅ IDEMPOTENCY: Cache successful response
       const successResponse = {
@@ -2694,12 +2736,225 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============================================================================
+  // Achievements (Phase 2)
+  // ============================================================================
+
+  app.get('/api/achievements', authenticateToken, async (req, res) => {
+    try {
+      const achievements = await storage.getUserAchievements(req.userId!);
+      res.json(serializeBigInts({ achievements }));
+    } catch (error: any) {
+      console.error('Get achievements error:', error);
+      res.status(500).json({ error: 'Could not fetch achievements' });
+    }
+  });
+
+  // ============================================================================
+  // Portfolio Analytics (Phase 3)
+  // ============================================================================
+
+  app.get('/api/portfolio/analytics', authenticateToken, async (req, res) => {
+    try {
+      const chainParam = (req.query.chain as string) || 'base';
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: 'Invalid chain' });
+      }
+      const analytics = await portfolioAnalytics.getAnalytics(req.userId!, chainParam as Chain);
+      res.json(serializeBigInts(analytics));
+    } catch (error: any) {
+      console.error('Portfolio analytics error:', error);
+      res.status(500).json({ error: 'Could not fetch analytics' });
+    }
+  });
+
+  // ============================================================================
+  // Referrals (Phase 4)
+  // ============================================================================
+
+  app.get('/api/referrals/me', authenticateToken, async (req, res) => {
+    try {
+      const user = await storage.getUserById(req.userId!);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      const stats = await storage.getReferralStats(req.userId!);
+      res.json(serializeBigInts({
+        username: user.username,
+        referralLink: `https://simfi.fun/register?ref=${user.username}`,
+        ...stats,
+      }));
+    } catch (error: any) {
+      console.error('Get referrals error:', error);
+      res.status(500).json({ error: 'Could not fetch referrals' });
+    }
+  });
+
+  app.get('/api/referrals/leaderboard', publicApiLimiter, async (req, res) => {
+    try {
+      const leaders = await storage.getTopReferrers(20);
+      res.json(serializeBigInts({ leaders: leaders.map((l, i) => ({ ...l, rank: i + 1 })) }));
+    } catch (error: any) {
+      console.error('Get referral leaderboard error:', error);
+      res.status(500).json({ error: 'Could not fetch referral leaderboard' });
+    }
+  });
+
+  // ============================================================================
+  // Public Trader Profiles (Phase 5)
+  // ============================================================================
+
+  app.get('/api/traders/:username', publicApiLimiter, async (req, res) => {
+    try {
+      const { username } = req.params;
+      const trader = await storage.getPublicTraderStats(username);
+      if (!trader) return res.status(404).json({ error: 'Trader not found' });
+
+      const [winLoss, avgHold, followerCount, achievements] = await Promise.all([
+        storage.getTradeWinLoss(trader.id),
+        storage.getAverageHoldTime(trader.id),
+        storage.getFollowerCount(trader.id),
+        storage.getUserAchievements(trader.id),
+      ]);
+
+      let isFollowing = false;
+      if (req.userId) {
+        isFollowing = await storage.isFollowing(req.userId, trader.id);
+      }
+
+      res.json(serializeBigInts({
+        trader: {
+          ...trader,
+          winRate: winLoss.totalCount > 0 ? Math.round((winLoss.winCount / winLoss.totalCount) * 100) : 0,
+          avgHoldTimeSeconds: avgHold,
+          followerCount,
+          isFollowing,
+          achievements: achievements.map(a => a.badgeId),
+        },
+      }));
+    } catch (error: any) {
+      console.error('Get trader profile error:', error);
+      res.status(500).json({ error: 'Could not fetch trader profile' });
+    }
+  });
+
+  app.get('/api/traders/:username/trades', publicApiLimiter, async (req, res) => {
+    try {
+      const { username } = req.params;
+      const trader = await storage.getPublicTraderStats(username);
+      if (!trader) return res.status(404).json({ error: 'Trader not found' });
+      const trades = await storage.getUserTrades(trader.id, undefined, 10, 0);
+      res.json(serializeBigInts({ trades }));
+    } catch (error: any) {
+      console.error('Get trader trades error:', error);
+      res.status(500).json({ error: 'Could not fetch trades' });
+    }
+  });
+
+  app.post('/api/traders/:username/follow', authenticateToken, async (req, res) => {
+    try {
+      const { username } = req.params;
+      const trader = await storage.getUserByUsername(username);
+      if (!trader) return res.status(404).json({ error: 'Trader not found' });
+      if (trader.id === req.userId) return res.status(400).json({ error: 'Cannot follow yourself' });
+
+      const following = await storage.isFollowing(req.userId!, trader.id);
+      if (following) {
+        await storage.unfollowUser(req.userId!, trader.id);
+        res.json({ following: false });
+      } else {
+        await storage.followUser(req.userId!, trader.id);
+        res.json({ following: true });
+      }
+    } catch (error: any) {
+      console.error('Follow error:', error);
+      res.status(500).json({ error: 'Could not follow trader' });
+    }
+  });
+
+  // ============================================================================
+  // Whale Watch (Phase 7)
+  // ============================================================================
+
+  app.get('/api/whales/activity', publicApiLimiter, async (req, res) => {
+    try {
+      const chainParam = (req.query.chain as string) || 'base';
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: 'Invalid chain' });
+      }
+      const activity = await whaleFeed.getActivity(chainParam as Chain);
+      res.json({ activity });
+    } catch (error: any) {
+      console.error('Whale activity error:', error);
+      res.status(500).json({ error: 'Could not fetch whale activity' });
+    }
+  });
+
+  // ============================================================================
+  // Daily Streaks (Phase 8)
+  // ============================================================================
+
+  app.get('/api/streak', authenticateToken, async (req, res) => {
+    try {
+      const streak = await storage.getUserStreak(req.userId!);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const lastDate = streak.lastStreakDate ? new Date(streak.lastStreakDate) : null;
+      const canClaim = !lastDate || lastDate < today;
+      const bonuses = [0.05, 0.05, 0.1, 0.1, 0.1, 0.1, 0.25]; // day 1-7
+      const nextBonus = bonuses[Math.min(streak.streakCount, 6)];
+      res.json(serializeBigInts({ ...streak, canClaim, nextBonus }));
+    } catch (error: any) {
+      console.error('Get streak error:', error);
+      res.status(500).json({ error: 'Could not fetch streak' });
+    }
+  });
+
+  app.post('/api/streak/claim', authenticateToken, async (req, res) => {
+    try {
+      const streak = await storage.getUserStreak(req.userId!);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const lastDate = streak.lastStreakDate ? new Date(streak.lastStreakDate) : null;
+      if (lastDate && lastDate.getTime() >= today.getTime()) {
+        return res.status(400).json({ error: 'Already claimed today' });
+      }
+
+      // Check if user traded today
+      const [tradeToday] = await db.select({ count: sql<number>`count(*)` })
+        .from(tradeHistory)
+        .where(and(
+          eq(tradeHistory.userId, req.userId!),
+          sql`DATE(${tradeHistory.closedAt}) = CURRENT_DATE`
+        ));
+      if (!tradeToday || tradeToday.count === 0) {
+        return res.status(400).json({ error: 'Trade at least once today to claim streak bonus' });
+      }
+
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const isConsecutive = lastDate && lastDate.getTime() === yesterday.getTime();
+      const newStreak = isConsecutive ? streak.streakCount + 1 : 1;
+
+      const bonuses = [0.05, 0.05, 0.1, 0.1, 0.1, 0.1, 0.25];
+      const bonusEth = bonuses[Math.min(newStreak - 1, 6)];
+      const bonusWei = BigInt(Math.floor(bonusEth * 1e18));
+
+      await storage.updateUserStreak(req.userId!, newStreak, today);
+      await storage.claimStreakBonus(req.userId!, bonusWei);
+
+      res.json(serializeBigInts({ streak: newStreak, bonusEth, claimed: true }));
+    } catch (error: any) {
+      console.error('Claim streak error:', error);
+      res.status(500).json({ error: 'Could not claim streak' });
+    }
+  });
+
   const httpServer = createServer(app);
 
   // Initialize leaderboard service for period management
   leaderboardService.start();
   registerMarketRoutes(app, { authenticateToken, searchLimiter });
-  registerRewardsRoutes(app);
-  rewardsEngine.start();
+  // Rewards system disabled for Base pivot (Phase 0)
+  // registerRewardsRoutes(app);
+  // rewardsEngine.start();
   return httpServer;
 }
