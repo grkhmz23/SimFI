@@ -441,6 +441,23 @@ class MarketDataService {
       }
     }
 
+    // For Base, try DefiLlama price and CoinGecko metadata
+    let defiLlamaPrice: number | null = null;
+    let ethPrice: number | null = null;
+    let coinGeckoMeta: { name?: string; symbol?: string; decimals?: number; image?: string } | null = null;
+
+    if (chain === 'base') {
+      try {
+        [defiLlamaPrice, ethPrice, coinGeckoMeta] = await Promise.all([
+          this.fetchDefiLlamaBasePrice(address),
+          this.fetchDefiLlamaEthPrice(),
+          this.fetchCoinGeckoBaseMetadata(address),
+        ]);
+      } catch (e: any) {
+        console.warn('⚠️  Base token fetch error:', e.message);
+      }
+    }
+
     // Always try DexScreener for liquidity/volume/marketCap data
     let dexData: TokenData | null = null;
     if (!this.isCircuitOpen('dexscreener')) {
@@ -498,19 +515,32 @@ class MarketDataService {
       }
     }
 
-    // If we have DexScreener data, use it as base and enrich with Jupiter
+    // If we have DexScreener data, enrich with chain-specific sources
     if (dexData) {
-      if (jupiterMeta) {
+      if (chain === 'solana' && jupiterMeta) {
         if (jupiterMeta.name) dexData.name = jupiterMeta.name;
         if (jupiterMeta.symbol) dexData.symbol = jupiterMeta.symbol;
         if (jupiterMeta.decimals != null) dexData.decimals = jupiterMeta.decimals;
         if (jupiterMeta.logoURI) dexData.icon = jupiterMeta.logoURI;
       }
-      // If Jupiter has a better USD price and DexScreener price is stale/missing
-      if (jupiterPrice != null && jupiterPrice > 0 && solPrice != null && solPrice > 0) {
+      if (chain === 'base' && coinGeckoMeta) {
+        if (coinGeckoMeta.name) dexData.name = coinGeckoMeta.name;
+        if (coinGeckoMeta.symbol) dexData.symbol = coinGeckoMeta.symbol;
+        if (coinGeckoMeta.decimals != null) dexData.decimals = coinGeckoMeta.decimals;
+        if (coinGeckoMeta.image) dexData.icon = coinGeckoMeta.image;
+      }
+
+      // If primary source has a better USD price and DexScreener price is stale/missing
+      if (chain === 'solana' && jupiterPrice != null && jupiterPrice > 0 && solPrice != null && solPrice > 0) {
         if (dexData.priceUsd <= 0 || dexData.priceNative <= 0n) {
           dexData.priceUsd = jupiterPrice;
           dexData.priceNative = this.usdToNative(jupiterPrice, solPrice, config.decimals);
+        }
+      }
+      if (chain === 'base' && defiLlamaPrice != null && defiLlamaPrice > 0 && ethPrice != null && ethPrice > 0) {
+        if (dexData.priceUsd <= 0 || dexData.priceNative <= 0n) {
+          dexData.priceUsd = defiLlamaPrice;
+          dexData.priceNative = this.usdToNative(defiLlamaPrice, ethPrice, config.decimals);
         }
       }
       return dexData;
@@ -535,7 +565,106 @@ class MarketDataService {
       };
     }
 
+    // No DexScreener data - try to build from DefiLlama + CoinGecko (Base only)
+    if (chain === 'base' && defiLlamaPrice != null && defiLlamaPrice > 0 && ethPrice != null && ethPrice > 0) {
+      return {
+        tokenAddress: address,
+        name: coinGeckoMeta?.name || 'Unknown',
+        symbol: coinGeckoMeta?.symbol || '???',
+        priceNative: this.usdToNative(defiLlamaPrice, ethPrice, config.decimals),
+        priceUsd: defiLlamaPrice,
+        marketCap: 0,
+        volume24h: 0,
+        liquidity: 0,
+        priceChange24h: 0,
+        decimals: coinGeckoMeta?.decimals ?? config.defaultTokenDecimals,
+        chain,
+        icon: coinGeckoMeta?.image,
+        lastUpdated: Date.now(),
+      };
+    }
+
     return null;
+  }
+
+  /**
+   * Fetch Base token USD price from DefiLlama (completely free, no API key)
+   */
+  private async fetchDefiLlamaBasePrice(address: string): Promise<number | null> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(
+        `https://coins.llama.fi/prices/current/base:${address.toLowerCase()}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      if (!response.ok) return null;
+      const data = await response.json();
+      const price = data.coins?.[`base:${address.toLowerCase()}`]?.price;
+      return price && isFinite(price) && price > 0 ? price : null;
+    } catch (e: any) {
+      console.warn('⚠️  DefiLlama Base price error:', e.message);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch ETH USD price from DefiLlama
+   */
+  private async fetchDefiLlamaEthPrice(): Promise<number | null> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(
+        `https://coins.llama.fi/prices/current/coingecko:ethereum`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      if (!response.ok) return null;
+      const data = await response.json();
+      const price = data.coins?.['coingecko:ethereum']?.price;
+      return price && isFinite(price) && price > 0 ? price : null;
+    } catch (e: any) {
+      console.warn('⚠️  DefiLlama ETH price error:', e.message);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch Base token metadata from CoinGecko free API
+   */
+  private async fetchCoinGeckoBaseMetadata(address: string): Promise<{ name?: string; symbol?: string; decimals?: number; image?: string } | null> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/coins/base/contract/${address.toLowerCase()}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        // 404 is expected for unlisted tokens — don't spam logs
+        if (response.status !== 404) {
+          console.warn('⚠️  CoinGecko Base metadata error:', response.status);
+        }
+        return null;
+      }
+
+      const data = await response.json();
+      return {
+        name: data.name,
+        symbol: data.symbol,
+        decimals: data.detail_platforms?.base?.decimal_place,
+        image: data.image?.small || data.image?.thumb,
+      };
+    } catch (e: any) {
+      console.warn('⚠️  CoinGecko Base metadata error:', e.message);
+      return null;
+    }
   }
 
   private async fetchTokenByChainIdFromUpstream(address: string, chainId: string): Promise<TokenData | null> {
