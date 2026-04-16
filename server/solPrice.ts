@@ -15,6 +15,8 @@ const PRICE_CACHE_TTL = 30_000;        // 30 seconds - fresh cache
 const PRICE_STALE_TTL = 5 * 60_000;    // 5 minutes - stale but usable
 const API_TIMEOUT = 5000;               // 5 second timeout per source
 
+import { jupiterService } from './services/jupiterService';
+
 // SOL Price sources in order of preference
 const SOL_PRICE_SOURCES = [
   {
@@ -28,7 +30,7 @@ const SOL_PRICE_SOURCES = [
     extract: (data: any) => parseFloat(data?.price),
   },
   {
-    name: 'jupiter',
+    name: 'jupiter-legacy',
     url: 'https://price.jup.ag/v6/price?ids=SOL',
     extract: (data: any) => data?.data?.SOL?.price,
   },
@@ -85,7 +87,15 @@ export async function getSolPrice(): Promise<number | null> {
     return cachedSolPrice.price;
   }
 
-  // Try each price source in order
+  // 1. Try Jupiter Price API v2 first (if configured)
+  const jupiterPrice = await jupiterService.getPrice('So11111111111111111111111111111111111111112');
+  if (jupiterPrice !== null) {
+    cachedSolPrice = { price: jupiterPrice, timestamp: now, source: 'jupiter-price-v2' };
+    console.log(`✅ SOL price from jupiter-price-v2: $${jupiterPrice.toFixed(2)}`);
+    return jupiterPrice;
+  }
+
+  // 2. Fallback to other sources
   for (const source of SOL_PRICE_SOURCES) {
     const price = await fetchFromSource(source);
 

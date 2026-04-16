@@ -23,6 +23,7 @@ import { rewardsEngine } from "./services/rewardsEngine";
 import { achievementEngine } from "./services/achievementEngine";
 import { portfolioAnalytics } from "./services/portfolioAnalytics";
 import { whaleFeed } from "./services/whaleFeed";
+import { jupiterService, SOL_MINT } from "./services/jupiterService";
 
 // ============================================================================
 // RATE LIMITING WITH REDIS STORE (for multi-instance deployments)
@@ -1666,24 +1667,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Server-side price is the ONLY price used for execution
-      const serverPriceNative = currentTokenData.priceNative;
+      let executionPriceNative: bigint = 0n;
+      let tokenAmount: bigint = 0n;
       const decimals = currentTokenData.decimals || (chain === 'base' ? 18 : 6);
 
-      // Apply simulated slippage (0.5% for paper trading realism)
-      const SLIPPAGE_BPS = 50n; // 0.5% = 50 basis points
-      const slippageMultiplier = 10000n + SLIPPAGE_BPS;
-      const executionPriceNative = (serverPriceNative * slippageMultiplier) / 10000n;
+      // For Solana, try Jupiter Swap V2 quote first (more accurate)
+      let usedJupiter = false;
+      if (chain === 'solana' && jupiterService.isConfigured()) {
+        try {
+          const jupQuote = await jupiterService.getOrderQuote(
+            SOL_MINT,
+            tokenAddress,
+            nativeSpent.toString()
+          );
+          if (jupQuote && jupQuote.outAmount) {
+            tokenAmount = BigInt(jupQuote.outAmount);
+            const decimalMultiplier = BigInt(10 ** decimals);
+            executionPriceNative = tokenAmount > 0n
+              ? (nativeSpent * decimalMultiplier) / tokenAmount
+              : 0n;
+            usedJupiter = true;
+            console.log(`💰 Jupiter execution on ${chain}: outAmount=${jupQuote.outAmount}, derivedPrice=${executionPriceNative!.toString()}`);
+          }
+        } catch (e: any) {
+          console.warn('⚠️  Jupiter buy quote failed, falling back to DexScreener:', e.message);
+        }
+      }
 
-      console.log(`💰 Server-side execution (ANTI-CHEAT) on ${chain}:`);
-      console.log(`   DexScreener price: ${serverPriceNative.toString()} native units/token`);
-      console.log(`   Execution price (+0.5% slippage): ${executionPriceNative.toString()} native units/token`);
+      if (!usedJupiter) {
+        // Server-side price is the ONLY price used for execution
+        const serverPriceNative = currentTokenData.priceNative;
 
-      // Calculate tokens received using SERVER price
-      const decimalMultiplier = BigInt(10 ** decimals);
-      const tokenAmount = (nativeSpent * decimalMultiplier) / executionPriceNative;
+        // Apply simulated slippage (0.5% for paper trading realism)
+        const SLIPPAGE_BPS = 50n; // 0.5% = 50 basis points
+        const slippageMultiplier = 10000n + SLIPPAGE_BPS;
+        executionPriceNative = (serverPriceNative * slippageMultiplier) / 10000n;
 
-      if (tokenAmount <= 0n) {
+        console.log(`💰 Server-side execution (ANTI-CHEAT) on ${chain}:`);
+        console.log(`   DexScreener price: ${serverPriceNative.toString()} native units/token`);
+        console.log(`   Execution price (+0.5% slippage): ${executionPriceNative.toString()} native units/token`);
+
+        // Calculate tokens received using SERVER price
+        const decimalMultiplier = BigInt(10 ** decimals);
+        tokenAmount = (nativeSpent * decimalMultiplier) / executionPriceNative;
+      }
+
+      if (tokenAmount! <= 0n) {
         return res.status(400).json({ error: `${chainConfig.nativeSymbol} amount too small to buy tokens` });
       }
 
@@ -1800,22 +1829,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
       }
 
-      // Server-side price with negative slippage for sells
-      const serverPriceNative = currentTokenData.priceNative;
-      const SLIPPAGE_BPS = 50n;
-      const slippageMultiplier = 10000n - SLIPPAGE_BPS;
-      const executionPriceNative = (serverPriceNative * slippageMultiplier) / 10000n;
-
       // Use position's decimals
       const decimals = position.decimals || (positionChain === 'base' ? 18 : 6);
       const decimalDivisor = BigInt(10 ** decimals);
 
-      // Calculate native received using SERVER price
-      const nativeReceived = (sellAmount * executionPriceNative) / decimalDivisor;
+      let executionPriceNative: bigint = 0n;
+      let nativeReceived: bigint = 0n;
+
+      // For Solana, try Jupiter Swap V2 quote first (more accurate)
+      let usedJupiter = false;
+      if (positionChain === 'solana' && jupiterService.isConfigured()) {
+        try {
+          const jupQuote = await jupiterService.getOrderQuote(
+            position.tokenAddress,
+            SOL_MINT,
+            sellAmount.toString()
+          );
+          if (jupQuote && jupQuote.outAmount) {
+            nativeReceived = BigInt(jupQuote.outAmount);
+            executionPriceNative = sellAmount > 0n
+              ? (nativeReceived * decimalDivisor) / sellAmount
+              : 0n;
+            usedJupiter = true;
+            console.log(`💰 Jupiter sell execution on ${positionChain}: outAmount=${jupQuote.outAmount}, derivedPrice=${executionPriceNative!.toString()}`);
+          }
+        } catch (e: any) {
+          console.warn('⚠️  Jupiter sell quote failed, falling back to DexScreener:', e.message);
+        }
+      }
+
+      if (!usedJupiter) {
+        // Server-side price with negative slippage for sells
+        const serverPriceNative = currentTokenData.priceNative;
+        const SLIPPAGE_BPS = 50n;
+        const slippageMultiplier = 10000n - SLIPPAGE_BPS;
+        executionPriceNative = (serverPriceNative * slippageMultiplier) / 10000n;
+
+        // Calculate native received using SERVER price
+        nativeReceived = (sellAmount * executionPriceNative) / decimalDivisor;
+      }
 
       // Calculate profit/loss
       const proportionalCost = (position.solSpent * sellAmount) / position.amount;
-      const profitLoss = nativeReceived - proportionalCost;
+      const profitLoss = nativeReceived! - proportionalCost;
 
       const chainConfig = CHAIN_CONFIG[positionChain as Chain];
       console.log(`📊 Sell (${isFullSell ? 'FULL' : 'PARTIAL'}): ${Number(sellAmount) / (10 ** decimals)} tokens → ${Number(nativeReceived) / (10 ** chainConfig.nativeDecimals)} ${chainConfig.nativeSymbol} on ${positionChain}`);

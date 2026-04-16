@@ -2,6 +2,7 @@
 // Market Data Service with caching and request coalescing - Multi-chain support
 
 import type { Chain } from '@shared/schema';
+import { jupiterService, SOL_MINT } from './jupiterService';
 
 interface TokenData {
   tokenAddress: string;
@@ -421,77 +422,120 @@ class MarketDataService {
   // =========================================================================
 
   private async fetchTokenFromUpstream(address: string, chain: Chain): Promise<TokenData | null> {
-    if (this.isCircuitOpen('dexscreener')) {
-      console.log(`⏸️ DexScreener circuit open, skipping`);
-      return null;
+    const config = CHAIN_CONFIG[chain];
+
+    // For Solana, try Jupiter metadata + price in parallel with DexScreener
+    let jupiterMeta: Awaited<ReturnType<typeof jupiterService.getToken>> = null;
+    let jupiterPrice: number | null = null;
+    let solPrice: number | null = null;
+
+    if (chain === 'solana' && jupiterService.isConfigured()) {
+      try {
+        [jupiterMeta, jupiterPrice, solPrice] = await Promise.all([
+          jupiterService.getToken(address),
+          jupiterService.getPrice(address),
+          jupiterService.getPrice(SOL_MINT),
+        ]);
+      } catch (e: any) {
+        console.warn('⚠️  Jupiter token fetch error:', e.message);
+      }
     }
 
-    this.stats.upstreamCalls++;
+    // Always try DexScreener for liquidity/volume/marketCap data
+    let dexData: TokenData | null = null;
+    if (!this.isCircuitOpen('dexscreener')) {
+      this.stats.upstreamCalls++;
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const response = await fetch(
+          `https://api.dexscreener.com/latest/dex/tokens/${address}`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeout);
 
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
+        if (response.ok) {
+          const data = await response.json();
+          this.recordSuccess('dexscreener');
 
-      const response = await fetch(
-        `https://api.dexscreener.com/latest/dex/tokens/${address}`,
-        { signal: controller.signal }
-      );
-      clearTimeout(timeout);
+          const chainId = config.dexScreenerChainId;
+          const pairs = data.pairs || [];
+          const chainPairs = pairs.filter((p: any) => p.chainId === chainId);
 
-      if (!response.ok) {
+          if (chainPairs.length > 0) {
+            const bestPair = chainPairs.reduce((best: any, current: any) => {
+              const bestLiq = best?.liquidity?.usd || 0;
+              const currentLiq = current?.liquidity?.usd || 0;
+              return currentLiq > bestLiq ? current : best;
+            }, chainPairs[0]);
+
+            if (bestPair) {
+              const tokenDecimals = bestPair.baseToken?.decimals || config.defaultTokenDecimals;
+              dexData = {
+                tokenAddress: address,
+                name: bestPair.baseToken?.name || 'Unknown',
+                symbol: bestPair.baseToken?.symbol || '???',
+                priceNative: this.parseDecimalToNative(bestPair.priceNative || '0', chain),
+                priceUsd: parseFloat(bestPair.priceUsd || '0'),
+                marketCap: bestPair.marketCap || bestPair.fdv || 0,
+                volume24h: bestPair.volume?.h24 || 0,
+                liquidity: bestPair.liquidity?.usd || 0,
+                priceChange24h: bestPair.priceChange?.h24 || 0,
+                decimals: tokenDecimals,
+                chain,
+                icon: bestPair.info?.imageUrl,
+                pairCreatedAt: bestPair.pairCreatedAt,
+                lastUpdated: Date.now(),
+              };
+            }
+          }
+        } else {
+          this.recordFailure('dexscreener');
+        }
+      } catch (error: any) {
         this.recordFailure('dexscreener');
-        return null;
+        console.warn(`❌ Failed to fetch token ${address} on ${chain} from DexScreener:`, error.message);
       }
+    }
 
-      const data = await response.json();
-      this.recordSuccess('dexscreener');
-
-      const config = CHAIN_CONFIG[chain];
-      const chainId = config.dexScreenerChainId;
-
-      // Find pairs for the specified chain
-      const pairs = data.pairs || [];
-      const chainPairs = pairs.filter((p: any) => p.chainId === chainId);
-
-      if (chainPairs.length === 0) {
-        console.warn(`No ${chain} pairs found for ${address}`);
-        return null;
+    // If we have DexScreener data, use it as base and enrich with Jupiter
+    if (dexData) {
+      if (jupiterMeta) {
+        if (jupiterMeta.name) dexData.name = jupiterMeta.name;
+        if (jupiterMeta.symbol) dexData.symbol = jupiterMeta.symbol;
+        if (jupiterMeta.decimals != null) dexData.decimals = jupiterMeta.decimals;
+        if (jupiterMeta.logoURI) dexData.icon = jupiterMeta.logoURI;
       }
+      // If Jupiter has a better USD price and DexScreener price is stale/missing
+      if (jupiterPrice != null && jupiterPrice > 0 && solPrice != null && solPrice > 0) {
+        if (dexData.priceUsd <= 0 || dexData.priceNative <= 0n) {
+          dexData.priceUsd = jupiterPrice;
+          dexData.priceNative = this.usdToNative(jupiterPrice, solPrice, config.decimals);
+        }
+      }
+      return dexData;
+    }
 
-      // Get highest liquidity pair
-      const bestPair = chainPairs.reduce((best: any, current: any) => {
-        const bestLiq = best?.liquidity?.usd || 0;
-        const currentLiq = current?.liquidity?.usd || 0;
-        return currentLiq > bestLiq ? current : best;
-      }, chainPairs[0]);
-
-      if (!bestPair) return null;
-
-      // Parse price to native units (lamports/wei)
-      const priceNative = this.parseDecimalToNative(bestPair.priceNative || '0', chain);
-      const tokenDecimals = bestPair.baseToken?.decimals || config.defaultTokenDecimals;
-
+    // No DexScreener data - try to build from Jupiter alone (Solana only)
+    if (chain === 'solana' && jupiterMeta && jupiterPrice != null && solPrice != null && solPrice > 0) {
       return {
         tokenAddress: address,
-        name: bestPair.baseToken?.name || 'Unknown',
-        symbol: bestPair.baseToken?.symbol || '???',
-        priceNative,
-        priceUsd: parseFloat(bestPair.priceUsd || '0'),
-        marketCap: bestPair.marketCap || bestPair.fdv || 0,
-        volume24h: bestPair.volume?.h24 || 0,
-        liquidity: bestPair.liquidity?.usd || 0,
-        priceChange24h: bestPair.priceChange?.h24 || 0,
-        decimals: tokenDecimals,
+        name: jupiterMeta.name || 'Unknown',
+        symbol: jupiterMeta.symbol || '???',
+        priceNative: this.usdToNative(jupiterPrice, solPrice, config.decimals),
+        priceUsd: jupiterPrice,
+        marketCap: 0,
+        volume24h: 0,
+        liquidity: 0,
+        priceChange24h: 0,
+        decimals: jupiterMeta.decimals || config.defaultTokenDecimals,
         chain,
-        icon: bestPair.info?.imageUrl,
-        pairCreatedAt: bestPair.pairCreatedAt,
+        icon: jupiterMeta.logoURI,
         lastUpdated: Date.now(),
       };
-    } catch (error: any) {
-      this.recordFailure('dexscreener');
-      console.warn(`❌ Failed to fetch token ${address} on ${chain}:`, error.message);
-      return null;
     }
+
+    return null;
   }
 
   private async fetchTokenByChainIdFromUpstream(address: string, chainId: string): Promise<TokenData | null> {
@@ -683,6 +727,44 @@ class MarketDataService {
   }
 
   private async fetchSearchFromUpstream(query: string, chain: string): Promise<SearchResult[]> {
+    // For Solana, try Jupiter Token API search first
+    if (chain === 'solana' && jupiterService.isConfigured()) {
+      try {
+        const jupResults = await jupiterService.searchTokens(query);
+        if (jupResults && jupResults.length > 0) {
+          // Get SOL price for converting USD -> native
+          const solPrice = await jupiterService.getPrice(SOL_MINT);
+          const results: SearchResult[] = [];
+
+          for (const token of jupResults.slice(0, 20)) {
+            let priceNative = 0n;
+            const tokenPrice = await jupiterService.getPrice(token.address);
+            if (tokenPrice != null && tokenPrice > 0 && solPrice != null && solPrice > 0) {
+              priceNative = this.usdToNative(tokenPrice, solPrice, CHAIN_CONFIG.solana.decimals);
+            }
+
+            results.push({
+              tokenAddress: token.address,
+              name: token.name || 'Unknown',
+              symbol: token.symbol || '???',
+              price: priceNative,
+              marketCap: 0,
+              volume24h: 0,
+              priceChange24h: 0,
+              decimals: token.decimals || CHAIN_CONFIG.solana.defaultTokenDecimals,
+              chain,
+              icon: token.logoURI,
+            });
+          }
+
+          return results;
+        }
+      } catch (e: any) {
+        console.warn('⚠️  Jupiter search failed, falling back to DexScreener:', e.message);
+      }
+    }
+
+    // Fallback to DexScreener
     if (this.isCircuitOpen('dexscreener')) {
       return [];
     }
@@ -813,6 +895,17 @@ class MarketDataService {
   private parseDecimalToNative(decimalString: string, chain: Chain): bigint {
     const config = CHAIN_CONFIG[chain];
     return this.parseDecimalToNativeWithDecimals(decimalString, config.decimals);
+  }
+
+  /**
+   * Convert USD price to native units (lamports/wei) given SOL/ETH USD price
+   */
+  private usdToNative(tokenPriceUsd: number, nativePriceUsd: number, nativeDecimals: number): bigint {
+    if (!nativePriceUsd || nativePriceUsd <= 0) return 0n;
+    const priceInNative = tokenPriceUsd / nativePriceUsd;
+    const multiplier = 10 ** nativeDecimals;
+    const nativeUnits = BigInt(Math.floor(priceInNative * multiplier));
+    return nativeUnits > 0n ? nativeUnits : 1n;
   }
 
   /**

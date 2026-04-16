@@ -3,6 +3,7 @@
 
 import crypto from 'crypto';
 import { marketDataService } from './marketData';
+import { jupiterService, SOL_MINT } from './jupiterService';
 import type { Chain } from '@shared/schema';
 
 interface Quote {
@@ -117,7 +118,20 @@ class QuoteService {
     const nativeDecimals = chainConfig.nativeDecimals;
     const tokenDecimals = tokenData.decimals || chainConfig.defaultTokenDecimals;
 
-    // 5. Calculate execution price with slippage
+    // 5. Try Jupiter Swap API for Solana first (more accurate quotes)
+    let jupiterQuote: { executionPrice: bigint; estimatedOutput: bigint; priceImpactBps: number } | null = null;
+    if (chain === 'solana' && jupiterService.isConfigured()) {
+      try {
+        const jup = await this.fetchJupiterQuote(side, tokenAddress, tokenDecimals, amountNative, amountTokens);
+        if (jup) {
+          jupiterQuote = jup;
+        }
+      } catch (e: any) {
+        console.warn('⚠️  Jupiter quote failed, falling back to DexScreener:', e.message);
+      }
+    }
+
+    // 6. Calculate execution price with slippage (fallback to DexScreener logic)
     const basePriceNative = tokenData.priceNative;
     let executionPrice: bigint;
     let estimatedOutput: bigint;
@@ -127,19 +141,23 @@ class QuoteService {
       // Parse native amount (SOL or ETH)
       const nativeAmount = this.parseNativeToUnits(amountNative!, nativeDecimals);
 
-      // Buyer gets worse price (pays more per token)
-      executionPrice = (basePriceNative * BigInt(10000 + CONFIG.SLIPPAGE_BPS)) / 10000n;
+      if (jupiterQuote) {
+        executionPrice = jupiterQuote.executionPrice;
+        estimatedOutput = jupiterQuote.estimatedOutput;
+        priceImpactBps = jupiterQuote.priceImpactBps;
+      } else {
+        // Buyer gets worse price (pays more per token)
+        executionPrice = (basePriceNative * BigInt(10000 + CONFIG.SLIPPAGE_BPS)) / 10000n;
 
-      // Calculate estimated tokens to receive
-      // formula: (native_amount * 10^token_decimals) / price
-      const decimalMultiplier = BigInt(10 ** tokenDecimals);
-      estimatedOutput = (nativeAmount * decimalMultiplier) / executionPrice;
+        // Calculate estimated tokens to receive
+        const decimalMultiplier = BigInt(10 ** tokenDecimals);
+        estimatedOutput = (nativeAmount * decimalMultiplier) / executionPrice;
 
-      // Estimate price impact based on trade size vs liquidity
-      const tradeValueUsd = Number(nativeAmount) / (10 ** nativeDecimals) * tokenData.priceUsd;
-      priceImpactBps = Math.min(1000, Math.round((tradeValueUsd / tokenData.liquidity) * 10000));
+        // Estimate price impact based on trade size vs liquidity
+        const tradeValueUsd = Number(nativeAmount) / (10 ** nativeDecimals) * tokenData.priceUsd;
+        priceImpactBps = Math.min(1000, Math.round((tradeValueUsd / tokenData.liquidity) * 10000));
+      }
 
-      // 6. Create quote
       const quote: Quote = {
         quoteId: this.generateQuoteId(),
         tokenAddress,
@@ -165,19 +183,23 @@ class QuoteService {
       // Parse token amount
       const tokenAmount = BigInt(amountTokens!);
 
-      // Seller gets worse price (receives less native per token)
-      executionPrice = (basePriceNative * BigInt(10000 - CONFIG.SLIPPAGE_BPS)) / 10000n;
+      if (jupiterQuote) {
+        executionPrice = jupiterQuote.executionPrice;
+        estimatedOutput = jupiterQuote.estimatedOutput;
+        priceImpactBps = jupiterQuote.priceImpactBps;
+      } else {
+        // Seller gets worse price (receives less native per token)
+        executionPrice = (basePriceNative * BigInt(10000 - CONFIG.SLIPPAGE_BPS)) / 10000n;
 
-      // Calculate estimated native to receive
-      // formula: (token_amount * price) / 10^token_decimals
-      const decimalDivisor = BigInt(10 ** tokenDecimals);
-      estimatedOutput = (tokenAmount * executionPrice) / decimalDivisor;
+        // Calculate estimated native to receive
+        const decimalDivisor = BigInt(10 ** tokenDecimals);
+        estimatedOutput = (tokenAmount * executionPrice) / decimalDivisor;
 
-      // Estimate price impact
-      const tokenValueUsd = Number(tokenAmount) / (10 ** tokenDecimals) * tokenData.priceUsd;
-      priceImpactBps = Math.min(1000, Math.round((tokenValueUsd / tokenData.liquidity) * 10000));
+        // Estimate price impact
+        const tokenValueUsd = Number(tokenAmount) / (10 ** tokenDecimals) * tokenData.priceUsd;
+        priceImpactBps = Math.min(1000, Math.round((tokenValueUsd / tokenData.liquidity) * 10000));
+      }
 
-      // 6. Create quote
       const quote: Quote = {
         quoteId: this.generateQuoteId(),
         tokenAddress,
@@ -198,6 +220,59 @@ class QuoteService {
 
       this.storeQuote(quote, userId);
       return this.formatQuoteResponse(quote);
+    }
+  }
+
+  /**
+   * Fetch a Jupiter Swap V2 quote for Solana
+   */
+  private async fetchJupiterQuote(
+    side: 'buy' | 'sell',
+    outputMint: string,
+    tokenDecimals: number,
+    amountNative?: string,
+    amountTokens?: string
+  ): Promise<{ executionPrice: bigint; estimatedOutput: bigint; priceImpactBps: number } | null> {
+    if (side === 'buy') {
+      if (!amountNative) return null;
+      const nativeAmountLamports = this.parseNativeToUnits(amountNative, 9); // SOL = 9 decimals
+      const jup = await jupiterService.getOrderQuote(
+        SOL_MINT,
+        outputMint,
+        nativeAmountLamports.toString()
+      );
+      if (!jup) return null;
+
+      // outAmount is tokens received in smallest unit
+      const estimatedOutput = BigInt(jup.outAmount);
+      // Derive execution price: (native_spent * 10^tokenDecimals) / tokens_received
+      const decimalMultiplier = BigInt(10 ** tokenDecimals);
+      const executionPrice = estimatedOutput > 0n
+        ? (nativeAmountLamports * decimalMultiplier) / estimatedOutput
+        : 0n;
+
+      const priceImpactBps = Math.min(1000, Math.round(Math.abs(jup.priceImpact || 0) * 10000));
+      return { executionPrice, estimatedOutput, priceImpactBps };
+    } else {
+      if (!amountTokens) return null;
+      const tokenAmount = BigInt(amountTokens);
+      const jup = await jupiterService.getOrderQuote(
+        outputMint,
+        SOL_MINT,
+        tokenAmount.toString()
+      );
+      if (!jup) return null;
+
+      // outAmount is lamports received
+      const estimatedOutput = BigInt(jup.outAmount);
+      // Derive execution price: (native_received * 10^tokenDecimals) / tokens_sold
+      const decimalMultiplier = BigInt(10 ** tokenDecimals);
+      const executionPrice = tokenAmount > 0n
+        ? (estimatedOutput * decimalMultiplier) / tokenAmount
+        : 0n;
+
+      const priceImpactBps = Math.min(1000, Math.round(Math.abs(jup.priceImpact || 0) * 10000));
+      return { executionPrice, estimatedOutput, priceImpactBps };
     }
   }
 
