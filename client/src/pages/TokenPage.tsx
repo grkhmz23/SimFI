@@ -367,6 +367,7 @@ export default function TokenPage() {
               volume24h={token.volume24h || 0}
               liquidity={0}
               height="500px"
+              chain={pageChain}
             />
           </div>
 

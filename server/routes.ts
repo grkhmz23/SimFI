@@ -2268,8 +2268,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       if (!geckoResponse.ok) {
-        console.warn(`GeckoTerminal API error: ${geckoResponse.status}`);
-        return res.status(500).json({ error: 'Failed to fetch chart data' });
+        const geckoText = await geckoResponse.text().catch(() => '');
+        console.warn(`GeckoTerminal API error: ${geckoResponse.status} for ${address} on ${chainParam}`, geckoText.substring(0, 200));
+        return res.status(502).json({ error: `GeckoTerminal API error (${geckoResponse.status})`, details: geckoText.substring(0, 200) });
       }
 
       const ohlcvData = await geckoResponse.json();
@@ -2301,7 +2302,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (candles.length === 0) {
-        console.warn(`⚠️ No valid OHLCV candles for ${address} after filtering`);
+        console.warn(`⚠️ No valid OHLCV candles for ${address} on ${chainParam} after filtering`);
+        return res.status(404).json({ error: 'No chart data available for this token', details: `GeckoTerminal returned no candles for pool ${pairAddress} on ${chainParam}` });
       }
 
       // Sort candles in ascending order by timestamp (required by TradingView Lightweight Charts)

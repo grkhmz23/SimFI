@@ -12,6 +12,7 @@ interface TokenChartProps {
   volume24h?: number;
   liquidity?: number;
   height?: string;
+  chain?: string;
 }
 
 type Timeframe = '5S' | '15S' | '30S' | '1M' | '3M' | '5M';
@@ -24,9 +25,11 @@ const TokenChart = ({
   priceChange24h = 0,
   volume24h = 0,
   liquidity = 0,
-  height = '500px' 
+  height = '500px',
+  chain: chainProp,
 }: TokenChartProps) => {
   const { activeChain } = useChain();
+  const chartChain = chainProp || activeChain;
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -160,7 +163,7 @@ const TokenChart = ({
       }
       setError(null);
 
-      const response = await fetch(`/api/tokens/${tokenAddress}/ohlcv?timeframe=${tf}&chain=${activeChain}`);
+      const response = await fetch(`/api/tokens/${tokenAddress}/ohlcv?timeframe=${tf}&chain=${chartChain}`);
       if (!response.ok) {
         throw new Error(`API returned ${response.status}: Failed to fetch chart data`);
       }
@@ -298,7 +301,7 @@ const TokenChart = ({
         fetchTokenData(selectedTimeframe);
       }
     }
-  }, [tokenAddress, selectedTimeframe, currentPrice]);
+  }, [tokenAddress, selectedTimeframe, currentPrice, chartChain]);
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
@@ -313,7 +316,7 @@ const TokenChart = ({
     }, 30000);
     
     return () => clearInterval(interval);
-  }, [tokenAddress, selectedTimeframe, currentPrice]);
+  }, [tokenAddress, selectedTimeframe, currentPrice, chartChain]);
 
   return (
     <div className="bg-card p-5 rounded-xl" style={{ marginBottom: '20px' }}>
