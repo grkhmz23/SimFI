@@ -1,9 +1,10 @@
-import { Switch, Route, Redirect } from "wouter";
+import React from "react";
+import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { AuthProvider } from "@/lib/auth-context";
 import { PriceProvider } from "@/lib/price-context";
 import { ChainProvider } from "@/lib/chain-context";
 import { Navigation } from "@/components/Navigation";
@@ -25,6 +26,10 @@ import Referrals from "@/pages/Referrals";
 import TraderProfile from "@/pages/TraderProfile";
 import WhaleWatch from "@/pages/WhaleWatch";
 import NotFound from "@/pages/not-found";
+
+const DesignSystem = import.meta.env.DEV
+  ? React.lazy(() => import("@/pages/DesignSystem"))
+  : null;
 
 function PageLayout({ component: Component }: { component: React.ComponentType }) {
   return (
@@ -84,6 +89,11 @@ function Router() {
       <Route path="/whales">
         <PageLayout component={WhaleWatch} />
       </Route>
+      {import.meta.env.DEV && DesignSystem && (
+        <Route path="/_design">
+          <DesignSystem />
+        </Route>
+      )}
       <Route component={NotFound} />
     </Switch>
   );
