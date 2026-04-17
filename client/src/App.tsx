@@ -8,6 +8,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import { PriceProvider } from "@/lib/price-context";
 import { ChainProvider } from "@/lib/chain-context";
 import { Navigation } from "@/components/Navigation";
+import { MobileNav } from "@/components/MobileNav";
 import { Footer } from "@/components/ui/footer";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -37,6 +38,7 @@ function PageLayout({ component: Component }: { component: React.ComponentType }
       <Navigation />
       <Component />
       <Footer />
+      <MobileNav />
     </>
   );
 }
