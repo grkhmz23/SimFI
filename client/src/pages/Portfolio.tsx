@@ -1,9 +1,26 @@
-import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { useLocation } from 'wouter';
+import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useLocation, Link } from 'wouter';
+import { motion } from 'framer-motion';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+} from 'recharts';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { DataCell } from '@/components/ui/data-cell';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   Table,
   TableBody,
@@ -13,27 +30,188 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { TradeModal } from '@/components/TradeModal';
-import { PortfolioCharts } from '@/components/PortfolioChart';
 import { useAuth } from '@/lib/auth-context';
-import { useSolPrice } from '@/lib/price-context';
-import { Link } from 'wouter';
-import { formatNative, toBigInt, formatTokenAmount, formatPricePerTokenUSD, formatUSD } from '@/lib/token-format';
+import { usePrice } from '@/lib/price-context';
 import { useChain } from '@/lib/chain-context';
-import { TrendingUp, TrendingDown, Package, LogIn, ExternalLink, Share2 } from 'lucide-react';
-import { apiRequest, queryClient } from '@/lib/queryClient';
-import { useToast } from '@/hooks/use-toast';
+import {
+  formatNative,
+  formatUSD,
+  formatTokenAmount,
+  formatPricePerTokenUSD,
+  toBigInt,
+} from '@/lib/token-format';
+import { cn } from '@/lib/utils';
 import type { Position, Trade } from '@shared/schema';
-import { SharePnLCard } from '@/components/SharePnLCard';
+import {
+  TrendingUp,
+  TrendingDown,
+  Package,
+  LogIn,
+  ExternalLink,
+  ArrowUpDown,
+  Wallet,
+  Ban,
+} from 'lucide-react';
+
+/* ------------------------------------------------------------------ */
+//  Types
+/* ------------------------------------------------------------------ */
+
+interface EnrichedPosition extends Position {
+  currentPrice: string;
+  currentValue: string;
+}
+
+interface AnalyticsResponse {
+  balanceHistory: { date: string; balance: number }[];
+  winCount: number;
+  lossCount: number;
+  bestTrade: Trade | null;
+  worstTrade: Trade | null;
+  dailyPnl: { date: string; pnl: number }[];
+}
+
+type SortKey =
+  | 'tokenSymbol'
+  | 'entryPrice'
+  | 'currentPrice'
+  | 'amount'
+  | 'currentValue'
+  | 'pnl';
+
+interface SortState {
+  key: SortKey;
+  direction: 'asc' | 'desc';
+}
+
+/* ------------------------------------------------------------------ */
+//  Animation constants
+/* ------------------------------------------------------------------ */
+
+const ease = [0.16, 1, 0.3, 1] as const;
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 8 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.05, duration: 0.35, ease },
+  }),
+};
+
+/* ------------------------------------------------------------------ */
+//  Helpers
+/* ------------------------------------------------------------------ */
+
+function calculatePnL(position: EnrichedPosition): bigint {
+  const currentValue = toBigInt(position.currentValue);
+  const spent = toBigInt(position.solSpent);
+  return currentValue - spent;
+}
+
+function calculatePnLPercent(position: EnrichedPosition): number {
+  const spent = toBigInt(position.solSpent);
+  if (spent === 0n) return 0;
+  const pnl = calculatePnL(position);
+  return (Number(pnl) / Number(spent)) * 100;
+}
+
+function formatHoldTime(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  return `${minutes}m`;
+}
+
+/* ------------------------------------------------------------------ */
+//  Balance Chart
+/* ------------------------------------------------------------------ */
+
+function BalanceChart({ data }: { data: { date: string; balance: number }[] }) {
+  const { activeChain, nativeSymbol } = useChain();
+
+  return (
+    <div className="h-56 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+          <XAxis
+            dataKey="date"
+            tickFormatter={(v: string) =>
+              new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+            }
+            stroke="var(--text-tertiary)"
+            fontSize={11}
+            tickLine={false}
+            axisLine={{ stroke: 'var(--border-subtle)' }}
+          />
+          <YAxis
+            stroke="var(--text-tertiary)"
+            fontSize={11}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v: number) => `${v.toFixed(2)}`}
+            width={48}
+          />
+          <RechartsTooltip
+            contentStyle={{
+              background: 'var(--bg-raised)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+              fontSize: 12,
+            }}
+            labelStyle={{ color: 'var(--text-secondary)' }}
+            formatter={(v: number) => [
+              `${v.toFixed(4)} ${nativeSymbol}`,
+              'Balance',
+            ]}
+            labelFormatter={(l: string) =>
+              new Date(l).toLocaleDateString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })
+            }
+          />
+          <Line
+            type="monotone"
+            dataKey="balance"
+            stroke="var(--accent-premium)"
+            strokeWidth={1.5}
+            dot={false}
+            activeDot={{ r: 4, fill: 'var(--accent-premium)', stroke: 'var(--bg-base)' }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+//  Page
+/* ------------------------------------------------------------------ */
 
 export default function Portfolio() {
   const { isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
-  const solPrice = useSolPrice();
   const { activeChain, nativeSymbol } = useChain();
-  const [selectedPosition, setSelectedPosition] = useState<Position & { currentPrice: number } | null>(null);
-  const { toast } = useToast();
+  const { getPrice } = usePrice();
 
-  const { data: positionsData, isLoading, isError, error } = useQuery<{ positions: Position[] }>({
+  const [sort, setSort] = useState<SortState>({ key: 'currentValue', direction: 'desc' });
+  const [tradeModal, setTradeModal] = useState<{
+    position: EnrichedPosition;
+    mode: 'buy' | 'sell';
+  } | null>(null);
+
+  /* ------------------- Data fetching ------------------- */
+
+  const {
+    data: positionsData,
+    isLoading: positionsLoading,
+    isError: positionsError,
+  } = useQuery<{ positions: EnrichedPosition[] }>({
     queryKey: ['/api/trades/positions', activeChain],
     queryFn: async () => {
       const res = await fetch(`/api/trades/positions?chain=${activeChain}`, {
@@ -48,49 +226,118 @@ export default function Portfolio() {
     staleTime: 2000,
   });
 
-  const { data: analyticsData } = useQuery<{
-    balanceHistory: { date: string; balance: number }[];
-    winCount: number;
-    lossCount: number;
-    bestTrade: Trade | null;
-    worstTrade: Trade | null;
-    dailyPnl: { date: string; pnl: number }[];
-  }>({
+  const { data: analyticsData } = useQuery<AnalyticsResponse>({
     queryKey: ['/api/portfolio/analytics', activeChain],
     queryFn: async () => {
-      const res = await fetch(`/api/portfolio/analytics?chain=${activeChain}`, { credentials: 'include' });
+      const res = await fetch(`/api/portfolio/analytics?chain=${activeChain}`, {
+        credentials: 'include',
+      });
       if (!res.ok) throw new Error('Failed to fetch analytics');
       return res.json();
     },
     enabled: isAuthenticated,
-    staleTime: 300000,
+    staleTime: 300_000,
   });
+
+  /* ------------------- Computed ------------------- */
+
+  const positions = positionsData?.positions ?? [];
+
+  const totals = useMemo(() => {
+    let invested = 0n;
+    let current = 0n;
+    for (const p of positions) {
+      invested += toBigInt(p.solSpent);
+      current += toBigInt(p.currentValue);
+    }
+    return { invested, current, pnl: current - invested };
+  }, [positions]);
+
+  const winRate = useMemo(() => {
+    if (!analyticsData) return 0;
+    const total = analyticsData.winCount + analyticsData.lossCount;
+    return total > 0 ? (analyticsData.winCount / total) * 100 : 0;
+  }, [analyticsData]);
+
+  const sortedPositions = useMemo(() => {
+    const list = [...positions];
+    list.sort((a, b) => {
+      let va: bigint | number | string;
+      let vb: bigint | number | string;
+
+      switch (sort.key) {
+        case 'tokenSymbol':
+          va = a.tokenSymbol.toLowerCase();
+          vb = b.tokenSymbol.toLowerCase();
+          break;
+        case 'entryPrice':
+          va = Number(a.entryPrice);
+          vb = Number(b.entryPrice);
+          break;
+        case 'currentPrice':
+          va = Number(a.currentPrice);
+          vb = Number(b.currentPrice);
+          break;
+        case 'amount':
+          va = toBigInt(a.amount);
+          vb = toBigInt(b.amount);
+          break;
+        case 'currentValue':
+          va = toBigInt(a.currentValue);
+          vb = toBigInt(b.currentValue);
+          break;
+        case 'pnl':
+          va = calculatePnL(a);
+          vb = calculatePnL(b);
+          break;
+        default:
+          return 0;
+      }
+
+      if (typeof va === 'bigint' && typeof vb === 'bigint') {
+        return sort.direction === 'asc'
+          ? va < vb
+            ? -1
+            : 1
+          : va > vb
+            ? -1
+            : 1;
+      }
+      if (typeof va === 'number' && typeof vb === 'number') {
+        return sort.direction === 'asc' ? va - vb : vb - va;
+      }
+      return sort.direction === 'asc'
+        ? String(va).localeCompare(String(vb))
+        : String(vb).localeCompare(String(va));
+    });
+    return list;
+  }, [positions, sort]);
+
+  const handleSort = (key: SortKey) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: 'desc' }
+    );
+  };
+
+  /* ------------------- Unauthenticated ------------------- */
 
   if (!isAuthenticated) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="min-h-[60vh] flex items-center justify-center">
-          <Card className="p-12 text-center max-w-md">
-            <LogIn className="h-16 w-16 mx-auto text-primary mb-6" />
-            <h2 className="text-3xl font-bold mb-4">Login Required</h2>
-            <p className="text-muted-foreground mb-8">
+          <Card className="card-raised p-12 text-center max-w-md">
+            <LogIn className="h-16 w-16 mx-auto text-[var(--text-secondary)] mb-6" />
+            <h2 className="text-3xl font-bold mb-4 text-[var(--text-primary)]">Login Required</h2>
+            <p className="text-[var(--text-secondary)] mb-8">
               You need to be logged in to view your portfolio and track your positions
             </p>
             <div className="flex gap-3">
-              <Button
-                variant="default"
-                className="flex-1"
-                onClick={() => setLocation('/login')}
-                data-testid="button-goto-login"
-              >
+              <Button className="flex-1" onClick={() => setLocation('/login')}>
                 Login
               </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setLocation('/register')}
-                data-testid="button-goto-register"
-              >
+              <Button variant="outline" className="flex-1" onClick={() => setLocation('/register')}>
                 Register
               </Button>
             </div>
@@ -100,365 +347,388 @@ export default function Portfolio() {
     );
   }
 
-  const positions = (positionsData?.positions || []);
-
-  // Group positions by tokenAddress
-  const groupedPositions = positions.reduce((acc: Map<string, Position[]>, position: Position) => {
-    const existing = acc.get(position.tokenAddress) || [];
-    acc.set(position.tokenAddress, [...existing, position]);
-    return acc;
-  }, new Map<string, Position[]>());
-
-  // Mutation for selling all positions using server-authoritative quotes
-  const sellAllMutation = useMutation({
-    mutationFn: async ({ tokenAddress, totalTokens }: { tokenAddress: string; totalTokens: bigint }) => {
-      // Call sell-all directly - server handles price server-side
-      console.log('Executing sell-all for token:', tokenAddress);
-      return await apiRequest('POST', '/api/trades/sell-all', { 
-        tokenAddress,
-        amountTokens: totalTokens.toString(),
-      });
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/trades/positions'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/auth/profile'] });
-      toast({
-        title: 'All Positions Sold',
-        description: data.message,
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: 'Sell Failed',
-        description: error.message || 'Failed to sell all positions',
-        variant: 'destructive',
-      });
-    },
-  });
-
-  const handleSellAll = (tokenAddress: string, tokenPositions: Position[]) => {
-    // Calculate total tokens across all positions for this token
-    const totalTokens = tokenPositions.reduce((sum, p) => sum + toBigInt(p.amount), 0n);
-
-    if (confirm('Are you sure you want to sell all positions of this token?')) {
-      sellAllMutation.mutate({ tokenAddress, totalTokens });
-    }
-  };
-
-  // Positions now include currentPrice from API
-  const getPositionWithPrice = (position: any) => position;
-
-  // Keep everything in BigInt until final display to prevent precision loss
-  const calculateCurrentValueBigInt = (position: Position, currentPrice: number): bigint => {
-    const amountBigInt = toBigInt(position.amount);
-    const currentPriceBigInt = BigInt(Math.floor(currentPrice));
-    const decimals = position.decimals || 6;
-    const decimalDivisor = BigInt(10 ** decimals);
-
-    return (amountBigInt * currentPriceBigInt) / decimalDivisor;
-  };
-
-  const calculateProfitLossBigInt = (position: Position, currentPrice: number): bigint => {
-    const currentValue = calculateCurrentValueBigInt(position, currentPrice);
-    const solSpent = toBigInt(position.nativeSpent);
-    return currentValue - solSpent;
-  };
-
-  const calculateProfitLossPercent = (position: Position, currentPrice: number): number => {
-    const pl = calculateProfitLossBigInt(position, currentPrice);
-    const solSpent = toBigInt(position.nativeSpent);
-    return (Number(pl) / Number(solSpent)) * 100;
-  };
-
-  // Use BigInt for totals to prevent precision loss
-  const totalInvested = positions.reduce((sum: bigint, p: Position) => {
-    return sum + toBigInt(p.nativeSpent);
-  }, 0n);
-
-  const totalCurrentValue = positions.reduce((sum: bigint, p: Position) => {
-    const withPrice = getPositionWithPrice(p);
-    return sum + calculateCurrentValueBigInt(p, withPrice.currentPrice);
-  }, 0n);
-
-  const totalPL = totalCurrentValue - totalInvested;
+  /* ------------------- Render ------------------- */
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
+    <div className="container mx-auto px-4 py-8 max-w-7xl animate-page-in">
+      {/* Header */}
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-foreground mb-2">Portfolio</h1>
-        <p className="text-muted-foreground">Track your open positions and performance</p>
+        <h1 className="font-serif text-4xl font-medium text-[var(--text-primary)] mb-2">
+          Portfolio
+        </h1>
+        <p className="text-[var(--text-secondary)]">
+          Track your open positions and performance
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card className="p-6">
-          <div className="flex items-center gap-4">
-            <div className="rounded-full bg-primary/10 p-3">
-              <Package className="h-6 w-6 text-primary" />
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {/* Total Value */}
+        <motion.div custom={0} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="card-raised p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="rounded-lg bg-[var(--accent-premium)]/10 p-2">
+                <Wallet className="h-5 w-5 text-[var(--accent-premium)]" strokeWidth={1.5} />
+              </div>
+              <span className="text-sm text-[var(--text-secondary)]">Total Value</span>
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Invested</p>
-              <p className="text-2xl font-bold font-mono">{formatNative(totalInvested, activeChain, 2)} {nativeSymbol}</p>
-              <p className="text-sm text-muted-foreground font-mono">≈ {formatUSD(totalInvested, 2)}</p>
+            <div className="font-mono text-2xl font-medium text-[var(--text-primary)] tabular-nums">
+              {formatNative(totals.current, activeChain, 4)} {nativeSymbol}
             </div>
-          </div>
-        </Card>
+            <div className="font-mono text-sm text-[var(--text-tertiary)] tabular-nums mt-1">
+              {formatUSD(totals.current, getPrice(activeChain), activeChain, 2)}
+            </div>
+          </Card>
+        </motion.div>
 
-        <Card className="p-6">
-          <div className="flex items-center gap-4">
-            <div className="rounded-full bg-primary/10 p-3">
-              <TrendingUp className="h-6 w-6 text-primary" />
+        {/* Total Invested */}
+        <motion.div custom={1} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="card-raised p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="rounded-lg bg-[var(--text-secondary)]/10 p-2">
+                <Package className="h-5 w-5 text-[var(--text-secondary)]" strokeWidth={1.5} />
+              </div>
+              <span className="text-sm text-[var(--text-secondary)]">Total Invested</span>
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Current Value</p>
-              <p className="text-2xl font-bold font-mono">{formatNative(totalCurrentValue, activeChain, 2)} {nativeSymbol}</p>
-              <p className="text-sm text-muted-foreground font-mono">≈ {formatUSD(totalCurrentValue, 2)}</p>
+            <div className="font-mono text-2xl font-medium text-[var(--text-primary)] tabular-nums">
+              {formatNative(totals.invested, activeChain, 4)} {nativeSymbol}
             </div>
-          </div>
-        </Card>
+            <div className="font-mono text-sm text-[var(--text-tertiary)] tabular-nums mt-1">
+              {formatUSD(totals.invested, getPrice(activeChain), activeChain, 2)}
+            </div>
+          </Card>
+        </motion.div>
 
-        <Card className="p-6">
-          <div className="flex items-center gap-4">
-            <div className={`rounded-full p-3 ${totalPL >= 0n ? 'bg-success/10' : 'bg-destructive/10'}`}>
-              {totalPL >= 0n ? (
-                <TrendingUp className="h-6 w-6 text-success" />
-              ) : (
-                <TrendingDown className="h-6 w-6 text-destructive" />
+        {/* Total P&L */}
+        <motion.div custom={2} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="card-raised p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div
+                className={cn(
+                  'rounded-lg p-2',
+                  totals.pnl >= 0n ? 'bg-[var(--accent-gain)]/10' : 'bg-[var(--accent-loss)]/10'
+                )}
+              >
+                {totals.pnl >= 0n ? (
+                  <TrendingUp className="h-5 w-5 text-[var(--accent-gain)]" strokeWidth={1.5} />
+                ) : (
+                  <TrendingDown className="h-5 w-5 text-[var(--accent-loss)]" strokeWidth={1.5} />
+                )}
+              </div>
+              <span className="text-sm text-[var(--text-secondary)]">Total Unrealized P&L</span>
+            </div>
+            <div
+              className={cn(
+                'font-mono text-2xl font-medium tabular-nums',
+                totals.pnl >= 0n ? 'text-[var(--accent-gain)]' : 'text-[var(--accent-loss)]'
               )}
+            >
+              {totals.pnl >= 0n ? '+' : ''}
+              {formatNative(totals.pnl, activeChain, 4)} {nativeSymbol}
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total P/L</p>
-              <p className={`text-2xl font-bold font-mono ${totalPL >= 0n ? 'text-success' : 'text-destructive'}`}>
-                {totalPL >= 0n ? '+' : ''}{formatNative(totalPL, activeChain, 2)} {nativeSymbol}
-              </p>
-              <p className="text-sm text-muted-foreground font-mono">
-                ≈ {totalPL >= 0n ? '+' : ''}{formatUSD(totalPL, 2)}
-              </p>
+            <div
+              className={cn(
+                'font-mono text-sm tabular-nums mt-1',
+                totals.pnl >= 0n ? 'text-[var(--accent-gain)]' : 'text-[var(--accent-loss)]'
+              )}
+            >
+              {totals.pnl >= 0n ? '+' : ''}
+              {formatUSD(totals.pnl, getPrice(activeChain), activeChain, 2)}
             </div>
-          </div>
-        </Card>
+          </Card>
+        </motion.div>
+
+        {/* Win Rate */}
+        <motion.div custom={3} variants={cardVariants} initial="hidden" animate="visible">
+          <Card className="card-raised p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="rounded-lg bg-[var(--accent-premium)]/10 p-2">
+                <TrendingUp className="h-5 w-5 text-[var(--accent-premium)]" strokeWidth={1.5} />
+              </div>
+              <span className="text-sm text-[var(--text-secondary)]">Win Rate</span>
+            </div>
+            <div className="font-mono text-2xl font-medium text-[var(--text-primary)] tabular-nums">
+              {winRate.toFixed(1)}%
+            </div>
+            <div className="font-mono text-sm text-[var(--text-tertiary)] tabular-nums mt-1">
+              {analyticsData?.winCount ?? 0}W / {analyticsData?.lossCount ?? 0}L
+            </div>
+          </Card>
+        </motion.div>
       </div>
 
-      {/* Best / Worst Trade Cards */}
-      {analyticsData && (analyticsData.bestTrade || analyticsData.worstTrade) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          {analyticsData.bestTrade && (
-            <Card className="p-5 border-l-4 border-l-green-500">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Best Trade</p>
-                  <p className="text-xl font-bold">${analyticsData.bestTrade.tokenSymbol}</p>
-                  <p className="text-lg font-mono text-success">
-                    +{Number(analyticsData.bestTrade.profitLoss) / (activeChain === 'base' ? 1e18 : 1e9)} {nativeSymbol}
-                  </p>
-                </div>
-                <SharePnLCard
-                  title="Best Trade"
-                  value={`+${((Number(analyticsData.bestTrade.profitLoss) / Number(analyticsData.bestTrade.solSpent)) * 100).toFixed(1)}%`}
-                  subtext={`on $${analyticsData.bestTrade.tokenSymbol}`}
-                  chain={activeChain}
-                  trigger={
-                    <Button variant="ghost" size="icon">
-                      <Share2 className="h-4 w-4" />
-                    </Button>
-                  }
-                />
-              </div>
-            </Card>
-          )}
-          {analyticsData.worstTrade && (
-            <Card className="p-5 border-l-4 border-l-red-500">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Worst Trade</p>
-                  <p className="text-xl font-bold">${analyticsData.worstTrade.tokenSymbol}</p>
-                  <p className="text-lg font-mono text-destructive">
-                    {Number(analyticsData.worstTrade.profitLoss) / (activeChain === 'base' ? 1e18 : 1e9)} {nativeSymbol}
-                  </p>
-                </div>
-              </div>
-            </Card>
-          )}
-        </div>
+      {/* Balance Chart */}
+      {analyticsData && analyticsData.balanceHistory.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease }}
+          className="mb-8"
+        >
+          <Card className="card-raised p-5">
+            <h3 className="font-serif text-lg font-medium text-[var(--text-primary)] mb-4">
+              Balance Over Time
+            </h3>
+            <BalanceChart data={analyticsData.balanceHistory} />
+          </Card>
+        </motion.div>
       )}
 
-      {/* Charts */}
-      {analyticsData && (
-        <div className="mb-8">
-          <PortfolioCharts analytics={analyticsData} chain={activeChain} />
-        </div>
-      )}
+      {/* Open Positions Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1, ease }}
+      >
+        <Card className="card-raised overflow-hidden">
+          <div className="p-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
+            <h2 className="font-serif text-lg font-medium text-[var(--text-primary)]">
+              Open Positions
+            </h2>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" disabled className="gap-2">
+                    <Ban className="h-3.5 w-3.5" />
+                    Sell All
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Sell-all temporarily disabled</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
 
-      <Card className="overflow-hidden">
-        <div className="p-4 border-b border-border">
-          <h2 className="text-xl font-semibold">Open Positions</h2>
-        </div>
-
-        <div className="p-4">
-          {isLoading ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Token</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Entry Price</TableHead>
-                    <TableHead className="text-right">Current Price</TableHead>
-                    <TableHead className="text-right">Invested</TableHead>
-                    <TableHead className="text-right">Current Value</TableHead>
-                    <TableHead className="text-right">P/L</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {[1, 2, 3].map((i) => (
-                    <TableRow key={i} className="animate-pulse">
-                      <TableCell><div className="h-8 bg-muted rounded w-24" /></TableCell>
-                      <TableCell><div className="h-8 bg-muted rounded w-20 ml-auto" /></TableCell>
-                      <TableCell><div className="h-8 bg-muted rounded w-24 ml-auto" /></TableCell>
-                      <TableCell><div className="h-8 bg-muted rounded w-24 ml-auto" /></TableCell>
-                      <TableCell><div className="h-8 bg-muted rounded w-20 ml-auto" /></TableCell>
-                      <TableCell><div className="h-8 bg-muted rounded w-20 ml-auto" /></TableCell>
-                      <TableCell><div className="h-8 bg-muted rounded w-20 ml-auto" /></TableCell>
-                      <TableCell><div className="h-8 bg-muted rounded w-20 ml-auto" /></TableCell>
+          <div className="p-4">
+            {positionsLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-4">
+                    <Skeleton className="h-10 w-32" />
+                    <Skeleton className="h-10 w-24 ml-auto" />
+                    <Skeleton className="h-10 w-24 ml-auto" />
+                    <Skeleton className="h-10 w-24 ml-auto" />
+                    <Skeleton className="h-10 w-24 ml-auto" />
+                    <Skeleton className="h-10 w-24 ml-auto" />
+                    <Skeleton className="h-10 w-20 ml-auto" />
+                  </div>
+                ))}
+              </div>
+            ) : positionsError ? (
+              <div className="text-center py-12">
+                <p className="text-[var(--text-secondary)]">Failed to load positions</p>
+              </div>
+            ) : positions.length === 0 ? (
+              <div className="text-center py-12">
+                <Package className="h-16 w-16 mx-auto text-[var(--text-tertiary)] mb-4" />
+                <p className="text-xl text-[var(--text-secondary)] mb-2">No open positions</p>
+                <p className="text-sm text-[var(--text-tertiary)] mb-6">
+                  Start trading to see your positions here
+                </p>
+                <Link href="/">
+                  <Button>Start Trading</Button>
+                </Link>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-b border-[var(--border-subtle)] hover:bg-transparent">
+                      <TableHead className="text-[var(--text-secondary)]">
+                        <button
+                          onClick={() => handleSort('tokenSymbol')}
+                          className="inline-flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors"
+                        >
+                          Token
+                          <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right text-[var(--text-secondary)]">
+                        <button
+                          onClick={() => handleSort('entryPrice')}
+                          className="inline-flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors ml-auto"
+                        >
+                          Entry
+                          <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right text-[var(--text-secondary)]">
+                        <button
+                          onClick={() => handleSort('currentPrice')}
+                          className="inline-flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors ml-auto"
+                        >
+                          Current
+                          <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right text-[var(--text-secondary)]">
+                        <button
+                          onClick={() => handleSort('amount')}
+                          className="inline-flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors ml-auto"
+                        >
+                          Qty
+                          <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right text-[var(--text-secondary)]">
+                        <button
+                          onClick={() => handleSort('currentValue')}
+                          className="inline-flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors ml-auto"
+                        >
+                          Value
+                          <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right text-[var(--text-secondary)]">
+                        <button
+                          onClick={() => handleSort('pnl')}
+                          className="inline-flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors ml-auto"
+                        >
+                          Unrealized P&L
+                          <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right text-[var(--text-secondary)]">
+                        Actions
+                      </TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ) : positions.length === 0 ? (
-            <div className="text-center py-12">
-              <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <p className="text-xl text-muted-foreground mb-2" data-testid="text-no-positions">No open positions</p>
-              <p className="text-sm text-muted-foreground mb-6">Start trading to see your positions here</p>
-              <Link href="/">
-                <Button data-testid="button-start-trading">Start Trading</Button>
-              </Link>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Token</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Entry Price</TableHead>
-                    <TableHead className="text-right">Current Price</TableHead>
-                    <TableHead className="text-right">Invested</TableHead>
-                    <TableHead className="text-right">Current Value</TableHead>
-                    <TableHead className="text-right">P/L</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {positions.map((position: Position, index: number) => {
-                    const positionWithPrice = getPositionWithPrice(position);
-                    const currentValueBigInt = calculateCurrentValueBigInt(position, positionWithPrice.currentPrice);
-                    const plBigInt = calculateProfitLossBigInt(position, positionWithPrice.currentPrice);
-                    const plPercent = calculateProfitLossPercent(position, positionWithPrice.currentPrice);
+                  </TableHeader>
+                  <TableBody>
+                    {sortedPositions.map((position) => {
+                      const pnl = calculatePnL(position);
+                      const pnlPercent = calculatePnLPercent(position);
+                      const isGain = pnl >= 0n;
 
-                    // Check if this is the first position of a token with multiple positions
-                    const tokenPositions = groupedPositions.get(position.tokenAddress) || [];
-                    const isFirstOfMultiple = tokenPositions.length > 1 && tokenPositions[0].id === position.id;
-
-                    return (
-                      <TableRow key={position.id} data-testid={`row-position-${position.id}`}>
-                        <TableCell>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1">
-                              <p className="font-semibold text-foreground" data-testid={`text-token-symbol-${position.id}`}>{position.tokenSymbol}</p>
-                              <p className="text-sm text-muted-foreground truncate max-w-[200px]" data-testid={`text-token-name-${position.id}`}>
-                                {position.tokenName}
-                              </p>
-                              {isFirstOfMultiple && (
-                                <Badge variant="secondary" className="mt-1 text-xs">
-                                  {tokenPositions.length} positions
-                                </Badge>
-                              )}
+                      return (
+                        <TableRow
+                          key={position.id}
+                          className="border-b border-[var(--border-subtle)] table-row-hover"
+                          data-testid={`row-position-${position.id}`}
+                        >
+                          <TableCell>
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p
+                                  className="font-medium text-[var(--text-primary)]"
+                                  data-testid={`text-token-symbol-${position.id}`}
+                                >
+                                  {position.tokenSymbol}
+                                </p>
+                                <p
+                                  className="text-sm text-[var(--text-secondary)] truncate max-w-[200px]"
+                                  data-testid={`text-token-name-${position.id}`}
+                                >
+                                  {position.tokenName}
+                                </p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="shrink-0"
+                                onClick={() => setLocation(`/token/${position.tokenAddress}`)}
+                                data-testid={`button-view-token-${position.id}`}
+                              >
+                                <ExternalLink className="h-4 w-4 text-[var(--text-tertiary)]" />
+                              </Button>
                             </div>
-                            <Button 
-                              variant="ghost" 
-                              size="icon"
-                              onClick={() => setLocation(`/token/${position.tokenAddress}`)}
-                              data-testid={`button-view-token-${position.id}`}
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right font-mono" data-testid={`text-amount-${position.id}`}>
-                          {formatTokenAmount(position.amount, 2, position.decimals || 6)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm" data-testid={`text-entry-price-${position.id}`}>
-                          {formatPricePerTokenUSD(Number(position.entryPrice), 6)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm" data-testid={`text-current-price-${position.id}`}>
-                          {formatPricePerTokenUSD(Number(positionWithPrice.currentPrice), 6)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono" data-testid={`text-invested-${position.id}`}>
-                          {formatUSD(position.nativeSpent, 2)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono" data-testid={`text-value-${position.id}`}>
-                          {formatUSD(currentValueBigInt, 2)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex flex-col items-end gap-1">
-                            <span className={`font-mono font-semibold ${plBigInt >= 0n ? 'text-success' : 'text-destructive'}`} data-testid={`text-pnl-${position.id}`}>
-                              {plBigInt >= 0n ? '+' : ''}{formatUSD(plBigInt, 2)}
-                            </span>
-                            <Badge 
-                              variant={plBigInt >= 0n ? 'default' : 'destructive'}
-                              className="text-xs"
-                              data-testid={`badge-pnl-percent-${position.id}`}
-                            >
-                              {plBigInt >= 0n ? '+' : ''}{plPercent.toFixed(2)}%
-                            </Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex flex-col gap-2">
-                            <Button
-                              size="sm"
-                              variant="default"
-                              onClick={() => setSelectedPosition(positionWithPrice)}
-                              data-testid={`button-buy-more-${position.id}`}
-                            >
-                              Buy More
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => setSelectedPosition(positionWithPrice)}
-                              data-testid={`button-sell-${position.id}`}
-                            >
-                              Sell
-                            </Button>
-                            {isFirstOfMultiple && (
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DataCell
+                              value={formatPricePerTokenUSD(Number(position.entryPrice), 6)}
+                              variant="secondary"
+                            />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DataCell
+                              value={formatPricePerTokenUSD(Number(position.currentPrice), 6)}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DataCell
+                              value={formatTokenAmount(
+                                toBigInt(position.amount),
+                                position.decimals || 6,
+                                2
+                              )}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex flex-col items-end gap-0.5">
+                              <DataCell
+                                value={formatNative(
+                                  toBigInt(position.currentValue),
+                                  activeChain,
+                                  4
+                                )}
+                                suffix={` ${nativeSymbol}`}
+                              />
+                              <span className="font-mono text-xs text-[var(--text-tertiary)]">
+                                {formatUSD(
+                                  toBigInt(position.currentValue),
+                                  getPrice(activeChain),
+                                  activeChain,
+                                  2
+                                )}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex flex-col items-end gap-0.5">
+                              <DataCell
+                                value={formatNative(pnl, activeChain, 4)}
+                                prefix={isGain ? '+' : ''}
+                                suffix={` ${nativeSymbol}`}
+                                variant={isGain ? 'gain' : 'loss'}
+                              />
+                              <Badge variant={isGain ? 'gain' : 'loss'} className="text-xs">
+                                {isGain ? '+' : ''}
+                                {pnlPercent.toFixed(2)}%
+                              </Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() =>
+                                  setTradeModal({ position, mode: 'buy' })
+                                }
+                                data-testid={`button-buy-more-${position.id}`}
+                              >
+                                Buy
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleSellAll(position.tokenAddress, tokenPositions)}
-                                disabled={sellAllMutation.isPending}
-                                data-testid={`button-sell-all-${position.tokenAddress}`}
+                                className="border-[var(--accent-loss)] text-[var(--accent-loss)] hover:bg-[var(--accent-loss)]/10"
+                                onClick={() =>
+                                  setTradeModal({ position, mode: 'sell' })
+                                }
+                                data-testid={`button-sell-${position.id}`}
                               >
-                                {sellAllMutation.isPending ? 'Selling...' : `Sell All (${tokenPositions.length})`}
+                                Sell
                               </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </div>
-      </Card>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        </Card>
+      </motion.div>
 
-      {selectedPosition && (
+      {/* Trade Modal */}
+      {tradeModal && (
         <TradeModal
-          position={selectedPosition}
-          onClose={() => setSelectedPosition(null)}
+          position={tradeModal.position}
+          mode={tradeModal.mode}
+          onClose={() => setTradeModal(null)}
         />
       )}
     </div>

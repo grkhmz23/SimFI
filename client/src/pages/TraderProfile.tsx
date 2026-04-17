@@ -1,90 +1,161 @@
-import { useEffect, useState } from "react";
-import { useParams } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { AchievementBadge } from "@/components/AchievementBadge";
-import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/hooks/use-toast";
-import { formatDistanceToNow } from "date-fns";
-import type { BadgeId, Trade, Chain } from "@shared/schema";
-import { ArrowLeft } from "lucide-react";
-import { Link } from "wouter";
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useParams } from 'wouter';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { DataCell } from '@/components/ui/data-cell';
+import { ChainChip } from '@/components/ui/chain-chip';
+import { AchievementBadge } from '@/components/AchievementBadge';
+import { useAuth } from '@/lib/auth-context';
+import { formatNative } from '@/lib/token-format';
+import { cn } from '@/lib/utils';
+import type { Trade, BadgeId, Chain } from '@shared/schema';
+import { ArrowLeft, TrendingUp, TrendingDown, Clock, Target, Users, Award, Calendar } from 'lucide-react';
+import { Link } from 'wouter';
+import { formatDistanceToNow } from 'date-fns';
+import { useMemo } from 'react';
+import { useToast } from '@/hooks/use-toast';
 
-interface TraderProfileData {
-  trader: {
-    id: string;
-    username: string;
-    createdAt: string;
-    solanaWalletAddress: string | null;
-    baseWalletAddress: string | null;
-    balance: string;
-    baseBalance: string;
-    totalProfit: string;
-    baseTotalProfit: string;
-    winRate: number;
-    avgHoldTimeSeconds: number;
-    followerCount: number;
-    isFollowing: boolean;
-    achievements: BadgeId[];
-  };
+interface PublicTraderStats {
+  id: string;
+  username: string;
+  createdAt: string;
+  solanaWalletAddress: string | null;
+  baseWalletAddress: string | null;
+  balance: string;
+  baseBalance: string;
+  totalProfit: string;
+  baseTotalProfit: string;
+  winRate: number;
+  avgHoldTimeSeconds: number;
+  followerCount: number;
+  isFollowing: boolean;
+  achievements: BadgeId[];
+}
+
+interface TraderProfileResponse {
+  trader: PublicTraderStats;
+}
+
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: React.ReactNode;
+  icon?: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
+      <div className="flex items-center gap-2 mb-2">
+        {Icon && <Icon className="h-4 w-4 text-[var(--text-tertiary)]" />}
+        <span className="text-xs text-[var(--text-secondary)] uppercase tracking-wider">{label}</span>
+      </div>
+      <div className="font-mono tabular-nums text-lg text-[var(--text-primary)]">{value}</div>
+    </div>
+  );
+}
+
+function TradeRow({ trade }: { trade: Trade }) {
+  const profit = BigInt(trade.profitLoss);
+  const isPositive = profit >= 0n;
+
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
+      <div className="flex items-center gap-3 min-w-0">
+        <Badge variant={isPositive ? 'gain' : 'loss'} className="shrink-0">
+          {isPositive ? '+' : ''}
+          {formatNative(trade.profitLoss, trade.chain as Chain)} {trade.chain === 'base' ? 'ETH' : 'SOL'}
+        </Badge>
+        <span className="font-medium text-[var(--text-primary)] truncate">${trade.tokenSymbol}</span>
+        <span className="text-xs text-[var(--text-tertiary)] whitespace-nowrap">
+          {formatDistanceToNow(new Date(trade.closedAt), { addSuffix: true })}
+        </span>
+      </div>
+      <ChainChip chain={trade.chain as Chain} />
+    </div>
+  );
 }
 
 export default function TraderProfile() {
   const { username } = useParams<{ username: string }>();
-  const [profile, setProfile] = useState<TraderProfileData["trader"] | null>(null);
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [loading, setLoading] = useState(true);
   const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
   const isMe = user?.username === username;
 
-  useEffect(() => {
-    if (!username) return;
-    Promise.all([
-      fetch(`/api/traders/${username}`).then((r) => r.json()),
-      fetch(`/api/traders/${username}/trades`).then((r) => r.json()),
-    ])
-      .then(([profileData, tradesData]) => {
-        setProfile(profileData.trader || null);
-        setTrades(tradesData.trades || []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, [username]);
+  const { data: profileData, isLoading: profileLoading } = useQuery<TraderProfileResponse>({
+    queryKey: [`/api/traders/${username}`],
+    enabled: !!username,
+  });
 
-  const toggleFollow = async () => {
-    const res = await fetch(`/api/traders/${username}/follow`, {
-      method: "POST",
-      credentials: "include",
-    });
-    const data = await res.json();
-    if (res.ok && profile) {
-      setProfile({
-        ...profile,
-        isFollowing: data.following,
-        followerCount: profile.followerCount + (data.following ? 1 : -1),
+  const { data: tradesData, isLoading: tradesLoading } = useQuery<{ trades: Trade[] }>({
+    queryKey: [`/api/traders/${username}/trades`],
+    enabled: !!username,
+  });
+
+  const followMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/traders/${username}/follow`, {
+        method: 'POST',
+        credentials: 'include',
       });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to follow trader');
+      }
+      return res.json() as Promise<{ following: boolean }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/traders/${username}`] });
       toast({
-        title: data.following ? "Following" : "Unfollowed",
-        description: data.following ? `You are now following @${username}` : `Unfollowed @${username}`,
+        title: data.following ? 'Following' : 'Unfollowed',
+        description: data.following
+          ? `You are now following @${username}`
+          : `Unfollowed @${username}`,
       });
-    }
-  };
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
 
-  if (loading) {
+  const profile = profileData?.trader;
+  const trades = tradesData?.trades || [];
+
+  const { bestTrade, worstTrade } = useMemo(() => {
+    if (trades.length === 0) return { bestTrade: undefined, worstTrade: undefined };
+    const best = trades.reduce((a, b) => (BigInt(a.profitLoss) > BigInt(b.profitLoss) ? a : b));
+    const worst = trades.reduce((a, b) => (BigInt(a.profitLoss) < BigInt(b.profitLoss) ? a : b));
+    return { bestTrade: best, worstTrade: worst };
+  }, [trades]);
+
+  if (profileLoading) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-8">
-        <div className="h-32 animate-pulse rounded-xl bg-muted" />
+      <div className="container mx-auto max-w-4xl px-4 py-8">
+        <Skeleton className="h-48 w-full mb-6" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }
 
   if (!profile) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold">Trader not found</h1>
-        <p className="text-muted-foreground">@{username} doesn&apos;t exist.</p>
+      <div className="container mx-auto max-w-4xl px-4 py-16 text-center">
+        <h1 className="font-serif text-3xl text-[var(--text-primary)] mb-2">Trader not found</h1>
+        <p className="text-[var(--text-secondary)]">@{username} doesn&apos;t exist.</p>
       </div>
     );
   }
@@ -97,97 +168,157 @@ export default function TraderProfile() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
+    <div className="container mx-auto max-w-4xl px-4 py-8">
       <Link href="/leaderboard">
-        <Button variant="ghost" size="sm" className="mb-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mb-4 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+        >
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
+          Back to Leaderboard
         </Button>
       </Link>
 
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-r from-indigo-500/10 to-purple-500/10 p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">@{profile.username}</h1>
-            <p className="text-sm text-muted-foreground">
-              Member since {new Date(profile.createdAt).toLocaleDateString()}
-            </p>
-          </div>
-          {!isMe && isAuthenticated && (
-            <Button onClick={toggleFollow} variant={profile.isFollowing ? "outline" : "default"}>
-              {profile.isFollowing ? "Unfollow" : "Follow"}
-            </Button>
-          )}
-        </div>
-
-        {/* Stats */}
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="Win Rate" value={`${profile.winRate}%`} />
-          <StatCard label="Avg Hold" value={formatHoldTime(profile.avgHoldTimeSeconds)} />
-          <StatCard label="Followers" value={profile.followerCount.toString()} />
-          <StatCard label="Total Profit" value={`+${Number(profile.baseTotalProfit) / 1e18 || Number(profile.totalProfit) / 1e9}`} />
-        </div>
-      </div>
-
-      {/* Badges */}
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Achievement Badges</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-4">
-            {profile.achievements.map((badgeId) => (
-              <AchievementBadge key={badgeId} badgeId={badgeId} unlocked />
-            ))}
-            {profile.achievements.length === 0 && (
-              <p className="text-sm text-muted-foreground">No badges unlocked yet.</p>
+      {/* Profile Header */}
+      <Card className="mb-6 overflow-hidden">
+        <div className="p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="font-serif text-3xl text-[var(--text-primary)] mb-1">@{profile.username}</h1>
+              <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                <Calendar className="h-3.5 w-3.5" />
+                <span>Member since {new Date(profile.createdAt).toLocaleDateString()}</span>
+              </div>
+            </div>
+            {!isMe && isAuthenticated && (
+              <Button
+                onClick={() => followMutation.mutate()}
+                variant={profile.isFollowing ? 'outline' : 'default'}
+                disabled={followMutation.isPending}
+              >
+                {profile.isFollowing ? 'Unfollow' : 'Follow'}
+              </Button>
             )}
           </div>
+
+          {/* Stats Grid */}
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard
+              label="Solana P&L"
+              value={
+                <DataCell
+                  value={formatNative(profile.totalProfit, 'solana')}
+                  variant={Number(profile.totalProfit) >= 0 ? 'gain' : 'loss'}
+                  prefix={Number(profile.totalProfit) >= 0 ? '+' : ''}
+                  suffix=" SOL"
+                />
+              }
+              icon={TrendingUp}
+            />
+            <StatCard
+              label="Base P&L"
+              value={
+                <DataCell
+                  value={formatNative(profile.baseTotalProfit, 'base')}
+                  variant={Number(profile.baseTotalProfit) >= 0 ? 'gain' : 'loss'}
+                  prefix={Number(profile.baseTotalProfit) >= 0 ? '+' : ''}
+                  suffix=" ETH"
+                />
+              }
+              icon={TrendingUp}
+            />
+            <StatCard
+              label="Win Rate"
+              value={`${profile.winRate}%`}
+              icon={Target}
+            />
+            <StatCard
+              label="Avg Hold"
+              value={formatHoldTime(profile.avgHoldTimeSeconds)}
+              icon={Clock}
+            />
+            <StatCard
+              label="Followers"
+              value={profile.followerCount.toLocaleString()}
+              icon={Users}
+            />
+            {bestTrade && (
+              <StatCard
+                label="Best Trade"
+                value={
+                  <DataCell
+                    value={formatNative(bestTrade.profitLoss, bestTrade.chain as Chain)}
+                    variant="gain"
+                    prefix="+"
+                    suffix={` ${bestTrade.chain === 'base' ? 'ETH' : 'SOL'}`}
+                  />
+                }
+                icon={TrendingUp}
+              />
+            )}
+            {worstTrade && (
+              <StatCard
+                label="Worst Trade"
+                value={
+                  <DataCell
+                    value={formatNative(worstTrade.profitLoss, worstTrade.chain as Chain)}
+                    variant="loss"
+                    suffix={` ${worstTrade.chain === 'base' ? 'ETH' : 'SOL'}`}
+                  />
+                }
+                icon={TrendingDown}
+              />
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Achievements */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Award className="h-5 w-5 text-[var(--accent-premium)]" />
+            Achievement Badges
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {profile.achievements.length > 0 ? (
+            <div className="flex flex-wrap gap-4">
+              {profile.achievements.map((badgeId) => (
+                <AchievementBadge key={badgeId} badgeId={badgeId} unlocked />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--text-tertiary)]">No badges unlocked yet.</p>
+          )}
         </CardContent>
       </Card>
 
       {/* Recent Trades */}
-      <Card className="mt-6">
+      <Card>
         <CardHeader>
           <CardTitle>Recent Trades</CardTitle>
+          <CardDescription>Last 10 closed positions</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {trades.slice(0, 10).map((trade) => (
-              <div
-                key={trade.id}
-                className="flex items-center justify-between rounded-lg border p-3"
-              >
-                <div className="flex items-center gap-3">
-                  <Badge variant={trade.profitLoss >= 0 ? "default" : "destructive"}>
-                    {trade.profitLoss >= 0 ? "+" : ""}
-                    {Number(trade.profitLoss) / (trade.chain === "base" ? 1e18 : 1e9)}{" "}
-                    {trade.chain === "base" ? "ETH" : "SOL"}
-                  </Badge>
-                  <span className="font-medium">${trade.tokenSymbol}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {formatDistanceToNow(new Date(trade.closedAt), { addSuffix: true })}
-                  </span>
-                </div>
-                <span className="text-xs text-muted-foreground capitalize">{trade.chain}</span>
-              </div>
-            ))}
-            {trades.length === 0 && (
-              <p className="text-sm text-muted-foreground">No trades yet.</p>
-            )}
-          </div>
+          {tradesLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          ) : trades.length > 0 ? (
+            <div className="space-y-2">
+              {trades.map((trade) => (
+                <TradeRow key={trade.id} trade={trade} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--text-tertiary)]">No trades yet.</p>
+          )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border bg-card/60 p-3 text-center">
-      <div className="text-xl font-bold">{value}</div>
-      <div className="text-xs text-muted-foreground">{label}</div>
     </div>
   );
 }

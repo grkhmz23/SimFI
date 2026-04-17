@@ -3,28 +3,45 @@ import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingTokenCard } from '@/components/TrendingTokenCard';
+import { DataCell } from '@/components/ui/data-cell';
+import { ChainChip } from '@/components/ui/chain-chip';
 import { ChainSelector, ChainBadge } from '@/components/ChainSelector';
 import { useChain } from '@/lib/chain-context';
-import { TrendingUp, Activity, Clock, Loader2 } from 'lucide-react';
-import type { Chain } from '@shared/schema';
+import { formatCompactNumber, formatPercentage } from '@/lib/token-format';
+import { useLocation } from 'wouter';
+import { TrendingUp, Activity, Clock, ArrowUpRight, ArrowDownRight, Droplets } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface TrendingToken {
+  tokenAddress: string;
+  name: string;
+  symbol: string;
+  priceUsd: number;
+  marketCap: number;
+  volume24h: number;
+  liquidity: number;
+  priceChange24h: number;
+  icon?: string;
+  pairCreatedAt?: number;
+}
 
 interface TrendingResponse {
-  trending: any[];
+  trending: TrendingToken[];
   count: number;
   cachedAt: number;
 }
 
 interface NewPairsResponse {
-  newPairs: any[];
+  newPairs: TrendingToken[];
   ageHours: number;
   count: number;
   cachedAt: number;
 }
 
 interface HotResponse {
-  hot: any[];
+  hot: TrendingToken[];
   count: number;
   cachedAt: number;
 }
@@ -34,6 +51,130 @@ const AGE_FILTERS = [
   { label: '6h', value: 6 },
   { label: '24h', value: 24 },
 ];
+
+function TokenRow({ token, rank, showAge = false }: { token: TrendingToken; rank?: number; showAge?: boolean }) {
+  const [, setLocation] = useLocation();
+  const priceChange = token.priceChange24h || 0;
+  const isPositive = priceChange >= 0;
+
+  const getAgeText = (timestamp?: number) => {
+    if (!timestamp) return 'Unknown';
+    const minutes = Math.floor((Date.now() - timestamp) / (1000 * 60));
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h`;
+    return `${Math.floor(hours / 24)}d`;
+  };
+
+  return (
+    <div
+      onClick={() => setLocation(`/token/${token.tokenAddress}`)}
+      className={cn(
+        'flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors border-b border-[var(--border-subtle)] last:border-b-0',
+        'hover:bg-[var(--bg-hover)]'
+      )}
+    >
+      {rank !== undefined && (
+        <span className="w-6 text-right text-xs font-mono tabular-nums text-[var(--text-tertiary)] shrink-0">
+          {rank}
+        </span>
+      )}
+
+      {token.icon ? (
+        <img
+          src={token.icon}
+          alt={token.symbol}
+          className="w-8 h-8 rounded-full shrink-0"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+        />
+      ) : (
+        <div className="w-8 h-8 rounded-full bg-[var(--bg-base)] flex items-center justify-center text-xs font-bold text-[var(--text-secondary)] shrink-0">
+          {token.symbol.slice(0, 2)}
+        </div>
+      )}
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-[var(--text-primary)] truncate">{token.name}</span>
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+            {token.symbol}
+          </Badge>
+        </div>
+        <div className="flex items-center gap-3 mt-0.5">
+          {token.marketCap > 0 && (
+            <span className="text-xs text-[var(--text-tertiary)] font-mono tabular-nums">
+              MC {formatCompactNumber(token.marketCap)}
+            </span>
+          )}
+          {token.liquidity > 0 && (
+            <span className="flex items-center gap-1 text-xs text-[var(--text-tertiary)]">
+              <Droplets className="h-3 w-3" />
+              <span className="font-mono tabular-nums">{formatCompactNumber(token.liquidity)}</span>
+            </span>
+          )}
+          {showAge && token.pairCreatedAt && (
+            <span className="flex items-center gap-1 text-xs text-[var(--text-tertiary)]">
+              <Clock className="h-3 w-3" />
+              {getAgeText(token.pairCreatedAt)}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="text-right shrink-0">
+        <DataCell
+          value={formatPercentage(priceChange)}
+          variant={isPositive ? 'gain' : 'loss'}
+          className="text-sm font-semibold"
+        />
+        {token.priceUsd > 0 && (
+          <p className="text-xs text-[var(--text-tertiary)] font-mono tabular-nums mt-0.5">
+            ${token.priceUsd < 0.01 ? token.priceUsd.toExponential(2) : token.priceUsd.toFixed(4)}
+          </p>
+        )}
+      </div>
+
+      <ArrowUpRight className="h-4 w-4 text-[var(--text-tertiary)] shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+    </div>
+  );
+}
+
+function TokenList({ tokens, loading, showAge = false }: { tokens: TrendingToken[]; loading: boolean; showAge?: boolean }) {
+  if (loading) {
+    return (
+      <div className="space-y-0">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border-subtle)]">
+            <Skeleton className="w-6 h-4" />
+            <Skeleton className="w-8 h-8 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="w-32 h-4" />
+              <Skeleton className="w-20 h-3" />
+            </div>
+            <Skeleton className="w-16 h-4" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (!tokens || tokens.length === 0) {
+    return (
+      <div className="px-4 py-12 text-center">
+        <p className="text-sm text-[var(--text-secondary)]">No tokens found for this chain.</p>
+        <p className="text-xs text-[var(--text-tertiary)] mt-1">Try switching chains or check back later.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-[var(--border-subtle)]">
+      {tokens.map((token, index) => (
+        <TokenRow key={token.tokenAddress} token={token} rank={index + 1} showAge={showAge} />
+      ))}
+    </div>
+  );
+}
 
 export default function Trending() {
   const { activeChain } = useChain();
@@ -66,58 +207,25 @@ export default function Trending() {
     },
   });
 
-  const renderList = (tokens: any[], loading: boolean, showAge = false) => {
-    if (loading) {
-      return (
-        <Card className="p-12 text-center">
-          <Loader2 className="h-8 w-8 mx-auto text-primary animate-spin mb-3" />
-          <p className="text-muted-foreground">Loading tokens...</p>
-        </Card>
-      );
-    }
-
-    if (!tokens || tokens.length === 0) {
-      return (
-        <Card className="p-12 text-center">
-          <p className="text-muted-foreground">No tokens found for this chain.</p>
-          <p className="text-xs text-muted-foreground mt-2">
-            Try switching to {activeChain === 'base' ? 'Solana' : 'Base'} or check back later.
-          </p>
-        </Card>
-      );
-    }
-
-    return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {tokens.map((token, index) => (
-          <TrendingTokenCard
-            key={token.tokenAddress}
-            token={token}
-            rank={index + 1}
-            showAge={showAge}
-          />
-        ))}
-      </div>
-    );
-  };
-
   return (
-    <div className="min-h-screen">
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
+    <div className="min-h-screen bg-[var(--bg-base)]">
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
             <div>
-              <h1 className="text-3xl md:text-4xl font-bold mb-2 flex items-center gap-3">
-                <TrendingUp className="h-8 w-8 text-primary" />
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingUp className="h-4 w-4 text-[var(--accent-gain)]" />
+                <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)]">Markets</span>
+              </div>
+              <h1 className="font-serif text-3xl text-[var(--text-primary)]" style={{ fontFamily: 'var(--font-serif)' }}>
                 Trending
               </h1>
-              <p className="text-muted-foreground">
+              <p className="text-sm text-[var(--text-secondary)] mt-1">
                 Discover the hottest tokens on {activeChain === 'base' ? 'Base' : 'Solana'}
               </p>
             </div>
             <ChainSelector variant="pill" />
           </div>
-
           <div className="flex items-center gap-2">
             <ChainBadge chain={activeChain} />
             <Badge variant="secondary">Live Data</Badge>
@@ -141,44 +249,47 @@ export default function Trending() {
           </TabsList>
 
           <TabsContent value="trending">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Top Trending Tokens</h2>
-              <p className="text-sm text-muted-foreground">
-                {trendingData?.count || 0} tokens found
-              </p>
-            </div>
-            {renderList(trendingData?.trending || [], trendingLoading)}
+            <Card>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
+                <h2 className="text-sm font-medium text-[var(--text-primary)]">Top Trending Tokens</h2>
+                <span className="text-xs text-[var(--text-tertiary)] font-mono tabular-nums">
+                  {trendingData?.count || 0} tokens
+                </span>
+              </div>
+              <TokenList tokens={trendingData?.trending || []} loading={trendingLoading} />
+            </Card>
           </TabsContent>
 
           <TabsContent value="new">
-            <div className="mb-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                <h2 className="text-xl font-semibold">Recently Launched Pairs</h2>
-                <div className="flex items-center gap-2">
+            <Card>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)] gap-3">
+                <h2 className="text-sm font-medium text-[var(--text-primary)]">Recently Launched Pairs</h2>
+                <div className="flex items-center gap-1">
                   {AGE_FILTERS.map((filter) => (
                     <Button
                       key={filter.value}
                       size="sm"
                       variant={ageHours === filter.value ? 'default' : 'outline'}
                       onClick={() => setAgeHours(filter.value)}
+                      className="h-7 text-xs"
                     >
                       {filter.label}
                     </Button>
                   ))}
                 </div>
               </div>
-            </div>
-            {renderList(newPairsData?.newPairs || [], newPairsLoading, true)}
+              <TokenList tokens={newPairsData?.newPairs || []} loading={newPairsLoading} showAge />
+            </Card>
           </TabsContent>
 
           <TabsContent value="hot">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Hot Right Now</h2>
-              <p className="text-sm text-muted-foreground">
-                Sorted by volume / liquidity momentum
-              </p>
-            </div>
-            {renderList(hotData?.hot || [], hotLoading)}
+            <Card>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
+                <h2 className="text-sm font-medium text-[var(--text-primary)]">Hot Right Now</h2>
+                <span className="text-xs text-[var(--text-tertiary)]">Sorted by volume / liquidity momentum</span>
+              </div>
+              <TokenList tokens={hotData?.hot || []} loading={hotLoading} />
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

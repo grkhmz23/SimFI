@@ -1,11 +1,16 @@
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
-import { ArrowRight, TrendingUp, TrendingDown, RefreshCw } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-import type { Chain } from "@shared/schema";
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { DataCell } from '@/components/ui/data-cell';
+import { ChainChip } from '@/components/ui/chain-chip';
+import { Link } from 'wouter';
+import { ArrowRight, TrendingUp, TrendingDown, RefreshCw, Waves } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import type { Chain } from '@shared/schema';
+import { cn } from '@/lib/utils';
 
 interface WhaleActivity {
   id: string;
@@ -13,121 +18,135 @@ interface WhaleActivity {
   walletAlias: string;
   tokenAddress: string;
   tokenSymbol: string;
-  action: "buy" | "sell";
+  action: 'buy' | 'sell';
   amountNative: number;
   timestamp: string;
   chain: Chain;
 }
 
 export default function WhaleWatch() {
-  const [activity, setActivity] = useState<WhaleActivity[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [chain, setChain] = useState<Chain>("base");
+  const [chain, setChain] = useState<Chain>('base');
 
-  const fetchActivity = async () => {
-    setLoading(true);
-    try {
+  const { data, isLoading, refetch } = useQuery<{ activity: WhaleActivity[] }>({
+    queryKey: ['/api/whales/activity', chain],
+    queryFn: async () => {
       const res = await fetch(`/api/whales/activity?chain=${chain}`);
-      const data = await res.json();
-      setActivity(data.activity || []);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (!res.ok) throw new Error('Failed to fetch whale activity');
+      return res.json();
+    },
+  });
 
-  useEffect(() => {
-    fetchActivity();
-  }, [chain]);
+  const activity = data?.activity || [];
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Whale Watch</h1>
-          <p className="text-sm text-muted-foreground">
-            Track smart money moves on {chain === "base" ? "Base" : "Solana"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border bg-muted p-1">
-            <button
-              onClick={() => setChain("base")}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                chain === "base" ? "bg-background text-foreground shadow" : "text-muted-foreground"
-              }`}
-            >
-              Base
-            </button>
-            <button
-              onClick={() => setChain("solana")}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                chain === "solana" ? "bg-background text-foreground shadow" : "text-muted-foreground"
-              }`}
-            >
-              Solana
-            </button>
+    <div className="min-h-screen bg-[var(--bg-base)]">
+      <div className="container mx-auto px-4 py-8 max-w-3xl">
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-2">
+            <Waves className="h-4 w-4 text-[var(--accent-premium)]" />
+            <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)]">Smart Money</span>
           </div>
-          <Button variant="outline" size="icon" onClick={fetchActivity} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </Button>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="font-serif text-3xl text-[var(--text-primary)]" style={{ fontFamily: 'var(--font-serif)' }}>
+                Whale Watch
+              </h1>
+              <p className="text-sm text-[var(--text-secondary)] mt-1">
+                Track smart money moves on {chain === 'base' ? 'Base' : 'Solana'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="inline-flex rounded-md border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-1">
+                <button
+                  onClick={() => setChain('base')}
+                  className={cn(
+                    'rounded-sm px-3 py-1 text-xs font-medium transition-colors',
+                    chain === 'base'
+                      ? 'bg-[var(--bg-base)] text-[var(--text-primary)] shadow-sm'
+                      : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+                  )}
+                >
+                  Base
+                </button>
+                <button
+                  onClick={() => setChain('solana')}
+                  className={cn(
+                    'rounded-sm px-3 py-1 text-xs font-medium transition-colors',
+                    chain === 'solana'
+                      ? 'bg-[var(--bg-base)] text-[var(--text-primary)] shadow-sm'
+                      : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+                  )}
+                >
+                  Solana
+                </button>
+              </div>
+              <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isLoading} className="h-8 w-8">
+                <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} />
+              </Button>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div className="space-y-3">
-        {loading && activity.length === 0 ? (
-          <>
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-24 animate-pulse rounded-xl bg-muted" />
-            ))}
-          </>
-        ) : (
-          activity.map((item) => (
-            <Card key={item.id}>
-              <CardContent className="flex items-center justify-between p-4">
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                      item.action === "buy" ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"
-                    }`}
-                  >
-                    {item.action === "buy" ? (
-                      <TrendingUp className="h-5 w-5" />
-                    ) : (
-                      <TrendingDown className="h-5 w-5" />
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold">{item.walletAlias}</span>
-                      <Badge variant="outline" className="text-xs">
-                        {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
-                      </Badge>
+        <div className="space-y-3">
+          {isLoading && activity.length === 0 ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-24" />
+            ))
+          ) : (
+            activity.map((item) => {
+              const isBuy = item.action === 'buy';
+              return (
+                <Card key={item.id} className="overflow-hidden">
+                  <CardContent className="flex items-center justify-between p-4">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={cn(
+                          'flex h-10 w-10 shrink-0 items-center justify-center rounded-full border',
+                          isBuy
+                            ? 'bg-[rgba(63,168,118,0.1)] border-[var(--border-gain)] text-[var(--accent-gain)]'
+                            : 'bg-[rgba(194,77,77,0.1)] border-[var(--border-loss)] text-[var(--accent-loss)]'
+                        )}
+                      >
+                        {isBuy ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-[var(--text-primary)]">{item.walletAlias}</span>
+                          <Badge variant="outline" className="text-[10px]">
+                            {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-[var(--text-secondary)] mt-0.5">
+                          <span className={isBuy ? 'text-[var(--accent-gain)]' : 'text-[var(--accent-loss)]'}>
+                            {isBuy ? 'Bought' : 'Sold'}
+                          </span>{' '}
+                          <span className="font-medium text-[var(--text-primary)]">${item.tokenSymbol}</span>{' '}
+                          for{' '}
+                          <span className="font-mono tabular-nums text-[var(--text-primary)]">
+                            {item.amountNative.toFixed(4)} {chain === 'base' ? 'ETH' : 'SOL'}
+                          </span>
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {item.action === "buy" ? "Bought" : "Sold"}{" "}
-                      <span className="font-medium text-foreground">${item.tokenSymbol}</span>
-                      {" "}for{" "}
-                      <span className="font-medium text-foreground">
-                        {item.amountNative.toFixed(4)} {chain === "base" ? "ETH" : "SOL"}
-                      </span>
-                    </p>
-                  </div>
-                </div>
-                <Link href={`/token/${item.tokenAddress}?chain=${chain}`}>
-                  <Button size="sm" variant="outline">
-                    Simulate
-                    <ArrowRight className="ml-1 h-4 w-4" />
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          ))
-        )}
-        {!loading && activity.length === 0 && (
-          <p className="text-center text-muted-foreground">No whale activity found.</p>
-        )}
+                    <Link href={`/token/${item.tokenAddress}?chain=${chain}`}>
+                      <Button size="sm" variant="outline" className="shrink-0">
+                        Simulate
+                        <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                      </Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+          {!isLoading && activity.length === 0 && (
+            <div className="text-center py-12">
+              <Waves className="h-8 w-8 text-[var(--text-tertiary)] mx-auto mb-3" />
+              <p className="text-sm text-[var(--text-secondary)]">No whale activity found.</p>
+              <p className="text-xs text-[var(--text-tertiary)] mt-1">Check back later or switch chains.</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
