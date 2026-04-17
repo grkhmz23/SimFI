@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
+import cors from "cors";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { spawn } from "child_process";
@@ -9,6 +10,20 @@ const app = express();
 
 // ✅ Remove X-Powered-By header (information disclosure)
 app.disable('x-powered-by');
+
+// ============================================================================
+// CORS CONFIGURATION
+// ============================================================================
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.FRONTEND_URL || false // Restrict to specific origin in production
+    : ['http://localhost:5000', 'http://localhost:5173'], // Allow dev servers
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Idempotency-Key'],
+  maxAge: 86400 // 24 hours
+};
+app.use(cors(corsOptions));
 
 // ✅ CRITICAL: Trust first proxy for correct client IP detection
 // Required for rate limiting to work correctly behind Nginx/Cloudflare/Render/Fly
@@ -33,13 +48,10 @@ app.use((req, res, next) => {
   // Permissions Policy - restrict browser features
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
-  // HSTS - Only set if not already set by hosting provider (Google Frontend, Cloudflare, etc.)
-  // Check if HSTS is already present to avoid duplicates
-  // Most cloud providers (Google Cloud Run, Cloudflare, etc.) already add HSTS
-  // Uncomment below ONLY if your hosting doesn't add HSTS:
-  // if (process.env.NODE_ENV === 'production') {
-  //   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  // }
+  // HSTS - Enable in production for HTTPS-only sites
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
 
   // Content Security Policy - prevent XSS and data injection
   // This is a moderate policy - adjust based on your needs
@@ -59,8 +71,8 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: false, limit: '10kb' }));
 app.use(cookieParser());
 
 // ✅ MEDIUM FIX: Reduced logging - no response bodies (could contain PII)
@@ -145,10 +157,25 @@ app.use((err, req, res, next) => {
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
+    
+    // Log full error internally
     console.error('❌ Unhandled error:', err);
-    res.status(status).json({ message });
+    
+    // Don't leak stack traces or internal details in production
+    let message = "Internal Server Error";
+    if (process.env.NODE_ENV !== 'production') {
+      message = err.message || "Internal Server Error";
+    } else {
+      // In production, only expose client-safe messages for 4xx errors
+      if (status < 500 && err.message) {
+        message = err.message;
+      }
+    }
+    
+    res.status(status).json({ 
+      message,
+      ...(process.env.NODE_ENV !== 'production' && { stack: err.stack })
+    });
   });
 
   // Serve static files from client/public directory (for favicon, etc.) in development

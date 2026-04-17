@@ -2,9 +2,10 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { formatSol } from "@/lib/lamports";
+import { formatNative } from "@/lib/token-format";
+import { useChain } from "@/lib/chain-context";
 import { Trophy, TrendingUp, Microscope, Info, User, LogOut, Wallet, History, BarChart3 } from "lucide-react";
-import logoUrl from "@assets/simfilogo_1761226731940.png";
+const logoUrl = '/simfi-logo.png';
 import { OmniSearch } from "@/components/v2/OmniSearch";
 
 const nav = [
@@ -18,6 +19,9 @@ const nav = [
 export function NavigationV2() {
   const [location, setLocation] = useLocation();
   const { user, logout, isAuthenticated } = useAuth();
+  const { activeChain, nativeSymbol } = useChain();
+  
+  const userBalance = activeChain === 'solana' ? user?.balance : user?.baseBalance;
 
   return (
     <>
@@ -58,7 +62,7 @@ export function NavigationV2() {
                       <User className="h-4 w-4" />
                       <span className="hidden sm:inline">{user?.username}</span>
                       <span className="hidden lg:inline font-mono text-xs text-muted-foreground">
-                        {formatSol(user?.balance || 0)} SOL
+                        {formatNative(userBalance || 0, activeChain)} {nativeSymbol}
                       </span>
                     </Button>
                   </DropdownMenuTrigger>
@@ -67,7 +71,7 @@ export function NavigationV2() {
                       <div className="flex flex-col">
                         <span className="font-medium">{user?.username}</span>
                         <span className="font-mono text-xs text-muted-foreground font-normal">
-                          {formatSol(user?.balance || 0)} SOL
+                          {formatNative(userBalance || 0, activeChain)} {nativeSymbol}
                         </span>
                       </div>
                     </DropdownMenuLabel>

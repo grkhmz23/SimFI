@@ -206,7 +206,7 @@ export default function Login() {
 
           {/* Footer */}
           <p className="text-center text-xs text-muted-foreground mt-6">
-            Start with 10 SOL paper balance • Risk-free trading
+            Start with 5 ETH + 10 SOL paper balance • Risk-free trading
           </p>
         </div>
       </motion.div>

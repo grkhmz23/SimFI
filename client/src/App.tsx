@@ -13,14 +13,17 @@ import Register from "@/pages/Register";
 import Trade from "@/pages/Trade";
 import { WelcomePopup } from "@/components/WelcomePopup";
 import TokenPage from "@/pages/TokenPage";
+import Trending from "@/pages/Trending";
 import Dashboard from "@/pages/Dashboard";
 import Portfolio from "@/pages/Portfolio";
 import Positions from "@/pages/Positions";
 import History from "@/pages/History";
 import Leaderboard from "@/pages/Leaderboard";
-import Rewards from "@/pages/Rewards";
 import About from "@/pages/About";
 import TokenAnalyzer from "@/pages/TokenAnalyzer";
+import Referrals from "@/pages/Referrals";
+import TraderProfile from "@/pages/TraderProfile";
+import WhaleWatch from "@/pages/WhaleWatch";
 import NotFound from "@/pages/not-found";
 
 function PageLayout({ component: Component }: { component: React.ComponentType }) {
@@ -48,6 +51,9 @@ function Router() {
       <Route path="/token/:address">
         <PageLayout component={TokenPage} />
       </Route>
+      <Route path="/trending">
+        <PageLayout component={Trending} />
+      </Route>
       <Route path="/dashboard">
         <PageLayout component={Dashboard} />
       </Route>
@@ -63,14 +69,20 @@ function Router() {
       <Route path="/leaderboard">
         <PageLayout component={Leaderboard} />
       </Route>
-      <Route path="/rewards">
-        <PageLayout component={Rewards} />
-      </Route>
       <Route path="/study">
         <PageLayout component={TokenAnalyzer} />
       </Route>
       <Route path="/about">
         <PageLayout component={About} />
+      </Route>
+      <Route path="/referrals">
+        <PageLayout component={Referrals} />
+      </Route>
+      <Route path="/trader/:username">
+        <PageLayout component={TraderProfile} />
+      </Route>
+      <Route path="/whales">
+        <PageLayout component={WhaleWatch} />
       </Route>
       <Route component={NotFound} />
     </Switch>
@@ -81,18 +93,18 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <ChainProvider>
-          <PriceProvider>
-            <AuthProvider>
+        <AuthProvider>
+          <ChainProvider>
+            <PriceProvider>
               <Toaster />
               <WelcomePopup 
                 delay={800}
                 showOncePerSession={false}
               />
               <Router />
-            </AuthProvider>
-          </PriceProvider>
-        </ChainProvider>
+            </PriceProvider>
+          </ChainProvider>
+        </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

@@ -1,10 +1,18 @@
-// server/services/marketRoutes.ts
-// Multi-chain market data endpoints
+// server/routes/market.ts
+// New market data endpoints - frontend calls these instead of external APIs
+// Multi-chain support: solana and base
 
 import type { Express, RequestHandler } from 'express';
 import { marketDataService } from '../services/marketData';
 import { quoteService } from '../services/quoteService';
-import { isValidChain, type Chain } from '../lib/chain-utils';
+import type { Chain } from '@shared/schema';
+
+// Valid chains
+const VALID_CHAINS: Chain[] = ['solana', 'base'];
+
+function isValidChain(chain: string): chain is Chain {
+  return VALID_CHAINS.includes(chain as Chain);
+}
 
 export function registerMarketRoutes(
   app: Express,
@@ -20,32 +28,36 @@ export function registerMarketRoutes(
   // =========================================================================
 
   /**
-   * GET /api/market/token/:chain/:address
-   * Get single token data for a specific chain (cached)
-   * Example: /api/market/token/solana/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+   * GET /api/market/token/:address?chain=solana|base
+   * Get single token data (cached)
+   * Replaces frontend DexScreener calls
    */
-  app.get('/api/market/token/:chain/:address', async (req, res) => {
+  app.get('/api/market/token/:address', async (req, res) => {
     try {
-      const { chain, address } = req.params;
+      const { address } = req.params;
+      const chainParam = (req.query.chain as string) || 'solana';
 
-      // Validate chain
-      if (!isValidChain(chain)) {
-        return res.status(400).json({ error: `Invalid chain. Must be one of: solana, base` });
-      }
-
-      if (!address || address.length < 20) {
+      if (!address || address.length < 32) {
         return res.status(400).json({ error: 'Invalid token address' });
       }
 
-      const token = await marketDataService.getToken(address, chain as Chain);
+      const token = isValidChain(chainParam)
+        ? await marketDataService.getToken(address, chainParam)
+        : await marketDataService.getTokenByChainId(address, chainParam);
 
       if (!token) {
         return res.status(404).json({ error: 'Token not found' });
       }
 
-      res.json({
+      // Serialize BigInt values for JSON and map to frontend Token shape
+      const serializedToken = {
         ...token,
+        price: Number(token.priceNative),
         priceNative: token.priceNative.toString(),
+      };
+
+      res.json({
+        ...serializedToken,
         cached: true,
         ageMs: Date.now() - token.lastUpdated,
       });
@@ -56,25 +68,24 @@ export function registerMarketRoutes(
   });
 
   /**
-   * GET /api/market/tokens?chain=solana&addresses=addr1,addr2,addr3
+   * GET /api/market/tokens?addresses=addr1,addr2,addr3&chain=solana|base
    * Batch endpoint for positions page
    * Much more efficient than individual calls
    */
   app.get('/api/market/tokens', async (req, res) => {
     try {
       const addressesParam = req.query.addresses as string;
-      const chain = (req.query.chain as string) || 'solana';
-
-      // Validate chain
-      if (!isValidChain(chain)) {
-        return res.status(400).json({ error: `Invalid chain. Must be one of: solana, base` });
-      }
+      const chainParam = (req.query.chain as string) || 'solana';
 
       if (!addressesParam) {
         return res.status(400).json({ error: 'addresses query param required' });
       }
 
-      const addresses = addressesParam.split(',').filter(a => a.length >= 20);
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: 'Invalid chain. Must be "solana" or "base"' });
+      }
+
+      const addresses = addressesParam.split(',').filter(a => a.length >= 32);
 
       if (addresses.length === 0) {
         return res.json({ tokens: {} });
@@ -84,9 +95,9 @@ export function registerMarketRoutes(
         return res.status(400).json({ error: 'Maximum 50 addresses per request' });
       }
 
-      const tokensMap = await marketDataService.getTokensBatch(addresses, chain as Chain);
+      const tokensMap = await marketDataService.getTokensBatch(addresses, chainParam);
 
-      // Convert Map to object for JSON response
+      // Convert Map to object for JSON response (serialize BigInt values)
       const tokens: Record<string, any> = {};
       tokensMap.forEach((data, addr) => {
         tokens[addr] = {
@@ -100,7 +111,6 @@ export function registerMarketRoutes(
         tokens,
         found: tokensMap.size,
         requested: addresses.length,
-        chain,
       });
     } catch (error: any) {
       console.error('Market tokens batch error:', error);
@@ -109,28 +119,29 @@ export function registerMarketRoutes(
   });
 
   /**
-   * GET /api/market/trending?chain=solana&limit=20
-   * Get trending tokens for a specific chain (cached 30s)
+   * GET /api/market/trending?chain=solana|base&limit=20
+   * Get trending tokens (cached 30s)
    */
   app.get('/api/market/trending', async (req, res) => {
     try {
-      const chain = (req.query.chain as string) || 'solana';
+      const chainParam = (req.query.chain as string) || 'solana';
       const limit = Math.min(50, parseInt(req.query.limit as string) || 20);
 
-      // Validate chain
-      if (!isValidChain(chain)) {
-        return res.status(400).json({ error: `Invalid chain. Must be one of: solana, base` });
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: 'Invalid chain. Must be "solana" or "base"' });
       }
 
-      const trending = await marketDataService.getTrending(chain as Chain, limit);
+      const trending = await marketDataService.getTrending(limit, chainParam);
+
+      // Serialize BigInt values
+      const serializedTrending = trending.map(token => ({
+        ...token,
+        priceNative: token.priceNative.toString(),
+      }));
 
       res.json({
-        trending: trending.map(t => ({
-          ...t,
-          priceNative: t.priceNative.toString(),
-        })),
+        trending: serializedTrending,
         count: trending.length,
-        chain,
         cachedAt: Date.now(),
       });
     } catch (error: any) {
@@ -140,37 +151,97 @@ export function registerMarketRoutes(
   });
 
   /**
-   * GET /api/market/search?chain=solana&q=bonk
-   * Search tokens for a specific chain (cached 60s per query)
+   * GET /api/market/new-pairs?chain=solana|base&age=1|6|24
+   * Recently launched pairs
+   */
+  app.get('/api/market/new-pairs', async (req, res) => {
+    try {
+      const chainParam = (req.query.chain as string) || 'solana';
+      const ageHours = Math.min(168, Math.max(1, parseInt(req.query.age as string) || 24));
+
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: 'Invalid chain. Must be "solana" or "base"' });
+      }
+
+      const newPairs = await marketDataService.getNewPairs(ageHours, chainParam);
+
+      const serialized = newPairs.map(token => ({
+        ...token,
+        priceNative: token.priceNative.toString(),
+      }));
+
+      res.json({
+        newPairs: serialized,
+        ageHours,
+        count: newPairs.length,
+        cachedAt: Date.now(),
+      });
+    } catch (error: any) {
+      console.error('Market new-pairs error:', error);
+      res.status(500).json({ error: 'Failed to fetch new pairs' });
+    }
+  });
+
+  /**
+   * GET /api/market/hot?chain=solana|base&limit=20
+   * Hot tokens by volume/liquidity momentum
+   */
+  app.get('/api/market/hot', async (req, res) => {
+    try {
+      const chainParam = (req.query.chain as string) || 'solana';
+      const limit = Math.min(50, parseInt(req.query.limit as string) || 20);
+
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: 'Invalid chain. Must be "solana" or "base"' });
+      }
+
+      const hot = await marketDataService.getHotTokens(limit, chainParam);
+
+      const serialized = hot.map(token => ({
+        ...token,
+        priceNative: token.priceNative.toString(),
+      }));
+
+      res.json({
+        hot: serialized,
+        count: hot.length,
+        cachedAt: Date.now(),
+      });
+    } catch (error: any) {
+      console.error('Market hot error:', error);
+      res.status(500).json({ error: 'Failed to fetch hot tokens' });
+    }
+  });
+
+  /**
+   * GET /api/market/search?q=bonk&chain=solana|base
+   * Search tokens (cached 60s per query)
    */
   app.get('/api/market/search', searchLimiter, async (req, res) => {
     try {
       const query = req.query.q as string;
-      const chain = (req.query.chain as string) || 'solana';
-
-      // Validate chain
-      if (!isValidChain(chain)) {
-        return res.status(400).json({ error: `Invalid chain. Must be one of: solana, base` });
-      }
+      const chainParam = (req.query.chain as string) || 'solana';
 
       if (!query || query.length < 2) {
-        return res.json({ results: [], chain });
+        return res.json({ results: [] });
       }
 
       if (query.length > 100) {
         return res.status(400).json({ error: 'Query too long' });
       }
 
-      const results = await marketDataService.search(query, chain as Chain);
+      const results = await marketDataService.search(query, chainParam);
+
+      // Serialize BigInt values
+      const serializedResults = results.map(result => ({
+        ...result,
+        price: result.price.toString(),
+      }));
 
       res.json({
-        results: results.map(r => ({
-          ...r,
-          price: r.price.toString(),
-        })),
+        results: serializedResults,
         count: results.length,
         query,
-        chain,
       });
     } catch (error: any) {
       console.error('Market search error:', error);
@@ -202,24 +273,24 @@ export function registerMarketRoutes(
    * Get a server-authoritative quote for trade execution
    * 
    * Query params:
-   * - chain: 'solana' or 'base' (default: solana)
    * - token: token address (required)
+   * - chain: 'solana' or 'base' (required)
    * - side: 'buy' or 'sell' (required)
-   * - amountNative: native token amount for buys (required for buy)
+   * - amountNative: Native amount for buys (required for buy) - in SOL or ETH
    * - amountTokens: token amount for sells (required for sell)
    */
   app.get('/api/quote', authenticateToken, async (req, res) => {
     try {
-      const { chain = 'solana', token, side, amountNative, amountTokens } = req.query;
-
-      // Validate chain
-      if (!isValidChain(chain as string)) {
-        return res.status(400).json({ error: `Invalid chain. Must be one of: solana, base` });
-      }
+      const { token, chain, side, amountNative, amountTokens } = req.query;
 
       // Validate inputs
       if (!token || typeof token !== 'string') {
         return res.status(400).json({ error: 'token address required' });
+      }
+
+      const chainParam = (chain as string) || 'solana';
+      if (!isValidChain(chainParam)) {
+        return res.status(400).json({ error: 'chain must be "solana" or "base"' });
       }
 
       if (side !== 'buy' && side !== 'sell') {
@@ -237,8 +308,8 @@ export function registerMarketRoutes(
       // Create quote
       const quote = await quoteService.createQuote({
         userId: req.userId!,
-        chain: chain as Chain,
         tokenAddress: token,
+        chain: chainParam,
         side: side as 'buy' | 'sell',
         amountNative: amountNative as string | undefined,
         amountTokens: amountTokens as string | undefined,
@@ -267,10 +338,10 @@ export function registerMarketRoutes(
       res.json({
         quoteId: quote.quoteId,
         tokenAddress: quote.tokenAddress,
+        chain: quote.chain,
         side: quote.side,
         priceNative: quote.priceNative.toString(),
         estimatedOutput: quote.estimatedOutput.toString(),
-        chain: quote.chain,
         expiresAt: quote.expiresAt,
         expiresInMs: quote.expiresAt - Date.now(),
         valid: true,

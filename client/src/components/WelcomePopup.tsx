@@ -109,22 +109,22 @@ export function WelcomePopup({
 
                   {/* Title */}
                   <h3 className="text-xl font-semibold text-center text-foreground">
-                    Welcome to SimFi! 🚀
+                    Welcome to SimFi!
                   </h3>
                 </div>
 
                 {/* Content */}
                 <div className="px-8 pb-8">
                   <p className="text-center text-muted-foreground mb-6">
-                    Practice trading Solana memecoins risk-free with 10 SOL paper balance
+                    Practice trading Base and Solana memecoins risk-free with 5 ETH + 10 SOL paper balance
                   </p>
 
                   {/* Features */}
                   <div className="space-y-3 mb-6">
                     {[
-                      { icon: Zap, text: "Real-time prices from Pump.fun", color: "text-yellow-500" },
-                      { icon: Trophy, text: "Compete on leaderboard for real SOL", color: "text-primary" },
-                      { icon: Sparkles, text: "Win rewards every 6 hours", color: "text-accent" },
+                      { icon: Zap, text: "Real-time prices from live DEX data", color: "text-yellow-500" },
+                      { icon: Trophy, text: "Compete on the global leaderboard", color: "text-primary" },
+                      { icon: Sparkles, text: "Track your portfolio in real-time", color: "text-accent" },
                     ].map((feature, index) => (
                       <motion.div
                         key={index}

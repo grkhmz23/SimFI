@@ -1,49 +1,23 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, bigint, integer, timestamp, unique, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, bigint, integer, timestamp, unique, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // =============================================================================
-// CHAIN SUPPORT - Multi-chain configuration
+// Chain Constants
 // =============================================================================
 
-/**
- * Supported blockchain chains
- */
-export const CHAINS = ['solana', 'base'] as const;
-export type Chain = typeof CHAINS[number];
-
-/**
- * Chain ID enum for database
- */
-export const chainEnum = pgEnum('chain', CHAINS);
-
-/**
- * Chain configuration constants
- */
-export const CHAIN_CONFIG = {
-  solana: {
-    id: 'solana' as Chain,
-    name: 'Solana',
-    nativeSymbol: 'SOL',
-    nativeName: 'Solana',
-    decimals: 9,
-  },
-  base: {
-    id: 'base' as Chain,
-    name: 'Base',
-    nativeSymbol: 'ETH',
-    nativeName: 'Ethereum',
-    decimals: 18,
-  },
-} as const;
-
-// Legacy constant for backward compatibility
-// 1 SOL = 1,000,000,000 Lamports
+// Solana: 1 SOL = 1,000,000,000 Lamports
 export const LAMPORTS_PER_SOL = 1_000_000_000;
 
+// Base/ETH: 1 ETH = 1,000,000,000,000,000,000 Wei (10^18)
+export const WEI_PER_ETH = 1_000_000_000_000_000_000n;
+
+// Chain type
+export type Chain = 'base' | 'solana';
+
 // =============================================================================
-// USERS TABLE
+// Database Tables
 // =============================================================================
 
 export const users = pgTable("users", {
@@ -51,85 +25,46 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
-  // Primary wallet address (usually Solana for backward compatibility)
-  walletAddress: text("wallet_address").notNull(),
-  // Legacy balance field - aggregates all chains for backward compatibility
-  // Will be deprecated in favor of user_balances table
-  balance: bigint("balance", { mode: "bigint" }).notNull().default(sql`10000000000`),
-  totalProfit: bigint("total_profit", { mode: "bigint" }).notNull().default(sql`0`),
+  // Solana wallet (kept for backward compatibility, but prefer solanaWalletAddress)
+  walletAddress: text("wallet_address"),
+  // Explicit chain-specific wallet addresses
+  solanaWalletAddress: text("solana_wallet_address"),
+  baseWalletAddress: text("base_wallet_address"),
+  // Chain-specific balances
+  balance: bigint("balance", { mode: "bigint" }).notNull().default(sql`10000000000`), // Solana balance (lamports)
+  baseBalance: bigint("base_balance", { mode: "bigint" }).notNull().default(sql`5000000000000000000`), // Base balance (wei) - 5 ETH default
+  // Profits
+  totalProfit: bigint("total_profit", { mode: "bigint" }).notNull().default(sql`0`), // Solana profit
+  baseTotalProfit: bigint("base_total_profit", { mode: "bigint" }).notNull().default(sql`0`), // Base profit
+  // User preferences
+  preferredChain: text("preferred_chain").notNull().default('base'),
+  // Streak tracking (Phase 8)
+  streakCount: integer("streak_count").notNull().default(0),
+  lastStreakDate: timestamp("last_streak_date"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
-
-// =============================================================================
-// USER BALANCES - Per-chain balances
-// =============================================================================
-
-/**
- * User balances per chain
- * Allows users to have separate balances on each supported chain
- */
-export const userBalances = pgTable("user_balances", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  chain: chainEnum("chain").notNull(),
-  balance: bigint("balance", { mode: "bigint" }).notNull(),
-  totalProfit: bigint("total_profit", { mode: "bigint" }).notNull().default(sql`0`),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({
-  // Unique constraint: one balance row per user per chain
-  userChainUnique: unique().on(table.userId, table.chain),
-}));
-
-// =============================================================================
-// USER WALLETS - Multiple wallet addresses per user
-// =============================================================================
-
-/**
- * User wallet addresses per chain
- * Allows users to have different addresses on different chains
- */
-export const userWallets = pgTable("user_wallets", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  chain: chainEnum("chain").notNull(),
-  address: text("address").notNull(),
-  isPrimary: integer("is_primary").notNull().default(0), // 1 = primary for this chain
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  // Unique constraint: one address per user per chain
-  userChainWalletUnique: unique().on(table.userId, table.chain),
-}));
-
-// =============================================================================
-// POSITIONS - Updated with chain support
-// =============================================================================
 
 export const positions = pgTable("positions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
-  chain: chainEnum("chain").notNull().default('solana'), // NEW: chain identifier
+  chain: text("chain").notNull().default('solana'), // 'base' | 'solana'
   tokenAddress: text("token_address").notNull(),
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
   decimals: integer("decimals").notNull().default(6),
-  entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(),
-  amount: bigint("amount", { mode: "bigint" }).notNull(),
-  // Renamed from solSpent to nativeSpent (in chain's base units)
-  nativeSpent: bigint("native_spent", { mode: "bigint" }).notNull(),
+  entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(), // lamports or wei per token
+  amount: bigint("amount", { mode: "bigint" }).notNull(), // token amount in smallest unit
+  solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(), // native token spent (lamports or wei)
   openedAt: timestamp("opened_at").defaultNow().notNull(),
 }, (table) => ({
-  // Updated unique constraint to include chain
+  // Unique constraint now includes chain
   userTokenChainUnique: unique().on(table.userId, table.tokenAddress, table.chain),
 }));
-
-// =============================================================================
-// TRADE HISTORY - Updated with chain support
-// =============================================================================
 
 export const tradeHistory = pgTable("trade_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
-  chain: chainEnum("chain").notNull().default('solana'), // NEW: chain identifier
+  chain: text("chain").notNull().default('solana'), // 'base' | 'solana'
   tokenAddress: text("token_address").notNull(),
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
@@ -137,40 +72,85 @@ export const tradeHistory = pgTable("trade_history", {
   entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(),
   exitPrice: bigint("exit_price", { mode: "bigint" }).notNull(),
   amount: bigint("amount", { mode: "bigint" }).notNull(),
-  // Renamed from solSpent/solReceived to native equivalents
-  nativeSpent: bigint("native_spent", { mode: "bigint" }).notNull(),
-  nativeReceived: bigint("native_received", { mode: "bigint" }).notNull(),
+  solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(), // native token spent
+  solReceived: bigint("sol_received", { mode: "bigint" }).notNull(), // native token received
   profitLoss: bigint("profit_loss", { mode: "bigint" }).notNull(),
   openedAt: timestamp("opened_at").notNull(),
   closedAt: timestamp("closed_at").defaultNow().notNull(),
 });
 
-// =============================================================================
-// LEADERBOARD PERIODS
-// =============================================================================
-
 export const leaderboardPeriods = pgTable("leaderboard_periods", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  chain: text("chain").notNull().default('solana'), // 'base' | 'solana'
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time").notNull(),
   winnerId: varchar("winner_id").references(() => users.id),
   winnerProfit: bigint("winner_profit", { mode: "bigint" }),
 });
 
-// =============================================================================
-// TELEGRAM SESSIONS - Updated with chain support
-// =============================================================================
-
 export const telegramSessions = pgTable("telegram_sessions", {
   telegramUserId: text("telegram_user_id").primaryKey(),
   userId: varchar("user_id").notNull().references(() => users.id),
   token: text("token").notNull(),
-  // Default chain for this telegram session
-  chain: chainEnum("chain").notNull().default('solana'),
   balance: bigint("balance", { mode: "bigint" }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
 });
+
+// =============================================================================
+// Achievement Badges (Phase 2)
+// =============================================================================
+
+export const BADGE_IDS = [
+  'first_trade',
+  'base_beginner',
+  'solana_veteran',
+  'green_day',
+  'top_10',
+  'diamond_hands',
+  'profit_1eth',
+  'profit_10sol',
+] as const;
+
+export type BadgeId = typeof BADGE_IDS[number];
+
+export const userAchievements = pgTable("user_achievements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  badgeId: text("badge_id").notNull(),
+  unlockedAt: timestamp("unlocked_at").defaultNow().notNull(),
+}, (t) => ({
+  userBadgeUnique: unique("user_achievements_user_badge_unique").on(t.userId, t.badgeId),
+}));
+
+// =============================================================================
+// Referrals (Phase 4)
+// =============================================================================
+
+export const referrals = pgTable("referrals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  referrerId: varchar("referrer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  refereeId: varchar("referee_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  status: text("status").notNull().default('pending'), // pending, converted
+  rewardClaimed: integer("reward_claimed").notNull().default(0), // 0 = false, 1 = true
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  refereeUnique: unique("referrals_referee_unique").on(t.refereeId),
+}));
+
+// =============================================================================
+// Social Follows (Phase 5)
+// =============================================================================
+
+export const follows = pgTable("follows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  followerId: varchar("follower_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  followingId: varchar("following_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  followUnique: unique("follows_follower_following_unique").on(t.followerId, t.followingId),
+}));
 
 // =============================================================================
 // Rewards Engine Tables
@@ -257,46 +237,33 @@ export const rewardsWinners = pgTable("rewards_winners", {
 // Insert Schemas
 // =============================================================================
 
-// Solana address regex (Base58)
-const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-// EVM address regex (0x + 40 hex chars)
-const EVM_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+// Solana address validation regex
+const solanaAddressRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+// Base/EVM address validation regex (0x followed by 40 hex characters)
+const baseAddressRegex = /^0x[a-fA-F0-9]{40}$/;
 
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   balance: true,
+  baseBalance: true,
   totalProfit: true,
+  baseTotalProfit: true,
   createdAt: true,
+  walletAddress: true, // Legacy field
+  streakCount: true,
+  lastStreakDate: true,
 }).extend({
   username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_-]+$/),
   email: z.string().email(),
   password: z.string().min(6),
-  // Allow either Solana or EVM address format
-  walletAddress: z.string().refine(
-    (val) => SOLANA_ADDRESS_REGEX.test(val) || EVM_ADDRESS_REGEX.test(val),
-    {
-      message: "Invalid wallet address. Must be a valid Solana (Base58) or EVM (0x...) address",
-    }
-  ),
-});
-
-export const insertUserBalanceSchema = createInsertSchema(userBalances).omit({
-  id: true,
-  updatedAt: true,
-});
-
-export const insertUserWalletSchema = createInsertSchema(userWallets).omit({
-  id: true,
-  createdAt: true,
-}).extend({
-  // Validate address format based on chain
-  address: z.string().refine((val) => {
-    // This will be validated at runtime based on chain
-    return SOLANA_ADDRESS_REGEX.test(val) || EVM_ADDRESS_REGEX.test(val);
-  }, {
-    message: "Invalid wallet address format",
-  }),
-});
+  // Either Solana or Base wallet (or both) is required
+  solanaWalletAddress: z.string().regex(solanaAddressRegex).optional().or(z.literal('')),
+  baseWalletAddress: z.string().regex(baseAddressRegex).optional().or(z.literal('')),
+  preferredChain: z.enum(['base', 'solana']).default('base'),
+}).refine(
+  (data) => data.solanaWalletAddress || data.baseWalletAddress,
+  { message: "At least one wallet address (Solana or Base) is required" }
+);
 
 export const insertPositionSchema = createInsertSchema(positions).omit({
   id: true,
@@ -315,11 +282,7 @@ export const insertTradeSchema = createInsertSchema(tradeHistory).omit({
 // =============================================================================
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
-export type InsertUserBalance = z.infer<typeof insertUserBalanceSchema>;
-export type InsertUserWallet = z.infer<typeof insertUserWalletSchema>;
 export type User = typeof users.$inferSelect;
-export type UserBalance = typeof userBalances.$inferSelect;
-export type UserWallet = typeof userWallets.$inferSelect;
 export type Position = typeof positions.$inferSelect;
 export type Trade = typeof tradeHistory.$inferSelect;
 export type LeaderboardPeriod = typeof leaderboardPeriods.$inferSelect;
@@ -329,6 +292,9 @@ export type RewardsEpoch = typeof rewardsEpochs.$inferSelect;
 export type RewardsWinner = typeof rewardsWinners.$inferSelect;
 export type InsertPosition = z.infer<typeof insertPositionSchema>;
 export type InsertTrade = z.infer<typeof insertTradeSchema>;
+export type UserAchievement = typeof userAchievements.$inferSelect;
+export type Referral = typeof referrals.$inferSelect;
+export type Follow = typeof follows.$inferSelect;
 
 // =============================================================================
 // Interfaces
@@ -347,7 +313,7 @@ export interface Token {
   creator?: string;
   timestamp?: string;
   icon?: string;
-  chain?: Chain; // NEW: chain identifier
+  chain?: Chain;
 }
 
 export interface LoginRequest {
@@ -362,22 +328,20 @@ export interface AuthResponse {
   user: Omit<User, 'password'>;
 }
 
-// Updated BuyRequest with chain support
 export interface BuyRequest {
   tokenAddress: string;
   tokenName: string;
   tokenSymbol: string;
-  nativeAmount: number; // Renamed from solAmount
+  amount: number; // native token amount (SOL or ETH)
   price: number;
-  chain: Chain; // NEW: chain identifier
+  chain: Chain;
 }
 
-// Updated SellRequest with chain support
 export interface SellRequest {
   positionId: string;
   amount?: number;
   exitPrice: number;
-  chain?: Chain; // Optional - can be inferred from position
+  chain: Chain;
 }
 
 export interface LeaderboardEntry {
@@ -388,89 +352,59 @@ export interface LeaderboardEntry {
   periodProfit?: number;
   balance?: number;
   rank?: number;
+  chain?: Chain;
 }
 
 // =============================================================================
-// Utility Functions (Backward Compatible)
+// Utility Functions - Solana
 // =============================================================================
 
-/**
- * @deprecated Use parseToBaseUnits from chain-utils.ts instead
- */
 export function solToLamports(sol: number): number {
   return Math.floor(sol * LAMPORTS_PER_SOL);
 }
 
-/**
- * @deprecated Use formatFromBaseUnits from chain-utils.ts instead
- */
 export function lamportsToSol(lamports: number): number {
   return lamports / LAMPORTS_PER_SOL;
 }
 
 // =============================================================================
-// Chain-aware utility functions
+// Utility Functions - Base/ETH
 // =============================================================================
 
-/**
- * Get default starting balance for a chain (in base units)
- */
-export function getDefaultStartingBalance(chain: Chain): bigint {
-  const defaults: Record<Chain, bigint> = {
-    solana: 10_000_000_000n,           // 10 SOL
-    base: 10_000_000_000_000_000_000n, // 10 ETH
-  };
-  return defaults[chain];
+export function ethToWei(eth: number): bigint {
+  return BigInt(Math.floor(eth * 1e18));
 }
 
-/**
- * Get native symbol for a chain
- */
-export function getNativeSymbol(chain: Chain): string {
-  return CHAIN_CONFIG[chain].nativeSymbol;
+export function weiToEth(wei: bigint): number {
+  return Number(wei) / 1e18;
 }
 
-/**
- * Get decimals for a chain
- */
-export function getChainDecimals(chain: Chain): number {
-  return CHAIN_CONFIG[chain].decimals;
+export function formatWei(wei: bigint, decimals: number = 18): string {
+  const divisor = BigInt(10 ** decimals);
+  const wholePart = wei / divisor;
+  const fractionalPart = wei % divisor;
+  const paddedFraction = fractionalPart.toString().padStart(decimals, '0');
+  const trimmedFraction = paddedFraction.replace(/0+$/, '');
+  return trimmedFraction ? `${wholePart}.${trimmedFraction}` : wholePart.toString();
 }
 
-/**
- * Format base units to display string for a chain
- */
-export function formatBaseUnits(chain: Chain, baseUnits: bigint): string {
-  const decimals = getChainDecimals(chain);
-  const multiplier = BigInt(10) ** BigInt(decimals);
-  
-  const wholePart = baseUnits / multiplier;
-  const fracPart = baseUnits % multiplier;
-  
-  if (fracPart === 0n) {
-    return wholePart.toString();
+// =============================================================================
+// Address Validation
+// =============================================================================
+
+export function isValidSolanaAddress(address: string): boolean {
+  return solanaAddressRegex.test(address);
+}
+
+export function isValidBaseAddress(address: string): boolean {
+  return baseAddressRegex.test(address);
+}
+
+export function validateWalletAddress(chain: Chain, address: string): boolean {
+  if (chain === 'solana') {
+    return isValidSolanaAddress(address);
+  } else if (chain === 'base') {
+    return isValidBaseAddress(address);
   }
-  
-  let fracStr = fracPart.toString().padStart(decimals, '0');
-  fracStr = fracStr.replace(/0+$/, '');
-  
-  return `${wholePart}.${fracStr}`;
-}
-
-/**
- * Parse decimal string to base units for a chain
- */
-export function parseToBaseUnits(chain: Chain, amount: string): bigint {
-  const decimals = getChainDecimals(chain);
-  const parts = amount.split('.');
-  const wholePart = parts[0] || '0';
-  let fracPart = parts[1] || '';
-  
-  if (fracPart.length > decimals) {
-    fracPart = fracPart.slice(0, decimals);
-  } else {
-    fracPart = fracPart.padEnd(decimals, '0');
-  }
-  
-  return BigInt(wholePart + fracPart);
+  return false;
 }

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
-import { useAuth, useChainBalance } from '@/lib/auth-context';
-import { useChain, formatNativeAmount } from '@/lib/chain-context';
+import { useAuth } from '@/lib/auth-context';
+import { useChain } from '@/lib/chain-context';
+import { usePrice } from '@/lib/price-context';
 import { ChainSelector } from '@/components/ChainSelector';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,18 +28,41 @@ import {
   Loader2, 
   Microscope, 
   BarChart3, 
-  Gift,
   Menu,
   X,
   Sparkles,
-  ChevronDown
+  Flame,
+  ChevronDown,
+  Users,
+  Gift,
 } from 'lucide-react';
-import { formatSol, formatUSD } from '@/lib/lamports';
+
+// Custom whale icon since lucide doesn't export Whale
+const WhaleIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M12 8c-3.3 0-6 2.7-6 6 0 1.5.5 2.8 1.4 3.8" />
+    <path d="M18 14c0-3.3-2.7-6-6-6" />
+    <path d="M12 20c4.4 0 8-3.6 8-8 0-2.1-.8-4-2.1-5.4" />
+    <path d="M18 6c-1.7-1.7-4-2.6-6.4-2.5C8.5 3.7 5.8 5.3 4.2 7.8c-2.3 3.6-1.8 8.3 1.2 11.3" />
+    <path d="M4 14c-1.1 0-2-.9-2-2s.9-2 2-2" />
+    <path d="M20 10c1.1 0 2 .9 2 2s-.9 2-2 2" />
+  </svg>
+);
+import { formatBalance, formatUSD as formatUsdValue } from '@/lib/token-format';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import logoUrl from '@assets/simfilogo_1761226731940.png';
+const logoUrl = '/simfi-logo.png';
 
 interface SearchResult {
   tokenAddress: string;
@@ -51,9 +75,9 @@ interface SearchResult {
 
 export function Navigation() {
   const [location, setLocation] = useLocation();
-  const { user, logout, isAuthenticated } = useAuth();
-  const { chain, config } = useChain();
-  const chainBalance = useChainBalance(chain);
+  const { user, logout, isAuthenticated, getBalance } = useAuth();
+  const { activeChain, nativeSymbol } = useChain();
+  const { solPriceUSD, ethPriceUSD, getPrice } = usePrice();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -87,9 +111,9 @@ export function Navigation() {
   }, [location]);
 
   const { data: searchResults, isLoading: isSearching } = useQuery<{ results: SearchResult[] }>({
-    queryKey: ['/api/market/search', debouncedQuery],
+    queryKey: ['/api/market/search', debouncedQuery, activeChain],
     queryFn: async () => {
-      const response = await fetch(`/api/market/search?q=${encodeURIComponent(debouncedQuery)}`);
+      const response = await fetch(`/api/market/search?q=${encodeURIComponent(debouncedQuery)}&chain=${activeChain}`);
       if (!response.ok) {
         toast({
           title: 'Search Failed',
@@ -112,9 +136,10 @@ export function Navigation() {
 
   const navItems = [
     { path: '/', label: 'Trade', icon: TrendingUp },
+    { path: '/trending', label: 'Trending', icon: Flame },
+    { path: '/whales', label: 'Whales', icon: WhaleIcon },
     { path: '/study', label: 'Study', icon: Microscope },
     { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
-    { path: '/rewards', label: 'Rewards', icon: Gift },
     { path: '/about', label: 'About', icon: Info },
   ];
 
@@ -259,7 +284,7 @@ export function Navigation() {
             {/* Right Side - Chain Selector, Auth & Mobile Menu */}
             <div className="flex items-center gap-3">
               {/* Chain Selector - Always visible */}
-              <ChainSelector className="hidden sm:flex" />
+              <ChainSelector variant="compact" />
               
               {isAuthenticated ? (
                 <DropdownMenu>
@@ -276,10 +301,10 @@ export function Navigation() {
                       <div className="hidden sm:flex flex-col items-start">
                         <span className="text-sm font-medium">{user?.username}</span>
                         <span className="font-mono text-xs text-primary">
-                          {formatNativeAmount(chain, BigInt(chainBalance || 0))}
+                          {formatBalance(getBalance(activeChain), activeChain, 4)} {nativeSymbol}
                         </span>
                         <span className="font-mono text-[10px] text-muted-foreground">
-                          {chain === 'solana' ? `≈ ${formatUSD(chainBalance || 0, 2)}` : ''}
+                          ≈ {formatUsdValue(getBalance(activeChain), getPrice(activeChain), activeChain)}
                         </span>
                       </div>
                       <ChevronDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
@@ -289,12 +314,26 @@ export function Navigation() {
                     <DropdownMenuLabel>
                       <div className="flex flex-col">
                         <span>{user?.username}</span>
+                        {/* Active Chain Balance */}
                         <span className="font-mono text-xs text-primary font-normal">
-                          {formatNativeAmount(chain, BigInt(chainBalance || 0))}
+                          {formatBalance(getBalance(activeChain), activeChain, 4)} {nativeSymbol}
                         </span>
                         <span className="font-mono text-[10px] text-muted-foreground font-normal">
-                          {chain === 'solana' ? `≈ ${formatUSD(chainBalance || 0, 2)}` : ''}
+                          ≈ {formatUsdValue(getBalance(activeChain), getPrice(activeChain), activeChain)}
                         </span>
+                        {/* Other Chain Balance */}
+                        <div className="mt-2 pt-2 border-t border-border/50">
+                          <span className="text-[10px] text-muted-foreground">
+                            {activeChain === 'base' ? 'Solana' : 'Base'} Balance
+                          </span>
+                          <span className="font-mono text-xs text-muted-foreground block">
+                            {formatBalance(
+                              getBalance(activeChain === 'base' ? 'solana' : 'base'),
+                              activeChain === 'base' ? 'solana' : 'base',
+                              4
+                            )} {activeChain === 'base' ? 'SOL' : 'ETH'}
+                          </span>
+                        </div>
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
@@ -309,6 +348,10 @@ export function Navigation() {
                     <DropdownMenuItem onClick={() => setLocation('/history')} data-testid="menu-history">
                       <History className="mr-2 h-4 w-4" />
                       History
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setLocation('/referrals')} data-testid="menu-referrals">
+                      <Gift className="mr-2 h-4 w-4" />
+                      Referrals
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive" data-testid="menu-logout">

@@ -8,15 +8,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { useAuth } from '@/lib/auth-context';
+import { usePrice } from '@/lib/price-context';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { formatSol, formatUSD } from '@/lib/lamports';
-import { Wallet, TrendingUp, Activity, LogIn, Sparkles, ArrowUpRight, ArrowDownRight, Zap } from 'lucide-react';
-import type { User } from '@shared/schema';
+import { formatBalance, formatUSD, formatSol, formatEth, shortenAddress } from '@/lib/token-format';
+import { Wallet, TrendingUp, Activity, LogIn, Sparkles, ArrowUpRight, ArrowDownRight, Zap, Circle, Flame } from 'lucide-react';
+import { AchievementBadge } from '@/components/AchievementBadge';
+import { ALL_BADGE_IDS } from '@/lib/achievements';
+import type { User, UserAchievement } from '@shared/schema';
 
 const updateProfileSchema = z.object({
   username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_-]+$/),
-  walletAddress: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/),
+  solanaWalletAddress: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/).optional().or(z.literal('')),
+  baseWalletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional().or(z.literal('')),
   password: z.string().min(6).optional().or(z.literal('')),
 });
 
@@ -107,8 +111,77 @@ function StatsCard({
   );
 }
 
+// Balance card for specific chain
+function ChainBalanceCard({ 
+  chain, 
+  balance, 
+  profit, 
+  walletAddress,
+  price,
+  delay = 0 
+}: { 
+  chain: 'solana' | 'base';
+  balance: bigint;
+  profit: bigint;
+  walletAddress?: string;
+  price: number;
+  delay?: number;
+}) {
+  const isSolana = chain === 'solana';
+  const symbol = isSolana ? 'SOL' : 'ETH';
+  const profitTrend = profit > 0 ? 'up' : profit < 0 ? 'down' : null;
+  
+  return (
+    <div 
+      className="opacity-0 animate-slide-up"
+      style={{ animationDelay: `${delay}ms`, animationFillMode: 'forwards' }}
+    >
+      <Card className={`stats-card p-6 transition-all duration-300 hover:translate-y-[-2px] border-l-4 ${
+        isSolana ? 'border-l-purple-500' : 'border-l-blue-500'
+      }`}>
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Circle className={`w-3 h-3 fill-current ${isSolana ? 'text-purple-500' : 'text-blue-500'}`} />
+            <span className="font-semibold">{isSolana ? 'Solana' : 'Base'} Balance</span>
+          </div>
+          <span className="text-xs text-muted-foreground font-mono">
+            {walletAddress ? shortenAddress(walletAddress) : 'No wallet'}
+          </span>
+        </div>
+        
+        <div className="space-y-1">
+          <div className="flex items-baseline gap-2">
+            <AnimatedValue 
+              value={formatBalance(balance, chain, 4)} 
+              className="text-2xl font-bold"
+              suffix={` ${symbol}`}
+            />
+          </div>
+          <p className="text-sm text-muted-foreground font-mono">
+            ≈ {formatUSD(balance, price, chain, 2)}
+          </p>
+          
+          {/* P/L Display */}
+          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/50">
+            <span className="text-xs text-muted-foreground">P/L:</span>
+            <span className={`text-sm font-mono ${profit >= 0 ? 'text-success' : 'text-destructive'}`}>
+              {profit >= 0 ? '+' : ''}{formatBalance(profit, chain, 4)} {symbol}
+            </span>
+            {profitTrend && (
+              <span className={profitTrend === 'up' ? 'text-success' : 'text-destructive'}>
+                {profitTrend === 'up' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+              </span>
+            )}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default function Dashboard() {
-  const { user, setAuth, isAuthenticated } = useAuth();
+  const { user, setAuth, isAuthenticated, getBalance, getWalletAddress } = useAuth();
+  const { solPriceUSD, ethPriceUSD } = usePrice();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
@@ -127,7 +200,7 @@ export default function Dashboard() {
               </div>
               <h2 className="text-3xl font-bold mb-3 gradient-text">Welcome to SimFi</h2>
               <p className="text-muted-foreground mb-8">
-                Login to access your dashboard, track your portfolio, and start paper trading
+                Login to access your dashboard, track your portfolio, and start paper trading on Base or Solana
               </p>
               <div className="flex gap-3">
                 <Button
@@ -160,15 +233,36 @@ export default function Dashboard() {
     refetchInterval: 5000,
   });
 
+  const { data: achievementsData } = useQuery<{ achievements: UserAchievement[] }>({
+    queryKey: ['/api/achievements'],
+    enabled: !!user,
+  });
+
+  const { data: streakData } = useQuery<{ streakCount: number; lastStreakDate: string | null; canClaim: boolean; nextBonus: number }>({
+    queryKey: ['/api/streak'],
+    enabled: !!user,
+    refetchInterval: 30000,
+  });
+
   const currentUser = profile || user;
-  const totalProfit = currentUser?.totalProfit || 0;
-  const profitTrend = totalProfit > 0 ? 'up' : totalProfit < 0 ? 'down' : null;
+  const unlockedBadges = new Set(achievementsData?.achievements.map(a => a.badgeId) || []);
+  
+  // Get balances for both chains
+  const solanaBalance = getBalance('solana');
+  const baseBalance = getBalance('base');
+  const solanaProfit = currentUser?.totalProfit || 0n;
+  const baseProfit = currentUser?.baseTotalProfit || 0n;
+  
+  // Get wallet addresses
+  const solanaWallet = getWalletAddress('solana');
+  const baseWallet = getWalletAddress('base');
 
   const form = useForm<z.infer<typeof updateProfileSchema>>({
     resolver: zodResolver(updateProfileSchema),
     defaultValues: {
       username: currentUser?.username || '',
-      walletAddress: currentUser?.walletAddress || '',
+      solanaWalletAddress: currentUser?.solanaWalletAddress || currentUser?.walletAddress || '',
+      baseWalletAddress: currentUser?.baseWalletAddress || '',
       password: '',
     },
   });
@@ -193,11 +287,13 @@ export default function Dashboard() {
   });
 
   const onSubmit = form.handleSubmit((data) => {
-    const updateData = {
+    const updateData: any = {
       username: data.username,
-      walletAddress: data.walletAddress,
-      ...(data.password && { password: data.password }),
     };
+    if (data.solanaWalletAddress) updateData.solanaWalletAddress = data.solanaWalletAddress;
+    if (data.baseWalletAddress) updateData.baseWalletAddress = data.baseWalletAddress;
+    if (data.password) updateData.password = data.password;
+    
     updateMutation.mutate(updateData);
   });
 
@@ -212,40 +308,77 @@ export default function Dashboard() {
           <div className="opacity-0 animate-slide-up" style={{ animationFillMode: 'forwards' }}>
             <div className="flex items-center gap-3 mb-2">
               <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-              <span className="text-sm text-muted-foreground">Live Trading Session</span>
+              <span className="text-sm text-muted-foreground">Multi-Chain Trading Enabled</span>
             </div>
             <h1 className="text-4xl md:text-5xl font-bold mb-2">
               Welcome back, <span className="gradient-text">{currentUser?.username}</span>
             </h1>
-            <p className="text-muted-foreground text-lg">Track your portfolio and manage your account</p>
+            <p className="text-muted-foreground text-lg">Track your portfolio across Base and Solana</p>
           </div>
         </div>
       </div>
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <StatsCard
-            icon={Wallet}
-            label="Available Balance"
-            value={`${formatSol(currentUser?.balance || 0, 2)} SOL`}
-            secondaryValue={formatUSD(currentUser?.balance || 0, 2)}
-            subValue="Ready to trade"
-            accentColor="primary"
+        {/* Dual Balance Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <ChainBalanceCard
+            chain="base"
+            balance={baseBalance}
+            profit={baseProfit}
+            walletAddress={baseWallet || undefined}
+            price={ethPriceUSD}
             delay={100}
           />
-
-          <StatsCard
-            icon={TrendingUp}
-            label="Total P/L"
-            value={`${totalProfit >= 0 ? '+' : ''}${formatSol(totalProfit, 2)} SOL`}
-            secondaryValue={`${totalProfit >= 0 ? '+' : ''}${formatUSD(totalProfit, 2)}`}
-            subValue="All-time performance"
-            trend={profitTrend}
-            accentColor={totalProfit >= 0 ? 'success' : 'destructive'}
+          <ChainBalanceCard
+            chain="solana"
+            balance={solanaBalance}
+            profit={solanaProfit}
+            walletAddress={solanaWallet || undefined}
+            price={solPriceUSD}
             delay={200}
           />
+        </div>
 
+        {/* Streak Card */}
+        {streakData && (
+          <div className="mb-8">
+            <Card className="p-6 glow-card">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-orange-500/10 text-3xl">
+                    <Flame className="h-8 w-8 text-orange-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Daily Streak</p>
+                    <p className="text-3xl font-bold">{streakData.streakCount} day{streakData.streakCount === 1 ? '' : 's'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Next bonus: +{streakData.nextBonus} ETH
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  disabled={!streakData.canClaim}
+                  onClick={async () => {
+                    const res = await fetch('/api/streak/claim', { method: 'POST', credentials: 'include' });
+                    const data = await res.json();
+                    if (res.ok) {
+                      toast({ title: 'Bonus Claimed!', description: `+${data.bonusEth} ETH added to your Base balance.` });
+                      queryClient.invalidateQueries({ queryKey: ['/api/streak'] });
+                      queryClient.invalidateQueries({ queryKey: ['/api/auth/profile'] });
+                    } else {
+                      toast({ title: 'Claim Failed', description: data.error, variant: 'destructive' });
+                    }
+                  }}
+                >
+                  {streakData.canClaim ? 'Claim Bonus' : 'Claimed Today'}
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Account Status */}
+        <div className="mb-8">
           <StatsCard
             icon={Activity}
             label="Account Status"
@@ -311,21 +444,52 @@ export default function Dashboard() {
                   />
                 </div>
 
+                {/* Base Wallet */}
                 <FormField
                   control={form.control}
-                  name="walletAddress"
+                  name="baseWalletAddress"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Solana Wallet Address</FormLabel>
+                      <FormLabel className="flex items-center gap-2">
+                        <Circle className="w-2 h-2 fill-current text-blue-500" />
+                        Base Wallet Address
+                      </FormLabel>
                       <FormControl>
                         <Input
                           className="font-mono text-sm bg-background/50 border-border focus:border-primary transition-colors input-glow"
-                          data-testid="input-wallet"
+                          data-testid="input-base-wallet"
+                          placeholder="0x..."
                           {...field}
                         />
                       </FormControl>
                       <FormDescription className="text-xs">
-                        For leaderboard rewards (must be a valid Solana address)
+                        For Base trading and rewards (must be a valid Base/EVM address)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Solana Wallet */}
+                <FormField
+                  control={form.control}
+                  name="solanaWalletAddress"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <Circle className="w-2 h-2 fill-current text-purple-500" />
+                        Solana Wallet Address
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          className="font-mono text-sm bg-background/50 border-border focus:border-primary transition-colors input-glow"
+                          data-testid="input-solana-wallet"
+                          placeholder="7xKXtg2CW87d97TXJSDpbD5jBkhe..."
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        For Solana trading and rewards (must be a valid Solana address)
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -352,6 +516,28 @@ export default function Dashboard() {
                 </Button>
               </form>
             </Form>
+          </Card>
+        </div>
+
+        {/* Achievements */}
+        <div className="opacity-0 animate-slide-up mt-8" style={{ animationDelay: '500ms', animationFillMode: 'forwards' }}>
+          <Card className="glow-card p-8">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 rounded-lg bg-yellow-500/10">
+                <TrendingUp className="h-5 w-5 text-yellow-500" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground">Achievement Badges</h2>
+            </div>
+            <div className="flex flex-wrap gap-6">
+              {ALL_BADGE_IDS.map((badgeId) => (
+                <AchievementBadge
+                  key={badgeId}
+                  badgeId={badgeId}
+                  unlocked={unlockedBadges.has(badgeId)}
+                  size="md"
+                />
+              ))}
+            </div>
           </Card>
         </div>
       </div>

@@ -1,17 +1,11 @@
-import { eq, desc, and, sql, gt } from 'drizzle-orm';
+import { eq, desc, asc, and, sql, gt } from 'drizzle-orm';
 import { db } from './db';
 import { 
-  users, positions, tradeHistory, leaderboardPeriods, telegramSessions,
-  userBalances, userWallets,
-  type User, type Position, type Trade, type TelegramSession, 
-  type InsertUser, type InsertPosition, type InsertTrade,
-  type UserBalance, type UserWallet, type Chain,
-  LAMPORTS_PER_SOL, getDefaultStartingBalance, CHAINS
+  users, positions, tradeHistory, leaderboardPeriods, telegramSessions, userAchievements, referrals, follows,
+  type User, type Position, type Trade, type TelegramSession, type UserAchievement, type Referral, type Follow,
+  type InsertUser, type InsertPosition, type InsertTrade, 
+  LAMPORTS_PER_SOL, WEI_PER_ETH, type Chain, type BadgeId
 } from '@shared/schema';
-
-// =============================================================================
-// STORAGE INTERFACES
-// =============================================================================
 
 export interface IStorage {
   // User operations
@@ -21,33 +15,26 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   updateUserProfile(id: string, data: Partial<Omit<User, 'id' | 'createdAt'>>): Promise<User | undefined>;
   
-  // Balance operations (per-chain)
-  getUserBalance(userId: string, chain: Chain): Promise<bigint>;
-  updateUserBalance(userId: string, chain: Chain, balanceChange: bigint): Promise<UserBalance | undefined>;
-  updateUserTotalProfit(userId: string, chain: Chain, profitChange: bigint): Promise<UserBalance | undefined>;
-  getAllUserBalances(userId: string): Promise<UserBalance[]>;
+  // Balance operations - chain-specific
+  updateUserBalance(id: string, balanceChange: bigint, chain: Chain): Promise<User | undefined>;
+  updateUserTotalProfit(id: string, profitChange: bigint, chain: Chain): Promise<User | undefined>;
   
-  // Wallet operations (per-chain)
-  getUserWallet(userId: string, chain: Chain): Promise<UserWallet | undefined>;
-  setUserWallet(userId: string, chain: Chain, address: string): Promise<UserWallet>;
-  getAllUserWallets(userId: string): Promise<UserWallet[]>;
-
-  // Position operations
-  createPosition(data: Omit<InsertPosition, 'id'> & { userId: string; chain: Chain }): Promise<Position>;
-  createOrAggregatePosition(data: Omit<InsertPosition, 'id'> & { userId: string; chain: Chain }): Promise<Position>;
+  // Position operations - chain-aware
+  createPosition(data: Omit<InsertPosition, 'id'> & { userId: string }): Promise<Position>;
+  createOrAggregatePosition(data: Omit<InsertPosition, 'id'> & { userId: string }): Promise<Position>;
   getPositionById(id: string): Promise<Position | undefined>;
   getPositionByUserAndToken(userId: string, tokenAddress: string, chain: Chain): Promise<Position | undefined>;
   getUserPositions(userId: string, chain?: Chain): Promise<Position[]>;
-  updatePosition(id: string, data: Partial<Omit<Position, 'id' | 'userId' | 'tokenAddress' | 'tokenName' | 'tokenSymbol' | 'openedAt' | 'chain'>>): Promise<Position | undefined>;
+  updatePosition(id: string, data: Partial<Omit<Position, 'id' | 'userId' | 'tokenAddress' | 'tokenName' | 'tokenSymbol' | 'openedAt'>>): Promise<Position | undefined>;
   aggregatePosition(id: string, additionalAmount: bigint, additionalNativeSpent: bigint): Promise<Position | undefined>;
   deletePosition(id: string): Promise<void>;
 
-  // Trade operations
-  createTrade(data: Omit<InsertTrade, 'id'> & { userId: string; chain: Chain }): Promise<Trade>;
+  // Trade operations - chain-aware
+  createTrade(data: Omit<InsertTrade, 'id'> & { userId: string }): Promise<Trade>;
   getUserTrades(userId: string, chain?: Chain, limit?: number, offset?: number): Promise<Trade[]>;
   getUserTradesCount(userId: string, chain?: Chain): Promise<number>;
 
-  // Atomic trade execution (chain-aware)
+  // Atomic trade execution - chain-aware
   executeBuyTrade(params: {
     userId: string;
     chain: Chain;
@@ -57,78 +44,80 @@ export interface IStorage {
     decimals: number;
     entryPrice: bigint;
     amount: bigint;
-    nativeSpent: bigint;
+    nativeSpent: bigint; // lamports for Solana, wei for Base
   }): Promise<Position>;
 
   executeSellTrade(params: {
     userId: string;
     positionId: string;
-    chain: Chain;
     sellAmount: bigint;
     exitPrice: bigint;
-    nativeReceived: bigint;
+    nativeReceived: bigint; // lamports for Solana, wei for Base
     profitLoss: bigint;
     proportionalCost: bigint;
   }): Promise<void>;
 
-  // Leaderboard operations
-  getTopUsersByTotalProfit(limit: number): Promise<any[]>;
-  getTopUsersByPeriodProfit(startTime: Date, endTime: Date, limit: number): Promise<any[]>;
-  getCurrentLeaderboardPeriod(): Promise<typeof leaderboardPeriods.$inferSelect | undefined>;
-  createLeaderboardPeriod(startTime: Date, endTime: Date): Promise<typeof leaderboardPeriods.$inferSelect>;
+  // Leaderboard operations - chain-aware
+  getTopUsersByTotalProfit(limit: number, chain: Chain): Promise<any[]>;
+  getTopUsersByPeriodProfit(startTime: Date, endTime: Date, limit: number, chain: Chain): Promise<any[]>;
+  getCurrentLeaderboardPeriod(chain: Chain): Promise<typeof leaderboardPeriods.$inferSelect | undefined>;
+  createLeaderboardPeriod(startTime: Date, endTime: Date, chain: Chain): Promise<typeof leaderboardPeriods.$inferSelect>;
   updateLeaderboardPeriodWinner(periodId: string, winnerId: string, winnerProfit: bigint): Promise<void>;
-  getPastWinners(limit: number): Promise<any[]>;
+  getPastWinners(limit: number, chain?: Chain): Promise<any[]>;
 
   // Telegram session operations
-  saveTelegramSession(telegramUserId: string, userId: string, token: string, balance: bigint, chain?: Chain): Promise<TelegramSession>;
+  saveTelegramSession(telegramUserId: string, userId: string, token: string, balance: bigint): Promise<TelegramSession>;
   getTelegramSession(telegramUserId: string): Promise<TelegramSession | undefined>;
   getAllActiveTelegramSessions(): Promise<TelegramSession[]>;
   deleteTelegramSession(telegramUserId: string): Promise<void>;
   deleteExpiredTelegramSessions(): Promise<void>;
+
+  // Achievement operations (Phase 2)
+  getUserAchievements(userId: string): Promise<UserAchievement[]>;
+  unlockAchievement(userId: string, badgeId: BadgeId): Promise<UserAchievement | undefined>;
+  hasAchievement(userId: string, badgeId: BadgeId): Promise<boolean>;
+
+  // Referral operations (Phase 4)
+  getReferralByReferee(refereeId: string): Promise<Referral | undefined>;
+  createReferral(referrerId: string, refereeId: string, code: string): Promise<Referral>;
+  convertReferral(refereeId: string): Promise<void>;
+  getReferralStats(userId: string): Promise<{ total: number; converted: number; pending: number }>;
+  getTopReferrers(limit: number): Promise<any[]>;
+
+  // Follow operations (Phase 5)
+  followUser(followerId: string, followingId: string): Promise<void>;
+  unfollowUser(followerId: string, followingId: string): Promise<void>;
+  isFollowing(followerId: string, followingId: string): Promise<boolean>;
+  getFollowerCount(userId: string): Promise<number>;
+  getFollowingCount(userId: string): Promise<number>;
+
+  // Public trader stats (Phase 5)
+  getPublicTraderStats(username: string): Promise<any | undefined>;
+  getBestWorstTrades(userId: string, chain?: Chain): Promise<{ best: Trade | undefined; worst: Trade | undefined }>;
+  getTradeWinLoss(userId: string, chain?: Chain): Promise<{ winCount: number; lossCount: number; totalCount: number }>;
+  getAverageHoldTime(userId: string): Promise<number>;
+
+  // Streak operations (Phase 8)
+  getUserStreak(userId: string): Promise<{ streakCount: number; lastStreakDate: Date | null }>;
+  updateUserStreak(userId: string, streakCount: number, lastStreakDate: Date | null): Promise<void>;
+  claimStreakBonus(userId: string, bonusWei: bigint): Promise<void>;
 }
 
-// =============================================================================
-// DATABASE STORAGE IMPLEMENTATION
-// =============================================================================
-
 class DbStorage implements IStorage {
-  
-  // ============================================================================
-  // USER OPERATIONS
-  // ============================================================================
-  
   async createUser(data: InsertUser & { password: string }): Promise<User> {
-    // Create user with legacy balance for backward compatibility
+    // Set default balances based on provided wallets
+    const solanaBalance = data.solanaWalletAddress ? BigInt(10 * LAMPORTS_PER_SOL) : 0n;
+    const baseBalance = data.baseWalletAddress ? BigInt(5) * WEI_PER_ETH : 0n;
+    
+    // Use provided wallet addresses, fallback to legacy walletAddress for Solana
     const [user] = await db.insert(users).values({
       ...data,
-      balance: BigInt(10 * LAMPORTS_PER_SOL), // 10 SOL legacy balance
+      walletAddress: data.solanaWalletAddress || (data as any).walletAddress, // Legacy compatibility
+      balance: solanaBalance,
+      baseBalance: baseBalance,
       totalProfit: 0n,
-    }).returning();
-
-    // Initialize per-chain balances (Solana by default)
-    for (const chain of CHAINS) {
-      await db.insert(userBalances).values({
-        userId: user.id,
-        chain,
-        balance: chain === 'solana' 
-          ? getDefaultStartingBalance('solana')  // 10 SOL
-          : getDefaultStartingBalance('base'),   // 10 ETH
-        totalProfit: 0n,
-      }).onConflictDoNothing();
-    }
-
-    // Create wallet entry for the primary wallet address
-    // Determine chain from address format
-    const isEvm = data.walletAddress.startsWith('0x');
-    const walletChain: Chain = isEvm ? 'base' : 'solana';
-    
-    await db.insert(userWallets).values({
-      userId: user.id,
-      chain: walletChain,
-      address: data.walletAddress,
-      isPrimary: 1,
-    }).onConflictDoNothing();
-
+      baseTotalProfit: 0n,
+    } as any).returning();
     return user;
   }
 
@@ -148,168 +137,77 @@ class DbStorage implements IStorage {
   }
 
   async updateUserProfile(id: string, data: Partial<Omit<User, 'id' | 'createdAt'>>): Promise<User | undefined> {
-    const [user] = await db.update(users).set(data).where(eq(users.id, id)).returning();
+    // Handle wallet address updates - maintain backward compatibility
+    const updateData: any = { ...data };
+    
+    // If updating solanaWalletAddress, also update legacy walletAddress for compatibility
+    if (data.solanaWalletAddress !== undefined) {
+      updateData.walletAddress = data.solanaWalletAddress;
+    }
+    
+    // Clean up undefined values
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined) {
+        delete updateData[key];
+      }
+    });
+    
+    const [user] = await db.update(users).set(updateData).where(eq(users.id, id)).returning();
     return user;
   }
 
-  // ============================================================================
-  // BALANCE OPERATIONS (PER-CHAIN)
-  // ============================================================================
-
-  async getUserBalance(userId: string, chain: Chain): Promise<bigint> {
-    const [balance] = await db.select()
-      .from(userBalances)
-      .where(and(
-        eq(userBalances.userId, userId),
-        eq(userBalances.chain, chain)
-      ));
-    
-    return balance?.balance ?? 0n;
-  }
-
-  async updateUserBalance(userId: string, chain: Chain, balanceChange: bigint): Promise<UserBalance | undefined> {
-    // Ensure balance record exists
-    await db.insert(userBalances)
-      .values({
-        userId,
-        chain,
-        balance: balanceChange > 0n ? balanceChange : 0n,
-        totalProfit: 0n,
-      })
-      .onConflictDoNothing();
-
-    // Update balance atomically
-    const [balance] = await db.update(userBalances)
-      .set({ 
-        balance: sql`${userBalances.balance} + ${balanceChange}`,
-        updatedAt: new Date(),
-      })
-      .where(and(
-        eq(userBalances.userId, userId),
-        eq(userBalances.chain, chain)
-      ))
-      .returning();
-
-    // Also update legacy user.balance for backward compatibility (Solana only)
+  async updateUserBalance(id: string, balanceChange: bigint, chain: Chain): Promise<User | undefined> {
     if (chain === 'solana') {
-      await db.update(users)
+      const [user] = await db.update(users)
         .set({ balance: sql`${users.balance} + ${balanceChange}` })
-        .where(eq(users.id, userId));
+        .where(eq(users.id, id))
+        .returning();
+      return user;
+    } else {
+      // Base chain
+      const [user] = await db.update(users)
+        .set({ baseBalance: sql`${users.baseBalance} + ${balanceChange}` })
+        .where(eq(users.id, id))
+        .returning();
+      return user;
     }
-
-    return balance;
   }
 
-  async updateUserTotalProfit(userId: string, chain: Chain, profitChange: bigint): Promise<UserBalance | undefined> {
-    // Ensure balance record exists
-    await db.insert(userBalances)
-      .values({
-        userId,
-        chain,
-        balance: getDefaultStartingBalance(chain),
-        totalProfit: profitChange > 0n ? profitChange : 0n,
-      })
-      .onConflictDoNothing();
-
-    const [balance] = await db.update(userBalances)
-      .set({ 
-        totalProfit: sql`${userBalances.totalProfit} + ${profitChange}`,
-        updatedAt: new Date(),
-      })
-      .where(and(
-        eq(userBalances.userId, userId),
-        eq(userBalances.chain, chain)
-      ))
-      .returning();
-
-    // Also update legacy user.totalProfit for backward compatibility
-    await db.update(users)
-      .set({ totalProfit: sql`${users.totalProfit} + ${profitChange}` })
-      .where(eq(users.id, userId));
-
-    return balance;
-  }
-
-  async getAllUserBalances(userId: string): Promise<UserBalance[]> {
-    return db.select()
-      .from(userBalances)
-      .where(eq(userBalances.userId, userId))
-      .orderBy(userBalances.chain);
-  }
-
-  // ============================================================================
-  // WALLET OPERATIONS (PER-CHAIN)
-  // ============================================================================
-
-  async getUserWallet(userId: string, chain: Chain): Promise<UserWallet | undefined> {
-    const [wallet] = await db.select()
-      .from(userWallets)
-      .where(and(
-        eq(userWallets.userId, userId),
-        eq(userWallets.chain, chain)
-      ));
-    return wallet;
-  }
-
-  async setUserWallet(userId: string, chain: Chain, address: string): Promise<UserWallet> {
-    const [wallet] = await db.insert(userWallets)
-      .values({
-        userId,
-        chain,
-        address,
-        isPrimary: 1,
-      })
-      .onConflictDoUpdate({
-        target: [userWallets.userId, userWallets.chain],
-        set: { address, isPrimary: 1 },
-      })
-      .returning();
-
-    // If this is the primary wallet, update users table too
-    const [existingWallets] = await db.select({ count: sql<number>`count(*)` })
-      .from(userWallets)
-      .where(eq(userWallets.userId, userId));
-
-    if (existingWallets.count === 1 || chain === 'solana') {
-      await db.update(users)
-        .set({ walletAddress: address })
-        .where(eq(users.id, userId));
+  async updateUserTotalProfit(id: string, profitChange: bigint, chain: Chain): Promise<User | undefined> {
+    if (chain === 'solana') {
+      const [user] = await db.update(users)
+        .set({ totalProfit: sql`${users.totalProfit} + ${profitChange}` })
+        .where(eq(users.id, id))
+        .returning();
+      return user;
+    } else {
+      // Base chain
+      const [user] = await db.update(users)
+        .set({ baseTotalProfit: sql`${users.baseTotalProfit} + ${profitChange}` })
+        .where(eq(users.id, id))
+        .returning();
+      return user;
     }
-
-    return wallet;
   }
 
-  async getAllUserWallets(userId: string): Promise<UserWallet[]> {
-    return db.select()
-      .from(userWallets)
-      .where(eq(userWallets.userId, userId))
-      .orderBy(userWallets.chain);
-  }
-
-  // ============================================================================
-  // POSITION OPERATIONS
-  // ============================================================================
-
-  async createPosition(data: Omit<InsertPosition, 'id'> & { userId: string; chain: Chain }): Promise<Position> {
-    const [position] = await db.insert(positions).values({
-      ...data,
-      chain: data.chain,
-    }).returning();
+  async createPosition(data: Omit<InsertPosition, 'id'> & { userId: string }): Promise<Position> {
+    const [position] = await db.insert(positions).values(data).returning();
     return position;
   }
 
-  async createOrAggregatePosition(data: Omit<InsertPosition, 'id'> & { userId: string; chain: Chain }): Promise<Position> {
+  async createOrAggregatePosition(data: Omit<InsertPosition, 'id'> & { userId: string }): Promise<Position> {
+    // Use INSERT ... ON CONFLICT to atomically create or aggregate position
+    // This prevents race conditions by using database-level conflict resolution
     const [position] = await db.insert(positions)
-      .values({
-        ...data,
-        chain: data.chain,
-      })
+      .values(data)
       .onConflictDoUpdate({
         target: [positions.userId, positions.tokenAddress, positions.chain],
         set: {
+          // Increment amount and solSpent atomically
           amount: sql`${positions.amount} + ${data.amount}`,
-          nativeSpent: sql`${positions.nativeSpent} + ${data.nativeSpent ?? 0n}`,
-          entryPrice: sql`FLOOR(((${positions.nativeSpent} + EXCLUDED.native_spent)::numeric * power(10::numeric, COALESCE(${positions.decimals}, EXCLUDED.decimals, 6))) / NULLIF((${positions.amount} + EXCLUDED.amount), 0))::bigint`,
+          solSpent: sql`${positions.solSpent} + ${data.solSpent}`,
+          // Recalculate weighted average entry price: (total_solSpent * 10^decimals) / total_amount
+          entryPrice: sql`FLOOR(((${positions.solSpent} + EXCLUDED.sol_spent)::numeric * power(10::numeric, COALESCE(${positions.decimals}, EXCLUDED.decimals, 6))) / NULLIF((${positions.amount} + EXCLUDED.amount), 0))::bigint`,
         },
       })
       .returning();
@@ -325,7 +223,7 @@ class DbStorage implements IStorage {
     const [position] = await db.select()
       .from(positions)
       .where(and(
-        eq(positions.userId, userId),
+        eq(positions.userId, userId), 
         eq(positions.tokenAddress, tokenAddress),
         eq(positions.chain, chain)
       ));
@@ -336,31 +234,27 @@ class DbStorage implements IStorage {
     let query = db.select().from(positions).where(eq(positions.userId, userId));
     
     if (chain) {
-      query = db.select()
-        .from(positions)
-        .where(and(
-          eq(positions.userId, userId),
-          eq(positions.chain, chain)
-        ));
+      query = db.select().from(positions).where(and(
+        eq(positions.userId, userId),
+        eq(positions.chain, chain)
+      ));
     }
     
     return query.orderBy(desc(positions.openedAt));
   }
 
-  async updatePosition(
-    id: string, 
-    data: Partial<Omit<Position, 'id' | 'userId' | 'tokenAddress' | 'tokenName' | 'tokenSymbol' | 'openedAt' | 'chain'>>
-  ): Promise<Position | undefined> {
+  async updatePosition(id: string, data: Partial<Omit<Position, 'id' | 'userId' | 'tokenAddress' | 'tokenName' | 'tokenSymbol' | 'openedAt'>>): Promise<Position | undefined> {
     const [position] = await db.update(positions).set(data).where(eq(positions.id, id)).returning();
     return position;
   }
 
   async aggregatePosition(id: string, additionalAmount: bigint, additionalNativeSpent: bigint): Promise<Position | undefined> {
+    // Use SQL-level increments to avoid race conditions
     const [position] = await db.update(positions)
       .set({
         amount: sql`${positions.amount} + ${additionalAmount}`,
-        nativeSpent: sql`${positions.nativeSpent} + ${additionalNativeSpent}`,
-        entryPrice: sql`FLOOR(((${positions.nativeSpent} + ${additionalNativeSpent})::numeric * power(10::numeric, COALESCE(${positions.decimals}, 6))) / NULLIF((${positions.amount} + ${additionalAmount}), 0))::bigint`,
+        solSpent: sql`${positions.solSpent} + ${additionalNativeSpent}`,
+        entryPrice: sql`FLOOR(((${positions.solSpent} + ${additionalNativeSpent})::numeric * power(10::numeric, COALESCE(${positions.decimals}, 6))) / NULLIF((${positions.amount} + ${additionalAmount}), 0))::bigint`,
       })
       .where(eq(positions.id, id))
       .returning();
@@ -371,15 +265,8 @@ class DbStorage implements IStorage {
     await db.delete(positions).where(eq(positions.id, id));
   }
 
-  // ============================================================================
-  // TRADE OPERATIONS
-  // ============================================================================
-
-  async createTrade(data: Omit<InsertTrade, 'id'> & { userId: string; chain: Chain }): Promise<Trade> {
-    const [trade] = await db.insert(tradeHistory).values({
-      ...data,
-      chain: data.chain,
-    }).returning();
+  async createTrade(data: Omit<InsertTrade, 'id'> & { userId: string }): Promise<Trade> {
+    const [trade] = await db.insert(tradeHistory).values(data).returning();
     return trade;
   }
 
@@ -404,237 +291,63 @@ class DbStorage implements IStorage {
   }
 
   async getUserTradesCount(userId: string, chain?: Chain): Promise<number> {
-    let condition = eq(tradeHistory.userId, userId);
+    let query = db.select({ count: sql<number>`count(*)` })
+      .from(tradeHistory)
+      .where(eq(tradeHistory.userId, userId));
     
     if (chain) {
-      condition = and(condition, eq(tradeHistory.chain, chain))!;
+      query = db.select({ count: sql<number>`count(*)` })
+        .from(tradeHistory)
+        .where(and(
+          eq(tradeHistory.userId, userId),
+          eq(tradeHistory.chain, chain)
+        ));
     }
     
-    const result = await db.select({ count: sql<number>`count(*)` })
-      .from(tradeHistory)
-      .where(condition);
-    
+    const result = await query;
     return result[0]?.count || 0;
   }
 
-  // ============================================================================
-  // ATOMIC TRADE EXECUTION (CHAIN-AWARE)
-  // ============================================================================
-
-  async executeBuyTrade(params: {
-    userId: string;
-    chain: Chain;
-    tokenAddress: string;
-    tokenName: string;
-    tokenSymbol: string;
-    decimals: number;
-    entryPrice: bigint;
-    amount: bigint;
-    nativeSpent: bigint;
-  }): Promise<Position> {
-    return await db.transaction(async (tx) => {
-      // 1. Deduct balance from user_balances table (guarded)
-      const [balance] = await tx
-        .update(userBalances)
-        .set({ 
-          balance: sql`${userBalances.balance} - ${params.nativeSpent}`,
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(userBalances.userId, params.userId),
-          eq(userBalances.chain, params.chain),
-          sql`${userBalances.balance} >= ${params.nativeSpent}`
-        ))
-        .returning();
-
-      if (!balance) {
-        const [exists] = await tx
-          .select({ id: userBalances.id })
-          .from(userBalances)
-          .where(and(
-            eq(userBalances.userId, params.userId),
-            eq(userBalances.chain, params.chain)
-          ));
-
-        if (!exists) throw new Error(`Balance not found for chain: ${params.chain}`);
-        throw new Error("Insufficient balance");
-      }
-
-      // Also update legacy balance for Solana
-      if (params.chain === 'solana') {
-        await tx.update(users)
-          .set({ balance: sql`${users.balance} - ${params.nativeSpent}` })
-          .where(eq(users.id, params.userId));
-      }
-
-      // 2. Create or aggregate position (chain-aware)
-      const [position] = await tx.insert(positions)
-        .values({
-          userId: params.userId,
-          chain: params.chain,
-          tokenAddress: params.tokenAddress,
-          tokenName: params.tokenName,
-          tokenSymbol: params.tokenSymbol,
-          decimals: params.decimals,
-          entryPrice: params.entryPrice,
-          amount: params.amount,
-          nativeSpent: params.nativeSpent,
-        })
-        .onConflictDoUpdate({
-          target: [positions.userId, positions.tokenAddress, positions.chain],
-          set: {
-            amount: sql`${positions.amount} + ${params.amount}`,
-            nativeSpent: sql`${positions.nativeSpent} + ${params.nativeSpent}`,
-            entryPrice: sql`FLOOR(((${positions.nativeSpent} + EXCLUDED.native_spent)::numeric * power(10::numeric, COALESCE(${positions.decimals}, EXCLUDED.decimals, 6))) / NULLIF((${positions.amount} + EXCLUDED.amount), 0))::bigint`,
-          },
-        })
-        .returning();
-
-      return position;
-    });
+  async getTopUsersByTotalProfit(limit: number, chain: Chain): Promise<any[]> {
+    if (chain === 'solana') {
+      return db.select({
+        id: users.id,
+        username: users.username,
+        walletAddress: users.solanaWalletAddress,
+        totalProfit: users.totalProfit,
+        balance: users.balance,
+      })
+      .from(users)
+      .orderBy(desc(users.totalProfit))
+      .limit(limit);
+    } else {
+      // Base chain
+      return db.select({
+        id: users.id,
+        username: users.username,
+        walletAddress: users.baseWalletAddress,
+        totalProfit: users.baseTotalProfit,
+        balance: users.baseBalance,
+      })
+      .from(users)
+      .orderBy(desc(users.baseTotalProfit))
+      .limit(limit);
+    }
   }
 
-  async executeSellTrade(params: {
-    userId: string;
-    positionId: string;
-    chain: Chain;
-    sellAmount: bigint;
-    exitPrice: bigint;
-    nativeReceived: bigint;
-    profitLoss: bigint;
-    proportionalCost: bigint;
-  }): Promise<void> {
-    await db.transaction(async (tx) => {
-      // Lock the position row
-      await tx.execute(
-        sql`SELECT 1 FROM ${positions} WHERE ${positions.id} = ${params.positionId} FOR UPDATE`
-      );
-
-      const [position] = await tx
-        .select()
-        .from(positions)
-        .where(eq(positions.id, params.positionId));
-
-      if (!position) throw new Error("Position not found");
-      if (position.userId !== params.userId) throw new Error("Unauthorized");
-      if (position.chain !== params.chain) throw new Error("Chain mismatch");
-
-      if (params.sellAmount <= 0n) throw new Error("Sell amount must be positive");
-      if (params.sellAmount > position.amount) throw new Error("Sell amount exceeds position size");
-
-      const decimals = position.decimals || 6;
-      const decimalDivisor = BigInt(10 ** decimals);
-
-      // Recompute server-side
-      const nativeReceived = (params.sellAmount * params.exitPrice) / decimalDivisor;
-      const proportionalCost = (position.nativeSpent * params.sellAmount) / position.amount;
-      const profitLoss = nativeReceived - proportionalCost;
-
-      // Update user balance
-      const [updatedBalance] = await tx
-        .update(userBalances)
-        .set({
-          balance: sql`${userBalances.balance} + ${nativeReceived}`,
-          totalProfit: sql`${userBalances.totalProfit} + ${profitLoss}`,
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(userBalances.userId, params.userId),
-          eq(userBalances.chain, params.chain)
-        ))
-        .returning();
-
-      if (!updatedBalance) throw new Error("Balance not found");
-
-      // Also update legacy user table for Solana
-      if (params.chain === 'solana') {
-        await tx.update(users)
-          .set({
-            balance: sql`${users.balance} + ${nativeReceived}`,
-            totalProfit: sql`${users.totalProfit} + ${profitLoss}`,
-          })
-          .where(eq(users.id, params.userId));
-      }
-
-      // Create trade history
-      await tx.insert(tradeHistory).values({
-        userId: params.userId,
-        chain: params.chain,
-        tokenAddress: position.tokenAddress,
-        tokenName: position.tokenName,
-        tokenSymbol: position.tokenSymbol,
-        decimals,
-        entryPrice: position.entryPrice,
-        exitPrice: params.exitPrice,
-        amount: params.sellAmount,
-        nativeSpent: proportionalCost,
-        nativeReceived,
-        profitLoss,
-        openedAt: position.openedAt,
-      });
-
-      // Update or delete position
-      if (params.sellAmount < position.amount) {
-        const remainingAmount = position.amount - params.sellAmount;
-        const remainingCost = position.nativeSpent - proportionalCost;
-
-        const [updated] = await tx
-          .update(positions)
-          .set({
-            amount: remainingAmount,
-            nativeSpent: remainingCost,
-          })
-          .where(and(
-            eq(positions.id, params.positionId),
-            eq(positions.userId, params.userId),
-            eq(positions.chain, params.chain)
-          ))
-          .returning({ id: positions.id });
-
-        if (!updated) throw new Error("Failed to update position");
-      } else {
-        const deleted = await tx
-          .delete(positions)
-          .where(and(
-            eq(positions.id, params.positionId),
-            eq(positions.userId, params.userId),
-            eq(positions.chain, params.chain)
-          ))
-          .returning({ id: positions.id });
-
-        if (deleted.length === 0) throw new Error("Position already closed");
-      }
-    });
-  }
-
-  // ============================================================================
-  // LEADERBOARD OPERATIONS
-  // ============================================================================
-
-  async getTopUsersByTotalProfit(limit: number): Promise<any[]> {
-    // Aggregate total profit across all chains
-    return db.select({
-      id: users.id,
-      username: users.username,
-      walletAddress: users.walletAddress,
-      totalProfit: users.totalProfit,
-      balance: users.balance,
-    })
-    .from(users)
-    .orderBy(desc(users.totalProfit))
-    .limit(limit);
-  }
-
-  async getTopUsersByPeriodProfit(startTime: Date, endTime: Date, limit: number): Promise<any[]> {
+  async getTopUsersByPeriodProfit(startTime: Date, endTime: Date, limit: number, chain: Chain): Promise<any[]> {
+    const walletField = chain === 'solana' ? users.solanaWalletAddress : users.baseWalletAddress;
+    
     const result = await db.select({
       id: users.id,
       username: users.username,
-      walletAddress: users.walletAddress,
+      walletAddress: walletField,
       periodProfit: sql<number>`COALESCE(SUM(${tradeHistory.profitLoss}), 0)`,
     })
     .from(users)
     .leftJoin(tradeHistory, and(
       eq(tradeHistory.userId, users.id),
+      eq(tradeHistory.chain, chain),
       sql`${tradeHistory.closedAt} >= ${startTime}`,
       sql`${tradeHistory.closedAt} < ${endTime}`
     ))
@@ -645,17 +358,19 @@ class DbStorage implements IStorage {
     return result;
   }
 
-  async getCurrentLeaderboardPeriod(): Promise<typeof leaderboardPeriods.$inferSelect | undefined> {
+  async getCurrentLeaderboardPeriod(chain: Chain): Promise<typeof leaderboardPeriods.$inferSelect | undefined> {
+    // Get most recent period for the specified chain
     const [period] = await db.select()
       .from(leaderboardPeriods)
+      .where(eq(leaderboardPeriods.chain, chain))
       .orderBy(desc(leaderboardPeriods.startTime))
       .limit(1);
     return period;
   }
 
-  async createLeaderboardPeriod(startTime: Date, endTime: Date): Promise<typeof leaderboardPeriods.$inferSelect> {
+  async createLeaderboardPeriod(startTime: Date, endTime: Date, chain: Chain): Promise<typeof leaderboardPeriods.$inferSelect> {
     const [period] = await db.insert(leaderboardPeriods)
-      .values({ startTime, endTime })
+      .values({ startTime, endTime, chain })
       .returning();
     return period;
   }
@@ -666,21 +381,36 @@ class DbStorage implements IStorage {
       .where(eq(leaderboardPeriods.id, periodId));
   }
 
-  async getPastWinners(limitPeriods: number): Promise<any[]> {
-    const periods = await db.select()
+  async getPastWinners(limitPeriods: number, chain?: Chain): Promise<any[]> {
+    // Get all past closed periods (with winners)
+    let periodsQuery = db.select()
       .from(leaderboardPeriods)
-      .where(sql`${leaderboardPeriods.winnerId} IS NOT NULL`)
+      .where(sql`${leaderboardPeriods.winnerId} IS NOT NULL`);
+    
+    if (chain) {
+      periodsQuery = db.select()
+        .from(leaderboardPeriods)
+        .where(and(
+          sql`${leaderboardPeriods.winnerId} IS NOT NULL`,
+          eq(leaderboardPeriods.chain, chain)
+        ));
+    }
+    
+    const periods = await periodsQuery
       .orderBy(desc(leaderboardPeriods.endTime))
       .limit(limitPeriods);
 
+    // For each period, get the top 3 traders
     const allWinners = [];
     for (const period of periods) {
       const topTraders = await this.getTopUsersByPeriodProfit(
         period.startTime,
         period.endTime,
-        3
+        3,  // Top 3 per period
+        period.chain as Chain
       );
 
+      // Add period info to each trader
       for (const trader of topTraders) {
         allWinners.push({
           id: trader.id,
@@ -689,6 +419,7 @@ class DbStorage implements IStorage {
           periodProfit: trader.periodProfit,
           periodStart: period.startTime,
           periodEnd: period.endTime,
+          chain: period.chain,
         });
       }
     }
@@ -696,17 +427,8 @@ class DbStorage implements IStorage {
     return allWinners;
   }
 
-  // ============================================================================
-  // TELEGRAM SESSION OPERATIONS
-  // ============================================================================
-
-  async saveTelegramSession(
-    telegramUserId: string, 
-    userId: string, 
-    token: string, 
-    balance: bigint,
-    chain: Chain = 'solana'
-  ): Promise<TelegramSession> {
+  async saveTelegramSession(telegramUserId: string, userId: string, token: string, balance: bigint): Promise<TelegramSession> {
+    // Session expires in 30 days
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     const [session] = await db.insert(telegramSessions)
@@ -715,7 +437,6 @@ class DbStorage implements IStorage {
         userId,
         token,
         balance,
-        chain,
         expiresAt,
       })
       .onConflictDoUpdate({
@@ -724,7 +445,6 @@ class DbStorage implements IStorage {
           userId,
           token,
           balance,
-          chain,
           expiresAt,
         },
       })
@@ -758,10 +478,375 @@ class DbStorage implements IStorage {
     await db.delete(telegramSessions)
       .where(sql`${telegramSessions.expiresAt} <= NOW()`);
   }
-}
 
-// =============================================================================
-// EXPORT SINGLETON
-// =============================================================================
+  async executeBuyTrade(params: {
+    userId: string;
+    chain: Chain;
+    tokenAddress: string;
+    tokenName: string;
+    tokenSymbol: string;
+    decimals: number;
+    entryPrice: bigint;
+    amount: bigint;
+    nativeSpent: bigint;
+  }): Promise<Position> {
+    return await db.transaction(async (tx) => {
+      // 1. Deduct balance (guarded: prevents negative balances under concurrency)
+      let user;
+      if (params.chain === 'solana') {
+        const [result] = await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} - ${params.nativeSpent}` })
+          .where(and(
+            eq(users.id, params.userId),
+            sql`${users.balance} >= ${params.nativeSpent}`
+          ))
+          .returning();
+        user = result;
+      } else {
+        // Base chain
+        const [result] = await tx
+          .update(users)
+          .set({ baseBalance: sql`${users.baseBalance} - ${params.nativeSpent}` })
+          .where(and(
+            eq(users.id, params.userId),
+            sql`${users.baseBalance} >= ${params.nativeSpent}`
+          ))
+          .returning();
+        user = result;
+      }
+
+      if (!user) {
+        const [exists] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, params.userId));
+
+        if (!exists) throw new Error("User not found");
+        throw new Error("Insufficient balance");
+      }
+
+      // 2. Create or aggregate position
+      const [position] = await tx.insert(positions)
+        .values({
+          userId: params.userId,
+          chain: params.chain,
+          tokenAddress: params.tokenAddress,
+          tokenName: params.tokenName,
+          tokenSymbol: params.tokenSymbol,
+          decimals: params.decimals,
+          entryPrice: params.entryPrice,
+          amount: params.amount,
+          solSpent: params.nativeSpent,
+        })
+        .onConflictDoUpdate({
+          target: [positions.userId, positions.tokenAddress, positions.chain],
+          set: {
+            amount: sql`${positions.amount} + ${params.amount}`,
+            solSpent: sql`${positions.solSpent} + ${params.nativeSpent}`,
+            entryPrice: sql`FLOOR(((${positions.solSpent} + EXCLUDED.sol_spent)::numeric * power(10::numeric, COALESCE(${positions.decimals}, EXCLUDED.decimals, 6))) / NULLIF((${positions.amount} + EXCLUDED.amount), 0))::bigint`,
+          },
+        })
+        .returning();
+
+      return position;
+    });
+  }
+
+  async executeSellTrade(params: {
+    userId: string;
+    positionId: string;
+    sellAmount: bigint;
+    exitPrice: bigint;
+    nativeReceived: bigint;
+    profitLoss: bigint;
+    proportionalCost: bigint;
+  }): Promise<void> {
+    await db.transaction(async (tx) => {
+      // Lock the position row to prevent concurrent/double-sell
+      await tx.execute(
+        sql`SELECT 1 FROM ${positions} WHERE ${positions.id} = ${params.positionId} FOR UPDATE`
+      );
+
+      const [position] = await tx
+        .select()
+        .from(positions)
+        .where(eq(positions.id, params.positionId));
+
+      if (!position) throw new Error("Position not found");
+      if (position.userId !== params.userId) throw new Error("Unauthorized");
+
+      if (params.sellAmount <= 0n) throw new Error("Sell amount must be positive");
+      if (params.sellAmount > position.amount) throw new Error("Sell amount exceeds position size");
+
+      const decimals = position.decimals || 6;
+      const decimalDivisor = BigInt(10 ** decimals);
+
+      // Recompute server-side to avoid trusting caller-provided math
+      const nativeReceived = (params.sellAmount * params.exitPrice) / decimalDivisor;
+      const proportionalCost = (position.solSpent * params.sellAmount) / position.amount;
+      const profitLoss = nativeReceived - proportionalCost;
+
+      // Update user balance and profit based on chain
+      let updatedUser;
+      if (position.chain === 'solana') {
+        const [result] = await tx
+          .update(users)
+          .set({
+            balance: sql`${users.balance} + ${nativeReceived}`,
+            totalProfit: sql`${users.totalProfit} + ${profitLoss}`,
+          })
+          .where(eq(users.id, params.userId))
+          .returning();
+        updatedUser = result;
+      } else {
+        // Base chain
+        const [result] = await tx
+          .update(users)
+          .set({
+            baseBalance: sql`${users.baseBalance} + ${nativeReceived}`,
+            baseTotalProfit: sql`${users.baseTotalProfit} + ${profitLoss}`,
+          })
+          .where(eq(users.id, params.userId))
+          .returning();
+        updatedUser = result;
+      }
+
+      if (!updatedUser) throw new Error("User not found");
+
+      // Create trade history
+      await tx.insert(tradeHistory).values({
+        userId: params.userId,
+        chain: position.chain as Chain,
+        tokenAddress: position.tokenAddress,
+        tokenName: position.tokenName,
+        tokenSymbol: position.tokenSymbol,
+        decimals,
+        entryPrice: position.entryPrice,
+        exitPrice: params.exitPrice,
+        amount: params.sellAmount,
+        solSpent: proportionalCost,
+        solReceived: nativeReceived,
+        profitLoss,
+        openedAt: position.openedAt,
+      });
+
+      // Use UPDATE for partial sells, DELETE only for full sells
+      if (params.sellAmount < position.amount) {
+        // PARTIAL SELL: Update position with remaining amount
+        const remainingAmount = position.amount - params.sellAmount;
+        const remainingCost = position.solSpent - proportionalCost;
+
+        const [updated] = await tx
+          .update(positions)
+          .set({
+            amount: remainingAmount,
+            solSpent: remainingCost,
+          })
+          .where(and(eq(positions.id, params.positionId), eq(positions.userId, params.userId)))
+          .returning({ id: positions.id });
+
+        if (!updated) throw new Error("Failed to update position");
+      } else {
+        // FULL SELL: Delete the position entirely
+        const deleted = await tx
+          .delete(positions)
+          .where(and(eq(positions.id, params.positionId), eq(positions.userId, params.userId)))
+          .returning({ id: positions.id });
+
+        if (deleted.length === 0) throw new Error("Position already closed");
+      }
+    });
+  }
+
+  // ============================================================================
+  // Achievements (Phase 2)
+  // ============================================================================
+
+  async getUserAchievements(userId: string): Promise<UserAchievement[]> {
+    return db.select().from(userAchievements).where(eq(userAchievements.userId, userId));
+  }
+
+  async unlockAchievement(userId: string, badgeId: BadgeId): Promise<UserAchievement | undefined> {
+    try {
+      const [achievement] = await db.insert(userAchievements)
+        .values({ userId, badgeId })
+        .onConflictDoNothing()
+        .returning();
+      return achievement;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async hasAchievement(userId: string, badgeId: BadgeId): Promise<boolean> {
+    const [row] = await db.select({ count: sql<number>`count(*)` })
+      .from(userAchievements)
+      .where(and(eq(userAchievements.userId, userId), eq(userAchievements.badgeId, badgeId)));
+    return (row?.count || 0) > 0;
+  }
+
+  // ============================================================================
+  // Referrals (Phase 4)
+  // ============================================================================
+
+  async getReferralByReferee(refereeId: string): Promise<Referral | undefined> {
+    const [row] = await db.select().from(referrals).where(eq(referrals.refereeId, refereeId));
+    return row;
+  }
+
+  async createReferral(referrerId: string, refereeId: string, code: string): Promise<Referral> {
+    const [row] = await db.insert(referrals)
+      .values({ referrerId, refereeId, code })
+      .returning();
+    return row;
+  }
+
+  async convertReferral(refereeId: string): Promise<void> {
+    await db.update(referrals)
+      .set({ status: 'converted' })
+      .where(and(eq(referrals.refereeId, refereeId), eq(referrals.status, 'pending')));
+  }
+
+  async getReferralStats(userId: string): Promise<{ total: number; converted: number; pending: number }> {
+    const [totalRow] = await db.select({ count: sql<number>`count(*)` })
+      .from(referrals)
+      .where(eq(referrals.referrerId, userId));
+    const [convertedRow] = await db.select({ count: sql<number>`count(*)` })
+      .from(referrals)
+      .where(and(eq(referrals.referrerId, userId), eq(referrals.status, 'converted')));
+    const total = totalRow?.count || 0;
+    const converted = convertedRow?.count || 0;
+    return { total, converted, pending: total - converted };
+  }
+
+  async getTopReferrers(limit: number): Promise<any[]> {
+    return db.select({
+      id: users.id,
+      username: users.username,
+      totalReferrals: sql<number>`count(${referrals.id})`,
+      convertedReferrals: sql<number>`sum(CASE WHEN ${referrals.status} = 'converted' THEN 1 ELSE 0 END)`,
+    })
+    .from(users)
+    .leftJoin(referrals, eq(referrals.referrerId, users.id))
+    .groupBy(users.id)
+    .orderBy(desc(sql`count(${referrals.id})`))
+    .limit(limit);
+  }
+
+  // ============================================================================
+  // Follows (Phase 5)
+  // ============================================================================
+
+  async followUser(followerId: string, followingId: string): Promise<void> {
+    await db.insert(follows)
+      .values({ followerId, followingId })
+      .onConflictDoNothing();
+  }
+
+  async unfollowUser(followerId: string, followingId: string): Promise<void> {
+    await db.delete(follows)
+      .where(and(eq(follows.followerId, followerId), eq(follows.followingId, followingId)));
+  }
+
+  async isFollowing(followerId: string, followingId: string): Promise<boolean> {
+    const [row] = await db.select({ count: sql<number>`count(*)` })
+      .from(follows)
+      .where(and(eq(follows.followerId, followerId), eq(follows.followingId, followingId)));
+    return (row?.count || 0) > 0;
+  }
+
+  async getFollowerCount(userId: string): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)` })
+      .from(follows)
+      .where(eq(follows.followingId, userId));
+    return row?.count || 0;
+  }
+
+  async getFollowingCount(userId: string): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)` })
+      .from(follows)
+      .where(eq(follows.followerId, userId));
+    return row?.count || 0;
+  }
+
+  // ============================================================================
+  // Public Trader Stats (Phase 5)
+  // ============================================================================
+
+  async getPublicTraderStats(username: string): Promise<any | undefined> {
+    const [user] = await db.select({
+      id: users.id,
+      username: users.username,
+      createdAt: users.createdAt,
+      solanaWalletAddress: users.solanaWalletAddress,
+      baseWalletAddress: users.baseWalletAddress,
+      balance: users.balance,
+      baseBalance: users.baseBalance,
+      totalProfit: users.totalProfit,
+      baseTotalProfit: users.baseTotalProfit,
+    })
+    .from(users)
+    .where(eq(users.username, username));
+    return user;
+  }
+
+  async getBestWorstTrades(userId: string, chain?: Chain): Promise<{ best: Trade | undefined; worst: Trade | undefined }> {
+    let whereClause = eq(tradeHistory.userId, userId);
+    if (chain) {
+      whereClause = and(whereClause, eq(tradeHistory.chain, chain)) as any;
+    }
+    const [best] = await db.select().from(tradeHistory).where(whereClause).orderBy(desc(tradeHistory.profitLoss)).limit(1);
+    const [worst] = await db.select().from(tradeHistory).where(whereClause).orderBy(asc(tradeHistory.profitLoss)).limit(1);
+    return { best, worst };
+  }
+
+  async getTradeWinLoss(userId: string, chain?: Chain): Promise<{ winCount: number; lossCount: number; totalCount: number }> {
+    let whereClause = eq(tradeHistory.userId, userId);
+    if (chain) {
+      whereClause = and(whereClause, eq(tradeHistory.chain, chain)) as any;
+    }
+    const [totalRow] = await db.select({ count: sql<number>`count(*)` }).from(tradeHistory).where(whereClause);
+    const [winRow] = await db.select({ count: sql<number>`count(*)` }).from(tradeHistory).where(and(whereClause, gt(tradeHistory.profitLoss, 0n)));
+    const [lossRow] = await db.select({ count: sql<number>`count(*)` }).from(tradeHistory).where(and(whereClause, sql`${tradeHistory.profitLoss} < 0`));
+    return {
+      totalCount: totalRow?.count || 0,
+      winCount: winRow?.count || 0,
+      lossCount: lossRow?.count || 0,
+    };
+  }
+
+  async getAverageHoldTime(userId: string): Promise<number> {
+    const [row] = await db.select({
+      avgSeconds: sql<number>`COALESCE(AVG(EXTRACT(EPOCH FROM (${tradeHistory.closedAt} - ${tradeHistory.openedAt}))), 0)`
+    })
+    .from(tradeHistory)
+    .where(eq(tradeHistory.userId, userId));
+    return row?.avgSeconds || 0;
+  }
+
+  // ============================================================================
+  // Streaks (Phase 8)
+  // ============================================================================
+
+  async getUserStreak(userId: string): Promise<{ streakCount: number; lastStreakDate: Date | null }> {
+    const [user] = await db.select({ streakCount: users.streakCount, lastStreakDate: users.lastStreakDate })
+      .from(users)
+      .where(eq(users.id, userId));
+    return { streakCount: user?.streakCount || 0, lastStreakDate: user?.lastStreakDate || null };
+  }
+
+  async updateUserStreak(userId: string, streakCount: number, lastStreakDate: Date | null): Promise<void> {
+    await db.update(users)
+      .set({ streakCount, lastStreakDate: lastStreakDate ? new Date(lastStreakDate) : null })
+      .where(eq(users.id, userId));
+  }
+
+  async claimStreakBonus(userId: string, bonusWei: bigint): Promise<void> {
+    await db.update(users)
+      .set({ baseBalance: sql`${users.baseBalance} + ${bonusWei}` })
+      .where(eq(users.id, userId));
+  }
+}
 
 export const storage: IStorage = new DbStorage();

@@ -13,7 +13,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { Token, Position } from '@shared/schema';
 import { TrendingUp, TrendingDown, LogIn, Loader2, RefreshCw } from 'lucide-react';
-import { formatSol, toBigInt, formatTokenAmount, lamportsToTokens, formatUSD, lamportsToUSD } from '@/lib/lamports';
+import { formatNative, toBigInt, formatTokenAmount, nativeToTokens, formatUSD, nativeToUSD } from '@/lib/token-format';
+import { useChain } from '@/lib/chain-context';
 
 interface TradeModalProps {
   token?: Token;
@@ -23,7 +24,7 @@ interface TradeModalProps {
 }
 
 const buySchema = z.object({
-  solAmount: z.number().positive('Amount must be positive'),
+  amount: z.number().positive('Amount must be positive'),
 });
 
 const sellSchema = z.object({
@@ -34,18 +35,25 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const { user, isAuthenticated, refreshUser } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const { activeChain, nativeSymbol, nativeDecimals } = useChain();
   const isBuying = mode === 'buy' || !position;
   const [lastQuoteUpdate, setLastQuoteUpdate] = useState<Date>(new Date());
 
   // ALWAYS fetch fresh token data on mount to ensure consistent pricing
   const tokenAddress = position?.tokenAddress || token?.tokenAddress || '';
   const { data: freshToken, isLoading: isFetchingFreshToken } = useQuery<Token>({
-    queryKey: [`/api/market/token/${tokenAddress}`],
+    queryKey: [`/api/market/token/${tokenAddress}`, activeChain],
+    queryFn: async () => {
+      const res = await fetch(`/api/market/token/${tokenAddress}?chain=${activeChain}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to fetch token');
+      return res.json();
+    },
     enabled: !!tokenAddress,
     staleTime: 0,
     refetchInterval: 2500,
     refetchOnMount: 'always',
-    select: (data: any) => data, // API returns token data directly now
   });
 
   // ALWAYS prioritize fresh data over stale position/token data
@@ -118,7 +126,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const buyForm = useForm<z.infer<typeof buySchema>>({
     resolver: zodResolver(buySchema),
     defaultValues: {
-      solAmount: 0,
+      amount: 0,
     },
   });
 
@@ -129,7 +137,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     },
   });
 
-  const solAmount = buyForm.watch('solAmount') || 0;
+  const nativeAmount = buyForm.watch('amount') || 0;
   const percentage = sellForm.watch('percentage') || 100;
   const buyTokenDecimals = activeToken?.decimals || 6;
 
@@ -138,12 +146,12 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const sellAmountBigInt = !isBuying && position 
     ? (toBigInt(position.amount) * BigInt(percentage)) / BigInt(100)
     : BigInt(0);
-  const sellTokenAmountStr = sellAmountBigInt > 0n ? lamportsToTokens(sellAmountBigInt, positionDecimals) : '0';
+  const sellTokenAmountStr = sellAmountBigInt > 0n ? nativeToTokens(sellAmountBigInt, positionDecimals) : '0';
 
   // Use market data for display estimates
   const currentPriceNumber = Number(currentPrice);
   const estimatedTokens = isBuying 
-    ? (currentPriceNumber > 0 && isFinite(currentPriceNumber) ? (solAmount * 1_000_000_000) / currentPriceNumber : 0)
+    ? (currentPriceNumber > 0 && isFinite(currentPriceNumber) ? (nativeAmount * (10 ** nativeDecimals)) / currentPriceNumber : 0)
     : 0;
 
   const priceImpact = 0; // Will be shown from quote response
@@ -160,7 +168,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
 
   const profitLossBigInt = !isBuying ? sellValueBigInt - proportionalCostBigInt : BigInt(0);
 
-  // ✅ Trade mutation - server enforces price (no client manipulation possible)
+  // Trade mutation - server enforces price (no client manipulation possible)
   const tradeMutation = useMutation({
     mutationFn: async (data: { 
       side: 'buy' | 'sell'; 
@@ -173,25 +181,27 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     }) => {
       // Execute trade directly - server fetches price server-side (anti-cheat)
       if (data.side === 'buy') {
-        console.log(`🛒 Executing BUY: ${data.amountSol} SOL for ${data.tokenSymbol}`);
+        console.log(`Executing BUY: ${data.amountSol} ${nativeSymbol} for ${data.tokenSymbol} on ${activeChain}`);
         return apiRequest('POST', '/api/trades/buy', {
           tokenAddress: data.tokenAddress,
           tokenName: data.tokenName,
           tokenSymbol: data.tokenSymbol,
-          solAmount: data.amountSol,
+          amount: data.amountSol,
+          chain: activeChain,
         });
       } else {
-        console.log(`💰 Executing SELL: ${data.amountTokens} tokens of position ${data.positionId}`);
+        console.log(`Executing SELL: ${data.amountTokens} tokens of position ${data.positionId} on ${activeChain}`);
         return apiRequest('POST', '/api/trades/sell', {
           positionId: data.positionId,
-          amountLamports: data.amountTokens, // Server validates this
+          amountLamports: data.amountTokens,
+          chain: activeChain,
         });
       }
     },
     onSuccess: async (response: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/auth/profile'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/trades/positions'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/trades/history'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/trades/positions', activeChain] });
+      queryClient.invalidateQueries({ queryKey: ['/api/trades/history', activeChain] });
 
       await refreshUser();
 
@@ -199,7 +209,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       toast({
         title: isBuying ? 'Position Opened!' : 'Position Closed!',
         description: isBuying 
-          ? `Bought ${formatTokenAmount(toBigInt(response.tokensReceived || 0), 2, decimals)} ${symbol} for ${solAmount} SOL`
+          ? `Bought ${formatTokenAmount(toBigInt(response.tokensReceived || 0), 2, decimals)} ${symbol} for ${nativeAmount} ${nativeSymbol}`
           : `Sold ${formatTokenAmount(sellAmountBigInt, 2, decimals)} ${symbol}`,
       });
 
@@ -220,23 +230,24 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       return;
     }
 
-    const solSpentBigInt = BigInt(Math.floor(data.solAmount * 1_000_000_000));
-    const userBalanceBigInt = toBigInt(user?.balance || 0);
-    if (solSpentBigInt > userBalanceBigInt) {
+    const nativeSpentBigInt = BigInt(Math.floor(data.amount * (10 ** nativeDecimals)));
+    const userBalance = activeChain === 'solana' ? user?.balance : user?.baseBalance;
+    const userBalanceBigInt = toBigInt(userBalance || 0);
+    if (nativeSpentBigInt > userBalanceBigInt) {
       toast({
         title: 'Insufficient Balance',
-        description: `You need ${data.solAmount} SOL but only have ${formatSol(user?.balance || 0)} SOL`,
+        description: `You need ${data.amount} ${nativeSymbol} but only have ${formatNative(userBalance || 0, activeChain)} ${nativeSymbol}`,
         variant: 'destructive',
       });
       return;
     }
 
     // Execute buy trade (server handles price)
-    console.log('🛒 BUY TRANSACTION:', data.solAmount, 'SOL for', activeToken.symbol || symbol);
+    console.log('BUY TRANSACTION:', data.amount, nativeSymbol, 'for', activeToken.symbol || symbol);
     tradeMutation.mutate({
       side: 'buy',
       tokenAddress: tokenAddress,
-      amountSol: data.solAmount.toString(),
+      amountSol: data.amount.toString(),
       tokenName: activeToken.name || name,
       tokenSymbol: activeToken.symbol || symbol,
     });
@@ -249,7 +260,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     const sellAmountLamports = (toBigInt(position.amount) * BigInt(data.percentage)) / BigInt(100);
 
     // Execute sell trade (server handles price)
-    console.log('💰 SELL TRANSACTION:', data.percentage + '%', 'of position', position.id);
+    console.log('SELL TRANSACTION:', data.percentage + '%', 'of position', position.id);
     tradeMutation.mutate({
       side: 'sell',
       tokenAddress: position.tokenAddress,
@@ -259,7 +270,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   });
 
   const setSolAmount = (amount: number) => {
-    buyForm.setValue('solAmount', amount);
+    buyForm.setValue('amount', amount);
   };
 
   const setPercentage = (pct: number) => {
@@ -278,7 +289,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
             )}
           </DialogTitle>
           <DialogDescription id="trade-modal-description" className="sr-only">
-            {isBuying ? `Buy ${symbol} tokens with SOL` : `Sell ${symbol} tokens for SOL`}
+            {isBuying ? `Buy ${symbol} tokens with ${nativeSymbol}` : `Sell ${symbol} tokens for ${nativeSymbol}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -312,10 +323,10 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
               <form onSubmit={onBuySubmit} className="space-y-4">
                 <FormField
                   control={buyForm.control}
-                  name="solAmount"
+                  name="amount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Amount to Spend (SOL)</FormLabel>
+                      <FormLabel>Amount to Spend ({nativeSymbol})</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -341,7 +352,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                       <Button
                         key={amt}
                         type="button"
-                        variant={solAmount === amt ? "default" : "outline"}
+                        variant={nativeAmount === amt ? "default" : "outline"}
                         size="sm"
                         onClick={() => setSolAmount(amt)}
                         disabled={tradeMutation.isPending}
@@ -375,7 +386,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                     className="w-full"
                     size="lg"
                     variant="default"
-                    disabled={tradeMutation.isPending || solAmount <= 0}
+                    disabled={tradeMutation.isPending || nativeAmount <= 0}
                     data-testid="button-buy"
                   >
                     {tradeMutation.isPending ? 'Processing...' : 'Buy Now'}

@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { TradeModal } from '@/components/TradeModal';
 import { useAuth } from '@/lib/auth-context';
 import { useSolPrice } from '@/lib/price-context';
-import { formatSol, formatTokenAmount, formatPricePerToken, formatPricePerTokenUSD, lamportsToTokens, toBigInt, formatUSD } from '@/lib/lamports';
+import { formatNative, formatTokenAmount, formatPricePerToken, formatPricePerTokenUSD, nativeToTokens, toBigInt, formatUSD } from '@/lib/token-format';
+import { useChain } from '@/lib/chain-context';
 import { TrendingUp, TrendingDown, Wallet, ShoppingCart, DollarSign, ExternalLink, BarChart3 } from 'lucide-react';
 import type { Position } from '@shared/schema';
 
@@ -22,16 +23,24 @@ export default function Positions() {
   const { isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
   const solPrice = useSolPrice(); // Get current SOL price from context
+  const { activeChain, nativeSymbol } = useChain();
   const [selectedPosition, setSelectedPosition] = useState<EnrichedPosition | null>(null);
   const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
   const [showTradeModal, setShowTradeModal] = useState(false);
 
   const { data: positionsData, isLoading } = useQuery<{ positions: EnrichedPosition[] }>({
-    queryKey: ['/api/trades/positions'],
+    queryKey: ['/api/trades/positions', activeChain],
+    queryFn: async () => {
+      const res = await fetch(`/api/trades/positions?chain=${activeChain}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to fetch positions');
+      return res.json();
+    },
     enabled: isAuthenticated,
-    refetchInterval: 2500, // Auto-refresh every 2.5 seconds (user requested)
+    refetchInterval: 2500,
     refetchIntervalInBackground: true,
-    staleTime: 2000, // Consider data stale after 2 seconds to reduce redundant requests
+    staleTime: 2000,
   });
 
   // Enrich positions with calculated P/L values
@@ -128,14 +137,14 @@ export default function Positions() {
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Total Invested</p>
                     <p className="text-2xl font-bold font-mono" data-testid="text-total-invested">
-                      {formatSol(totalInvestedLamports, 2)} SOL
+                      {formatNative(totalInvestedLamports, activeChain, 2)} {nativeSymbol}
                     </p>
                     <p className="text-sm text-muted-foreground font-mono">≈ {formatUSD(totalInvestedLamports, 2)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Current Value</p>
                     <p className="text-2xl font-bold font-mono" data-testid="text-total-value">
-                      {formatSol(totalValueLamports, 2)} SOL
+                      {formatNative(totalValueLamports, activeChain, 2)} {nativeSymbol}
                     </p>
                     <p className="text-sm text-muted-foreground font-mono">≈ {formatUSD(totalValueLamports, 2)}</p>
                   </div>
@@ -146,7 +155,7 @@ export default function Positions() {
                         className={`text-2xl font-bold font-mono ${totalPnLLamports >= BigInt(0) ? 'text-success' : 'text-destructive'}`}
                         data-testid="text-total-pnl"
                       >
-                        {totalPnLLamports >= BigInt(0) ? '+' : ''}{formatSol(totalPnLLamports, 2)} SOL
+                        {totalPnLLamports >= BigInt(0) ? '+' : ''}{formatNative(totalPnLLamports, activeChain, 2)} {nativeSymbol}
                       </p>
                       <Badge variant={totalPnLLamports >= BigInt(0) ? 'default' : 'destructive'}>
                         {totalPnLLamports >= BigInt(0) ? '+' : ''}{totalPnLPercent.toFixed(2)}%
@@ -237,15 +246,15 @@ export default function Positions() {
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Entry Price (Jupiter Swap)</span>
+                        <span className="text-muted-foreground">Entry Price</span>
                         <span className="font-mono" data-testid={`text-entry-price-${position.id}`}>
-                          {formatPricePerTokenUSD(position.entryPrice, 6, solPrice)}
+                          {formatPricePerTokenUSD(Number(position.entryPrice), 6)}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Current Price</span>
                         <span className="font-mono" data-testid={`text-current-price-${position.id}`}>
-                          {formatPricePerTokenUSD(position.currentPrice, 6, solPrice)}
+                          {formatPricePerTokenUSD(Number(position.currentPrice), 6)}
                         </span>
                       </div>
                     </div>

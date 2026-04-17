@@ -121,7 +121,7 @@ export default function WalletExplorer() {
                         className="text-primary hover:underline flex items-center gap-1"
                       >
                         <ExternalLink className="w-3 h-3" />
-                        View on Solscan
+                        View on Explorer
                       </a>
                     </CardDescription>
                   </div>
@@ -131,7 +131,7 @@ export default function WalletExplorer() {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">SOL Balance</p>
+                  <p className="text-sm text-muted-foreground mb-1">Native Balance</p>
                   <p className="text-2xl font-bold">
                     {data.solBalance?.sol?.toFixed(4) || '0'} SOL
                   </p>

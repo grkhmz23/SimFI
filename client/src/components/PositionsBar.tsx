@@ -4,18 +4,27 @@ import { useAuth } from '@/lib/auth-context';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, Wallet, ChevronRight } from 'lucide-react';
-import { formatSol, formatTokenAmount, formatPricePerToken, toBigInt } from '@/lib/lamports';
+import { formatNative, formatTokenAmount, formatPricePerToken, toBigInt } from '@/lib/token-format';
+import { useChain } from '@/lib/chain-context';
 import type { Position } from '@shared/schema';
 
 export function PositionsBar() {
   const [location, setLocation] = useLocation();
   const { isAuthenticated } = useAuth();
+  const { activeChain, nativeSymbol, nativeDecimals } = useChain();
 
   const { data: positionsData, isLoading } = useQuery<{ positions: Position[] }>({
-    queryKey: ['/api/trades/positions'],
+    queryKey: ['/api/trades/positions', activeChain],
+    queryFn: async () => {
+      const res = await fetch(`/api/trades/positions?chain=${activeChain}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to fetch positions');
+      return res.json();
+    },
     enabled: isAuthenticated,
     staleTime: 5000,
-    refetchInterval: 5000, // Auto-refresh every 5 seconds
+    refetchInterval: 5000,
   });
 
   const positions = positionsData?.positions || [];
@@ -85,13 +94,13 @@ export function PositionsBar() {
                     <div>
                       <span className="text-muted-foreground">Entry:</span>
                       <span className="ml-1 font-mono font-semibold">
-                        {formatPricePerToken(position.entryPrice, 9)} SOL
+                        {formatPricePerToken(position.entryPrice, nativeDecimals)} {nativeSymbol}
                       </span>
                     </div>
                     <div className="col-span-2">
                       <span className="text-muted-foreground">Total Spent:</span>
                       <span className="ml-1 font-mono font-semibold text-foreground">
-                        {formatSol(toBigInt(position.nativeSpent))} SOL
+                        {formatNative(toBigInt(position.solSpent), activeChain)} {nativeSymbol}
                       </span>
                     </div>
                   </div>

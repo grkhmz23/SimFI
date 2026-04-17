@@ -23,77 +23,6 @@ import {
 import { SiX } from 'react-icons/si';
 
 // =============================================================================
-// LAMP BACKGROUND COMPONENT
-// =============================================================================
-const LampBackground = ({ children }: { children: React.ReactNode }) => {
-  return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-background">
-      {/* Lamp Effect */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[50vh] flex items-start justify-center">
-          {/* Left cone */}
-          <motion.div
-            initial={{ opacity: 0.5, width: "15rem" }}
-            animate={{ opacity: 1, width: "30rem" }}
-            transition={{ delay: 0.3, duration: 0.8, ease: "easeInOut" }}
-            style={{
-              backgroundImage: `conic-gradient(from 70deg at center top, hsl(var(--primary)), transparent)`,
-            }}
-            className="absolute right-1/2 h-56 bg-gradient-conic from-primary via-transparent to-transparent"
-          >
-            <div className="absolute w-full left-0 bg-background h-40 bottom-0 [mask-image:linear-gradient(to_top,white,transparent)]" />
-            <div className="absolute w-40 h-full left-0 bg-background [mask-image:linear-gradient(to_right,white,transparent)]" />
-          </motion.div>
-          
-          {/* Right cone */}
-          <motion.div
-            initial={{ opacity: 0.5, width: "15rem" }}
-            animate={{ opacity: 1, width: "30rem" }}
-            transition={{ delay: 0.3, duration: 0.8, ease: "easeInOut" }}
-            style={{
-              backgroundImage: `conic-gradient(from 290deg at center top, transparent, transparent, hsl(var(--primary)))`,
-            }}
-            className="absolute left-1/2 h-56 bg-gradient-conic from-transparent via-transparent to-primary"
-          >
-            <div className="absolute w-40 h-full right-0 bg-background [mask-image:linear-gradient(to_left,white,transparent)]" />
-            <div className="absolute w-full right-0 bg-background h-40 bottom-0 [mask-image:linear-gradient(to_top,white,transparent)]" />
-          </motion.div>
-
-          {/* Blur effects */}
-          <div className="absolute top-1/2 h-48 w-full translate-y-12 scale-x-150 bg-background blur-2xl" />
-          <div className="absolute top-1/2 h-48 w-full bg-transparent opacity-10 backdrop-blur-md" />
-          <div className="absolute inset-auto h-36 w-[28rem] -translate-y-1/2 rounded-full bg-primary opacity-50 blur-3xl" />
-          
-          {/* Animated glow */}
-          <motion.div
-            initial={{ width: "8rem" }}
-            animate={{ width: "16rem" }}
-            transition={{ delay: 0.3, duration: 0.8, ease: "easeInOut" }}
-            className="absolute h-36 -translate-y-[6rem] rounded-full bg-primary/80 blur-2xl"
-          />
-          
-          {/* Light bar */}
-          <motion.div
-            initial={{ width: "15rem" }}
-            animate={{ width: "30rem" }}
-            transition={{ delay: 0.3, duration: 0.8, ease: "easeInOut" }}
-            className="absolute h-0.5 -translate-y-[7rem] bg-primary"
-          />
-
-          {/* Cover */}
-          <div className="absolute h-44 w-full -translate-y-[12.5rem] bg-background" />
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="relative z-10">
-        {children}
-      </div>
-    </div>
-  );
-};
-
-// =============================================================================
 // ANIMATED TITLE COMPONENT
 // =============================================================================
 const AnimatedTitle = () => {
@@ -226,7 +155,7 @@ const features = [
 // =============================================================================
 export default function TokenAnalyzer() {
   return (
-    <LampBackground>
+    <div className="min-h-screen bg-background">
       {/* Hero Section */}
       <section className="pt-20 pb-16 px-4">
         <div className="container mx-auto max-w-4xl">
@@ -320,7 +249,7 @@ export default function TokenAnalyzer() {
             className="grid grid-cols-1 md:grid-cols-3 gap-8"
           >
             {[
-              { icon: Zap, title: "Helius Powered", desc: "Real-time Solana data" },
+              { icon: Zap, title: "Helius Powered", desc: "Real-time multi-chain data" },
               { icon: Target, title: "Pro Analysis", desc: "Advanced trading tools" },
               { icon: GraduationCap, title: "Learn & Earn", desc: "Educational content" },
             ].map((item, index) => (
@@ -362,6 +291,6 @@ export default function TokenAnalyzer() {
           </motion.div>
         </div>
       </section>
-    </LampBackground>
+    </div>
   );
 }

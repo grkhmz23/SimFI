@@ -34,7 +34,7 @@ export default function About() {
               <span className="text-foreground">Educational Trading Platform</span>
             </h1>
             <p className="text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto">
-              Practice trading Solana memecoins in a risk-free environment. Master your strategy, 
+              Practice trading Base and Solana memecoins in a risk-free environment. Master your strategy, 
               learn market dynamics, and compete with others—all without risking real money.
             </p>
           </div>
@@ -57,7 +57,7 @@ export default function About() {
               </p>
               <p className="text-lg text-muted-foreground leading-relaxed">
                 Our platform is especially valuable for those who struggle with gambling tendencies in crypto markets. 
-                By simulating real trading with virtual SOL, you can satisfy the excitement of trading while developing 
+                By simulating real trading with virtual currency, you can satisfy the excitement of trading while developing 
                 healthy habits and strategic thinking.
               </p>
             </div>
@@ -80,7 +80,7 @@ export default function About() {
               <ul className="space-y-2 text-muted-foreground">
                 <li className="flex items-start gap-2">
                   <Shield className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                  <span><strong>Zero Financial Risk:</strong> Trade with virtual SOL, never real money</span>
+                  <span><strong>Zero Financial Risk:</strong> Trade with virtual currency, never real money</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Target className="h-5 w-5 text-primary shrink-0 mt-0.5" />
@@ -111,8 +111,8 @@ export default function About() {
                 <div>
                   <h3 className="text-xl font-semibold mb-2">Virtual Currency</h3>
                   <p className="text-muted-foreground">
-                    Start with 10 SOL of virtual currency. Use it to practice trading real Solana memecoins 
-                    with live market prices from pump.fun.
+                    Start with 5 ETH + 10 SOL of virtual currency. Use it to practice trading real memecoins 
+                    with live market prices from top DEXs.
                   </p>
                 </div>
               </div>
@@ -141,7 +141,7 @@ export default function About() {
                 <div>
                   <h3 className="text-xl font-semibold mb-2">Leaderboard System</h3>
                   <p className="text-muted-foreground">
-                    Compete in 6-hour trading periods. Top performers win rewards from our creator fee pool. 
+                    Compete in 6-hour trading periods and climb the ranks by realized profit. 
                     Skill matters, not luck.
                   </p>
                 </div>
@@ -165,85 +165,49 @@ export default function About() {
           </div>
         </div>
 
-        {/* Revenue Distribution */}
-        <Card className="p-8 md:p-12 mb-12">
+        {/* Base-First Future */}
+        <Card className="p-8 md:p-12 mb-12 border-2 border-dashed border-primary/30 bg-primary/5">
           <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold mb-3">Creator Fee Distribution</h2>
+            <Badge className="mb-4 text-sm px-4 py-1.5">Base Chain</Badge>
+            <h2 className="text-3xl font-bold mb-3">Reward Distribution Coming Soon</h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              We're committed to rewarding our community and continuously improving the platform
+              We're building a sustainable reward system directly on Base. Leaderboard prizes, 
+              referral rewards, and achievement bonuses will all be powered by on-chain mechanics.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            {/* Leaderboard Prizes - 50% */}
-            <Card className="p-6 border-2 gradient-simfi-border">
-              <div className="flex items-center gap-3 mb-4">
-                <Trophy className="h-8 w-8 text-primary" />
-                <h3 className="text-2xl font-bold gradient-simfi-text">50%</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="p-6 border border-border/50 bg-card/50">
+              <div className="flex items-center gap-3 mb-3">
+                <Trophy className="h-6 w-6 text-primary" />
+                <h3 className="text-xl font-bold">Leaderboard Prizes</h3>
               </div>
-              <h4 className="font-semibold text-lg mb-3">Leaderboard Prizes</h4>
-              <p className="text-sm text-muted-foreground mb-4">
-                Top 3 traders with the highest realized profit in each 6-hour period share 50% of creator fees
+              <p className="text-sm text-muted-foreground">
+                Top traders in each period will receive on-chain rewards distributed transparently on Base.
               </p>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2">
-                    <Badge variant="default" className="w-6 h-6 flex items-center justify-center p-0">1</Badge>
-                    1st Place
-                  </span>
-                  <span className="font-mono font-semibold">50% (25% total)</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2">
-                    <Badge variant="secondary" className="w-6 h-6 flex items-center justify-center p-0">2</Badge>
-                    2nd Place
-                  </span>
-                  <span className="font-mono font-semibold">30% (15% total)</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2">
-                    <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0">3</Badge>
-                    3rd Place
-                  </span>
-                  <span className="font-mono font-semibold">20% (10% total)</span>
-                </div>
-              </div>
             </Card>
 
-            {/* Development & Operations */}
-            <div className="space-y-6">
-              <Card className="p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <Rocket className="h-6 w-6 text-chart-2" />
-                  <h3 className="text-2xl font-bold">30%</h3>
-                </div>
-                <h4 className="font-semibold mb-2">Platform Development</h4>
-                <p className="text-sm text-muted-foreground">
-                  Invested in better charts, improved APIs, enhanced features, and making SimFi 
-                  the best educational trading tool in the space
-                </p>
-              </Card>
+            <Card className="p-6 border border-border/50 bg-card/50">
+              <div className="flex items-center gap-3 mb-3">
+                <Rocket className="h-6 w-6 text-chart-2" />
+                <h3 className="text-xl font-bold">Platform Growth</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Fees reinvested into better charts, faster APIs, and new features to make SimFi 
+                the best educational trading tool in the space.
+              </p>
+            </Card>
 
-              <Card className="p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <Users className="h-6 w-6 text-chart-3" />
-                  <h3 className="text-2xl font-bold">20%</h3>
-                </div>
-                <h4 className="font-semibold mb-2">Development Team</h4>
-                <p className="text-sm text-muted-foreground">
-                  Supports the team maintaining servers, fixing bugs, and ensuring 24/7 uptime 
-                  for the best user experience
-                </p>
-              </Card>
-            </div>
-          </div>
-
-          <div className="text-center pt-6 border-t">
-            <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
-              <strong>Our Commitment:</strong> We're dedicated to making SimFi the premier educational tool 
-              for learning crypto trading. Every fee collected goes toward improving the platform, rewarding 
-              skilled traders, and building a healthier trading community.
-            </p>
+            <Card className="p-6 border border-border/50 bg-card/50">
+              <div className="flex items-center gap-3 mb-3">
+                <Users className="h-6 w-6 text-chart-3" />
+                <h3 className="text-xl font-bold">Community First</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                A portion of platform value flows back to active users through referrals, 
+                streaks, and achievement rewards.
+              </p>
+            </Card>
           </div>
         </Card>
 

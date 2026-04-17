@@ -1,67 +1,34 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import type { User } from '@shared/schema';
-import type { Chain } from './chain-context';
+import type { User, Chain } from '@shared/schema';
 import { apiRequest } from './queryClient';
-
-interface UserBalance {
-  chain: Chain;
-  balance: string;
-  totalProfit: string;
-  updatedAt: string;
-}
-
-interface UserWallet {
-  chain: Chain;
-  address: string;
-  isPrimary: boolean;
-  explorerUrl: string;
-}
 
 interface AuthContextType {
   user: Omit<User, 'password'> | null;
-  balances: UserBalance[];
-  wallets: UserWallet[];
   setAuth: (user: Omit<User, 'password'>) => void;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
-  refreshBalances: () => Promise<void>;
-  refreshWallets: () => Promise<void>;
-  updateWallet: (chain: Chain, address: string) => Promise<void>;
   isAuthenticated: boolean;
-  isLoading: boolean;
+  // Helper methods for dual balance
+  getBalance: (chain: Chain) => bigint;
+  getWalletAddress: (chain: Chain) => string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Omit<User, 'password'> | null>(null);
-  const [balances, setBalances] = useState<UserBalance[]>([]);
-  const [wallets, setWallets] = useState<UserWallet[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch user profile, balances, and wallets on mount
   useEffect(() => {
+    // Try to fetch user profile on mount (cookie-based auth)
     const checkAuth = async () => {
       try {
-        const [profileRes, balancesRes, walletsRes] = await Promise.all([
-          fetch('/api/auth/profile', { credentials: 'include' }),
-          fetch('/api/user/balances', { credentials: 'include' }),
-          fetch('/api/user/wallets', { credentials: 'include' }),
-        ]);
-
-        if (profileRes.ok) {
-          const userData = await profileRes.json();
+        const response = await fetch('/api/auth/profile', {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const userData = await response.json();
           setUser(userData);
-        }
-
-        if (balancesRes.ok) {
-          const balancesData = await balancesRes.json();
-          setBalances(balancesData.balances || []);
-        }
-
-        if (walletsRes.ok) {
-          const walletsData = await walletsRes.json();
-          setWallets(walletsData.wallets || []);
         }
       } catch (error) {
         console.error('Auth check failed:', error);
@@ -74,9 +41,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setAuth = (newUser: Omit<User, 'password'>) => {
     setUser(newUser);
-    // Also refresh balances and wallets for new user
-    refreshBalances();
-    refreshWallets();
   };
 
   const refreshUser = async () => {
@@ -93,40 +57,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const refreshBalances = async () => {
-    try {
-      const response = await fetch('/api/user/balances', {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setBalances(data.balances || []);
-      }
-    } catch (error) {
-      console.error('Refresh balances failed:', error);
-    }
-  };
-
-  const refreshWallets = async () => {
-    try {
-      const response = await fetch('/api/user/wallets', {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setWallets(data.wallets || []);
-      }
-    } catch (error) {
-      console.error('Refresh wallets failed:', error);
-    }
-  };
-
-  const updateWallet = async (chain: Chain, address: string) => {
-    await apiRequest('POST', '/api/user/wallet', { chain, address });
-    await refreshWallets();
-    await refreshUser(); // Also refresh user as primary wallet may have changed
-  };
-
   const logout = async () => {
     try {
       await apiRequest('POST', '/api/auth/logout');
@@ -134,23 +64,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Logout error:', error);
     }
     setUser(null);
-    setBalances([]);
-    setWallets([]);
   };
+
+  // Helper to get balance for specific chain
+  const getBalance = (chain: Chain): bigint => {
+    if (!user) return 0n;
+    if (chain === 'solana') {
+      return BigInt(user.balance || 0);
+    } else {
+      return BigInt(user.baseBalance || 0);
+    }
+  };
+
+  // Helper to get wallet address for specific chain
+  const getWalletAddress = (chain: Chain): string | null => {
+    if (!user) return null;
+    if (chain === 'solana') {
+      return user.solanaWalletAddress || user.walletAddress || null;
+    } else {
+      return user.baseWalletAddress || null;
+    }
+  };
+
+  if (loading) {
+    return null;
+  }
 
   return (
     <AuthContext.Provider value={{ 
       user, 
-      balances, 
-      wallets,
       setAuth, 
       refreshUser, 
-      refreshBalances,
-      refreshWallets,
-      updateWallet,
       logout, 
       isAuthenticated: !!user,
-      isLoading: loading,
+      getBalance,
+      getWalletAddress,
     }}>
       {children}
     </AuthContext.Provider>
@@ -163,16 +111,4 @@ export function useAuth() {
     throw new Error('useAuth must be used within AuthProvider');
   }
   return context;
-}
-
-// Helper hook to get balance for a specific chain
-export function useChainBalance(chain: Chain) {
-  const { balances } = useAuth();
-  return balances.find(b => b.chain === chain)?.balance ?? '0';
-}
-
-// Helper hook to get wallet for a specific chain
-export function useChainWallet(chain: Chain) {
-  const { wallets } = useAuth();
-  return wallets.find(w => w.chain === chain);
 }
