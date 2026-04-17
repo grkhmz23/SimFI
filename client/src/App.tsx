@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -10,24 +10,30 @@ import { ChainProvider } from "@/lib/chain-context";
 import { Navigation } from "@/components/Navigation";
 import { MobileNav } from "@/components/MobileNav";
 import { Footer } from "@/components/ui/footer";
-import Login from "@/pages/Login";
-import Register from "@/pages/Register";
-import Trade from "@/pages/Trade";
-import TradePage from "@/pages/TradePage";
 import { WelcomePopup } from "@/components/WelcomePopup";
-import TokenPage from "@/pages/TokenPage";
-import Trending from "@/pages/Trending";
-import Dashboard from "@/pages/Dashboard";
-import Portfolio from "@/pages/Portfolio";
-import Positions from "@/pages/Positions";
-import History from "@/pages/History";
-import Leaderboard from "@/pages/Leaderboard";
-import About from "@/pages/About";
-import TokenAnalyzer from "@/pages/TokenAnalyzer";
-import Referrals from "@/pages/Referrals";
-import TraderProfile from "@/pages/TraderProfile";
-import WhaleWatch from "@/pages/WhaleWatch";
-import NotFound from "@/pages/not-found";
+
+/* ------------------------------------------------------------------
+   Route-level code splitting
+   Every page below is loaded on-demand so the initial bundle stays
+   under ~400 KB gzipped.
+   ------------------------------------------------------------------ */
+const Login = React.lazy(() => import("@/pages/Login"));
+const Register = React.lazy(() => import("@/pages/Register"));
+const Trade = React.lazy(() => import("@/pages/Trade"));
+const TradePage = React.lazy(() => import("@/pages/TradePage"));
+const TokenPage = React.lazy(() => import("@/pages/TokenPage"));
+const Trending = React.lazy(() => import("@/pages/Trending"));
+const Dashboard = React.lazy(() => import("@/pages/Dashboard"));
+const Portfolio = React.lazy(() => import("@/pages/Portfolio"));
+const Positions = React.lazy(() => import("@/pages/Positions"));
+const History = React.lazy(() => import("@/pages/History"));
+const Leaderboard = React.lazy(() => import("@/pages/Leaderboard"));
+const About = React.lazy(() => import("@/pages/About"));
+const TokenAnalyzer = React.lazy(() => import("@/pages/TokenAnalyzer"));
+const Referrals = React.lazy(() => import("@/pages/Referrals"));
+const TraderProfile = React.lazy(() => import("@/pages/TraderProfile"));
+const WhaleWatch = React.lazy(() => import("@/pages/WhaleWatch"));
+const NotFound = React.lazy(() => import("@/pages/not-found"));
 
 const DesignSystem = import.meta.env.DEV
   ? React.lazy(() => import("@/pages/DesignSystem"))
@@ -48,60 +54,112 @@ function Router() {
   return (
     <Switch>
       <Route path="/login">
-        <Login />
+        <Suspense fallback={<PageSkeleton />}>
+          <Login />
+        </Suspense>
       </Route>
       <Route path="/register">
-        <Register />
+        <Suspense fallback={<PageSkeleton />}>
+          <Register />
+        </Suspense>
       </Route>
       <Route path="/">
-        <PageLayout component={Trade} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={Trade} />
+        </Suspense>
       </Route>
       <Route path="/token/:address">
-        <PageLayout component={TokenPage} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={TokenPage} />
+        </Suspense>
       </Route>
       <Route path="/trade">
-        <PageLayout component={TradePage} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={TradePage} />
+        </Suspense>
       </Route>
       <Route path="/trending">
-        <PageLayout component={Trending} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={Trending} />
+        </Suspense>
       </Route>
       <Route path="/dashboard">
-        <PageLayout component={Dashboard} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={Dashboard} />
+        </Suspense>
       </Route>
       <Route path="/portfolio">
-        <PageLayout component={Portfolio} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={Portfolio} />
+        </Suspense>
       </Route>
       <Route path="/positions">
-        <PageLayout component={Positions} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={Positions} />
+        </Suspense>
       </Route>
       <Route path="/history">
-        <PageLayout component={History} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={History} />
+        </Suspense>
       </Route>
       <Route path="/leaderboard">
-        <PageLayout component={Leaderboard} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={Leaderboard} />
+        </Suspense>
       </Route>
       <Route path="/study">
-        <PageLayout component={TokenAnalyzer} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={TokenAnalyzer} />
+        </Suspense>
       </Route>
       <Route path="/about">
-        <PageLayout component={About} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={About} />
+        </Suspense>
       </Route>
       <Route path="/referrals">
-        <PageLayout component={Referrals} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={Referrals} />
+        </Suspense>
       </Route>
       <Route path="/trader/:username">
-        <PageLayout component={TraderProfile} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={TraderProfile} />
+        </Suspense>
       </Route>
       <Route path="/whales">
-        <PageLayout component={WhaleWatch} />
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={WhaleWatch} />
+        </Suspense>
       </Route>
       {import.meta.env.DEV && DesignSystem && (
         <Route path="/_design">
-          <DesignSystem />
+          <Suspense fallback={<PageSkeleton />}>
+            <DesignSystem />
+          </Suspense>
         </Route>
       )}
-      <Route component={NotFound} />
+      <Route>
+        <Suspense fallback={<PageSkeleton />}>
+          <NotFound />
+        </Suspense>
+      </Route>
     </Switch>
+  );
+}
+
+/** Minimal skeleton shown while a route chunk is downloading. */
+function PageSkeleton() {
+  return (
+    <div className="min-h-screen bg-[var(--bg-base)] flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--border-subtle)] border-t-[var(--accent-premium)]" />
+        <p className="text-xs text-[var(--text-tertiary)] font-mono uppercase tracking-wider">
+          Loading
+        </p>
+      </div>
+    </div>
   );
 }
 

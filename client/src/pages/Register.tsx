@@ -212,7 +212,7 @@ export default function Register() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-[#6fa8dc]" />
+                      <span className="w-2 h-2 rounded-full bg-[var(--chain-base)]" />
                       Base Wallet Address
                     </FormLabel>
                     <FormControl>
@@ -240,7 +240,7 @@ export default function Register() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-[#b794f6]" />
+                      <span className="w-2 h-2 rounded-full bg-[var(--chain-solana)]" />
                       Solana Wallet Address
                     </FormLabel>
                     <FormControl>

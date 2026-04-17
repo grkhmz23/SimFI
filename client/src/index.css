@@ -145,13 +145,13 @@
 
   .chain-chip-base {
     background: rgba(30, 58, 95, 0.2);
-    color: #6fa8dc;
+    color: var(--chain-base);
     border: 1px solid rgba(30, 58, 95, 0.3);
   }
 
   .chain-chip-solana {
     background: rgba(59, 42, 90, 0.2);
-    color: #b794f6;
+    color: var(--chain-solana);
     border: 1px solid rgba(59, 42, 90, 0.3);
   }
 

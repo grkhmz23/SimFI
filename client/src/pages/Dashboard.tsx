@@ -49,7 +49,7 @@ function BalanceCard({
 
   return (
     <Card className="overflow-hidden">
-      <div className={cn('h-1', isSolana ? 'bg-[#b794f6]' : 'bg-[#6fa8dc]')} />
+      <div className={cn('h-1', isSolana ? 'bg-[var(--chain-solana)]' : 'bg-[var(--chain-base)]')} />
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -416,7 +416,7 @@ export default function Dashboard() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm text-[var(--text-primary)] flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-[#6fa8dc]" />
+                        <span className="w-2 h-2 rounded-full bg-[var(--chain-base)]" />
                         Base Wallet Address
                       </FormLabel>
                       <FormControl>
@@ -441,7 +441,7 @@ export default function Dashboard() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm text-[var(--text-primary)] flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-[#b794f6]" />
+                        <span className="w-2 h-2 rounded-full bg-[var(--chain-solana)]" />
                         Solana Wallet Address
                       </FormLabel>
                       <FormControl>
