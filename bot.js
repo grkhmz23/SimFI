@@ -979,6 +979,7 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
       tokenName: state.token.name,
       tokenSymbol: state.token.symbol,
       solAmount: amount,
+      chain: 'solana',
     }, session.token, false, {
       'x-idempotency-key': idempotencyKey
     });
@@ -1587,6 +1588,7 @@ bot.on('text', async (ctx) => {
         tokenName: state.token.name,
         tokenSymbol: state.token.symbol,
         solAmount: amount,
+        chain: 'solana',
       }, session.token, false, {
         'x-idempotency-key': idempotencyKey
       });

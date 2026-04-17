@@ -2221,7 +2221,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/tokens/:address/ohlcv', searchLimiter, async (req, res) => {
     try {
       const { address } = req.params;
-      const { timeframe = '1H' } = req.query;
+      const { timeframe = '1M', chain = 'solana' } = req.query;
+      const chainParam = isValidChain(chain as string) ? (chain as string) : 'solana';
 
       // First, find the pool address from DexScreener
       const poolResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${address}`, 5000);
@@ -2234,8 +2235,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'No trading pairs found' });
       }
 
-      // Get the main pair (highest liquidity usually first)
-      const pair = poolData.pairs[0];
+      // Filter pairs by requested chain and pick highest liquidity
+      const chainPairs = poolData.pairs.filter((p: any) => p.chainId === chainParam);
+      if (chainPairs.length === 0) {
+        return res.status(404).json({ error: `No trading pairs found on ${chainParam}` });
+      }
+      const pair = chainPairs.reduce((best: any, current: any) => {
+        const bestLiquidity = best.liquidity?.usd || 0;
+        const currentLiquidity = current.liquidity?.usd || 0;
+        return currentLiquidity > bestLiquidity ? current : best;
+      }, chainPairs[0]);
       const pairAddress = pair.pairAddress;
 
       // Map timeframe to GeckoTerminal aggregate and time unit
@@ -2252,7 +2261,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tfConfig = timeframeMap[timeframe as string] || timeframeMap['1M'];
 
       // Fetch OHLCV data from GeckoTerminal
-      const geckoUrl = `https://api.geckoterminal.com/api/v2/networks/solana/pools/${pairAddress}/ohlcv/${tfConfig.unit}`;
+      const geckoUrl = `https://api.geckoterminal.com/api/v2/networks/${chainParam}/pools/${pairAddress}/ohlcv/${tfConfig.unit}`;
       const geckoResponse = await fetchWithTimeout(
         `${geckoUrl}?aggregate=${tfConfig.aggregate}&limit=${tfConfig.limit}&currency=usd`,
         10000
