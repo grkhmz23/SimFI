@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Trophy } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 
 interface Referrer {
   id: string;
@@ -45,7 +45,7 @@ export function ReferralLeaderboard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Trophy className="h-5 w-5 text-yellow-500" />
+          <BarChart3 className="h-5 w-5 text-primary" />
           Top Referrers
         </CardTitle>
       </CardHeader>

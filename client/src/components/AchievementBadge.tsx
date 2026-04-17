@@ -1,7 +1,7 @@
 import { BADGE_METADATA } from "@/lib/achievements";
 import type { BadgeId } from "@shared/schema";
 import { cn } from "@/lib/utils";
-import { Target, Circle, TrendingUp, Trophy, Gem, Sparkles, Sun } from "lucide-react";
+import { Target, Circle, TrendingUp, BarChart3, Gem, Shield, Sun } from "lucide-react";
 
 interface AchievementBadgeProps {
   badgeId: BadgeId;
@@ -14,9 +14,9 @@ const ICON_MAP = {
   target: Target,
   circle: Circle,
   "trending-up": TrendingUp,
-  trophy: Trophy,
+  trophy: BarChart3,
   gem: Gem,
-  sparkles: Sparkles,
+  sparkles: Shield,
   sun: Sun,
 };
 

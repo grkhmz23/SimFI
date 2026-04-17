@@ -236,7 +236,7 @@ export default function Rewards() {
             {!status?.lastPayout && (
               <Card className="p-6">
                 <div className="text-center py-8">
-                  <Trophy className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                  <Target className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
                   <p className="text-xl text-muted-foreground">No payouts yet</p>
                   <p className="text-sm text-muted-foreground mt-2">
                     Be the first to win rewards!

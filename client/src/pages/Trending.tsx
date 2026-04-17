@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendingTokenCard } from '@/components/TrendingTokenCard';
 import { ChainSelector, ChainBadge } from '@/components/ChainSelector';
 import { useChain } from '@/lib/chain-context';
-import { Flame, Sparkles, Clock, Loader2 } from 'lucide-react';
+import { TrendingUp, Activity, Clock, Loader2 } from 'lucide-react';
 import type { Chain } from '@shared/schema';
 
 interface TrendingResponse {
@@ -108,7 +108,7 @@ export default function Trending() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
             <div>
               <h1 className="text-3xl md:text-4xl font-bold mb-2 flex items-center gap-3">
-                <Flame className="h-8 w-8 text-primary" />
+                <TrendingUp className="h-8 w-8 text-primary" />
                 Trending
               </h1>
               <p className="text-muted-foreground">
@@ -127,7 +127,7 @@ export default function Trending() {
         <Tabs defaultValue="trending" className="w-full">
           <TabsList className="grid w-full grid-cols-3 mb-6">
             <TabsTrigger value="trending" className="gap-2">
-              <Sparkles className="h-4 w-4" />
+              <TrendingUp className="h-4 w-4" />
               Trending
             </TabsTrigger>
             <TabsTrigger value="new" className="gap-2">
@@ -135,7 +135,7 @@ export default function Trending() {
               New Pairs
             </TabsTrigger>
             <TabsTrigger value="hot" className="gap-2">
-              <Flame className="h-4 w-4" />
+              <Activity className="h-4 w-4" />
               Hot
             </TabsTrigger>
           </TabsList>

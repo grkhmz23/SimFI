@@ -19,7 +19,6 @@ import {
 import { 
   TrendingUp, 
   History, 
-  Trophy, 
   User, 
   LogOut, 
   Wallet, 
@@ -30,11 +29,10 @@ import {
   BarChart3, 
   Menu,
   X,
-  Sparkles,
-  Flame,
   ChevronDown,
   Users,
-  Gift,
+  Target,
+  TrendingUp,
 } from 'lucide-react';
 
 // Custom whale icon since lucide doesn't export Whale
@@ -136,10 +134,10 @@ export function Navigation() {
 
   const navItems = [
     { path: '/', label: 'Trade', icon: TrendingUp },
-    { path: '/trending', label: 'Trending', icon: Flame },
+    { path: '/trending', label: 'Trending', icon: TrendingUp },
     { path: '/whales', label: 'Whales', icon: WhaleIcon },
     { path: '/study', label: 'Study', icon: Microscope },
-    { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
+    { path: '/leaderboard', label: 'Leaderboard', icon: BarChart3 },
     { path: '/about', label: 'About', icon: Info },
   ];
 
@@ -350,7 +348,7 @@ export function Navigation() {
                       History
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setLocation('/referrals')} data-testid="menu-referrals">
-                      <Gift className="mr-2 h-4 w-4" />
+                      <Users className="mr-2 h-4 w-4" />
                       Referrals
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
@@ -371,18 +369,14 @@ export function Navigation() {
                   >
                     Login
                   </Button>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                  <Button
+                    size="sm"
                     onClick={() => setLocation('/register')}
-                    className="px-4 py-2 rounded-full text-sm font-medium bg-gradient-to-r from-primary to-accent text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-shadow"
+                    className="bg-primary text-primary-foreground"
                     data-testid="button-register"
                   >
-                    <span className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4" />
-                      Get Started
-                    </span>
-                  </motion.button>
+                    Get Started
+                  </Button>
                 </div>
               )}
 
@@ -463,10 +457,9 @@ export function Navigation() {
                       Login
                     </Button>
                     <Button
-                      className="flex-1 rounded-full bg-gradient-to-r from-primary to-accent"
+                      className="flex-1 rounded-full bg-primary"
                       onClick={() => setLocation('/register')}
                     >
-                      <Sparkles className="h-4 w-4 mr-2" />
                       Get Started
                     </Button>
                   </div>

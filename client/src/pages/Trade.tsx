@@ -14,7 +14,6 @@ import {
   Coins, 
   GraduationCap, 
   ChevronDown,
-  Award,
   Activity
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -322,7 +321,7 @@ export default function Trade() {
                 onClick={() => setLocation('/leaderboard')}
                 className="gap-2 rounded-lg border-border hover:bg-muted px-6"
               >
-                <Award className="h-4 w-4" />
+                <BarChart3 className="h-4 w-4" />
                 View Leaderboard
               </Button>
             </div>

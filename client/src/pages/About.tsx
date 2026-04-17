@@ -5,13 +5,13 @@ import { useLocation } from 'wouter';
 import { 
   GraduationCap, 
   Shield, 
-  Trophy, 
+  BarChart3,
   Heart, 
   Coins, 
   TrendingUp, 
   Users, 
   Target,
-  Rocket,
+  ArrowRight,
   AlertCircle,
   ExternalLink
 } from 'lucide-react';
@@ -136,7 +136,7 @@ export default function About() {
             <Card className="p-6">
               <div className="flex items-start gap-4">
                 <div className="rounded-full bg-primary/10 p-3 shrink-0">
-                  <Trophy className="h-6 w-6 text-primary" />
+                  <BarChart3 className="h-6 w-6 text-primary" />
                 </div>
                 <div>
                   <h3 className="text-xl font-semibold mb-2">Leaderboard System</h3>
@@ -179,7 +179,7 @@ export default function About() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card className="p-6 border border-border/50 bg-card/50">
               <div className="flex items-center gap-3 mb-3">
-                <Trophy className="h-6 w-6 text-primary" />
+                <BarChart3 className="h-6 w-6 text-primary" />
                 <h3 className="text-xl font-bold">Leaderboard Prizes</h3>
               </div>
               <p className="text-sm text-muted-foreground">
@@ -189,7 +189,7 @@ export default function About() {
 
             <Card className="p-6 border border-border/50 bg-card/50">
               <div className="flex items-center gap-3 mb-3">
-                <Rocket className="h-6 w-6 text-chart-2" />
+                <ArrowRight className="h-6 w-6 text-chart-2" />
                 <h3 className="text-xl font-bold">Platform Growth</h3>
               </div>
               <p className="text-sm text-muted-foreground">
@@ -254,7 +254,7 @@ export default function About() {
               <Card className="p-6 hover-elevate active-elevate-2 cursor-pointer transition-all">
                 <div className="flex items-center gap-4">
                   <div className="rounded-full bg-chart-2/10 p-3 shrink-0">
-                    <Rocket className="h-6 w-6 text-chart-2" />
+                    <ArrowRight className="h-6 w-6 text-chart-2" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
@@ -285,7 +285,7 @@ export default function About() {
               className="gradient-simfi text-white hover:opacity-90 transition-opacity gap-2"
               data-testid="button-get-started"
             >
-              <Rocket className="h-5 w-5" />
+              <ArrowRight className="h-5 w-5" />
               Get Started Free
             </Button>
             <Button
@@ -294,7 +294,7 @@ export default function About() {
               onClick={() => setLocation('/leaderboard')}
               data-testid="button-view-leaderboard"
             >
-              <Trophy className="h-5 w-5" />
+              <BarChart3 className="h-5 w-5" />
               View Leaderboard
             </Button>
           </div>

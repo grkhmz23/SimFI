@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatNative } from "@/lib/token-format";
 import { useChain } from "@/lib/chain-context";
-import { Trophy, TrendingUp, Microscope, Info, User, LogOut, Wallet, History, BarChart3 } from "lucide-react";
+import { TrendingUp, Microscope, Info, User, LogOut, Wallet, History, BarChart3 } from "lucide-react";
 const logoUrl = '/simfi-logo.png';
 import { OmniSearch } from "@/components/v2/OmniSearch";
 
@@ -12,7 +12,7 @@ const nav = [
   { path: "/", label: "Trade", icon: TrendingUp },
   { path: "/trending", label: "Trending", icon: TrendingUp },
   { path: "/study", label: "Study", icon: Microscope },
-  { path: "/leaderboard", label: "Leaderboard", icon: Trophy },
+  { path: "/leaderboard", label: "Leaderboard", icon: BarChart3 },
   { path: "/about", label: "About", icon: Info },
 ];
 
