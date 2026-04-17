@@ -13,6 +13,7 @@ import { Footer } from "@/components/ui/footer";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Trade from "@/pages/Trade";
+import TradePage from "@/pages/TradePage";
 import { WelcomePopup } from "@/components/WelcomePopup";
 import TokenPage from "@/pages/TokenPage";
 import Trending from "@/pages/Trending";
@@ -57,6 +58,9 @@ function Router() {
       </Route>
       <Route path="/token/:address">
         <PageLayout component={TokenPage} />
+      </Route>
+      <Route path="/trade">
+        <PageLayout component={TradePage} />
       </Route>
       <Route path="/trending">
         <PageLayout component={Trending} />

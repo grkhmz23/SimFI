@@ -1,513 +1,302 @@
-import { useState, useEffect } from 'react';
-import { useParams, useLocation, Link, useSearch } from 'wouter';
-import { useQuery } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { TradeModal } from '@/components/TradeModal';
-import TokenChart from '@/components/TokenChart';
-import { useAuth } from '@/lib/auth-context';
-import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, TrendingUp, ExternalLink, Copy } from 'lucide-react';
-import { formatNative, formatTokenAmount, toBigInt, formatUSD, formatPricePerToken, formatPricePerTokenUSD } from '@/lib/token-format';
-import { useChain } from '@/lib/chain-context';
-import type { Token, Position } from '@shared/schema';
-
-const SUPPORTED_CHAINS = ['solana', 'base'] as const;
-type SupportedChain = (typeof SUPPORTED_CHAINS)[number];
-
-function isSupportedChain(chain: string): chain is SupportedChain {
-  return SUPPORTED_CHAINS.includes(chain as SupportedChain);
-}
+import { useState, useEffect } from "react"
+import { useParams, useLocation, Link } from "wouter"
+import { useQuery } from "@tanstack/react-query"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { DataCell } from "@/components/ui/data-cell"
+import { AddressPill } from "@/components/ui/address-pill"
+import { ChainChip } from "@/components/ui/chain-chip"
+import { TradeModal } from "@/components/TradeModal"
+import TokenChart from "@/components/TokenChart"
+import { useAuth } from "@/lib/auth-context"
+import { useChain } from "@/lib/chain-context"
+import { ArrowLeft, ExternalLink } from "lucide-react"
+import {
+  formatTokenAmount,
+  toBigInt,
+  formatUSD,
+  formatCompactNumber,
+} from "@/lib/token-format"
+import type { Token, Position } from "@shared/schema"
+import { cn } from "@/lib/utils"
 
 function getExplorerUrl(chain: string, tokenAddress: string): string {
-  if (chain === 'base') return `https://basescan.org/token/${tokenAddress}`;
-  if (chain === 'solana') return `https://solscan.io/token/${tokenAddress}`;
-  return `https://dexscreener.com/${chain}/${tokenAddress}`;
-}
-
-function getExplorerName(chain: string): string {
-  if (chain === 'base') return 'BaseScan';
-  if (chain === 'solana') return 'Solscan';
-  return 'Explorer';
+  if (chain === "base") return `https://basescan.org/token/${tokenAddress}`
+  if (chain === "solana") return `https://solscan.io/token/${tokenAddress}`
+  return `https://dexscreener.com/${chain}/${tokenAddress}`
 }
 
 export default function TokenPage() {
-  const params = useParams();
-  const tokenAddress = params.address;
-  const [location, setLocation] = useLocation();
-  const searchStr = useSearch();
-  const { toast } = useToast();
-  const { isAuthenticated } = useAuth();
-  const { activeChain } = useChain();
+  const params = useParams()
+  const tokenAddress = params.address
+  const [, setLocation] = useLocation()
+  const { isAuthenticated } = useAuth()
+  const { activeChain } = useChain()
 
-  // Read chain from URL query param, fallback to active chain
-  const urlParams = new URLSearchParams(searchStr);
-  const pageChain = urlParams.get('chain') || activeChain;
-  const chainSupported = isSupportedChain(pageChain);
+  const [showModal, setShowModal] = useState(false)
+  const [tradeMode, setTradeMode] = useState<"buy" | "sell">("buy")
 
-  // Get token from location state (passed from navigation)
-  const locationState = (typeof window !== 'undefined' && (window.history.state as any)?.state) || {};
-  const [token, setToken] = useState<Token | null>(locationState.token || null);
-  const [showModal, setShowModal] = useState(false);
-  const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
-  const [priceChange, setPriceChange] = useState<number>(0);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
-  const [previousPrice, setPreviousPrice] = useState<number | null>(null);
-  const [notifiedUnsupported, setNotifiedUnsupported] = useState(false);
-
-  // Notify once if viewing an unsupported chain
-  useEffect(() => {
-    if (!chainSupported && !notifiedUnsupported) {
-      setNotifiedUnsupported(true);
-      toast({
-        title: 'Chain not supported',
-        description: `Trading on ${pageChain} is not supported yet. You can view the chart, but buying and selling are disabled.`,
-        variant: 'default',
-      });
-    }
-  }, [chainSupported, pageChain, notifiedUnsupported, toast]);
-
-  // Fetch token from API with auto-refresh every 5 seconds (real-time updates)
-  const { data: tokenData, isLoading: tokenLoading, error: tokenError, dataUpdatedAt } = useQuery<Token & { cached?: boolean; ageMs?: number }>({
-    queryKey: [`/api/tokens/${tokenAddress}`, pageChain],
+  const {
+    data: tokenData,
+    isLoading: tokenLoading,
+    error: tokenError,
+  } = useQuery<Token & { cached?: boolean; ageMs?: number }>({
+    queryKey: [`/api/market/token/${tokenAddress}`, activeChain],
     queryFn: async () => {
-      const res = await fetch(`/api/market/token/${tokenAddress}?chain=${pageChain}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch token');
-      return res.json();
+      const res = await fetch(`/api/market/token/${tokenAddress}?chain=${activeChain}`, {
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error("Failed to fetch token")
+      return res.json()
     },
     enabled: !!tokenAddress,
-    refetchInterval: chainSupported ? 5000 : 15000,
-    refetchIntervalInBackground: true,
+    refetchInterval: 5000,
     retry: 3,
-    retryDelay: 1000,
-  });
+  })
 
-  // Reset price tracking state when navigating to a different token
-  useEffect(() => {
-    setPriceChange(0);
-    setPreviousPrice(null);
-    setLastUpdate(null);
-    setNotifiedUnsupported(false);
-  }, [tokenAddress, pageChain]);
-
-  // Update token state and calculate price change when API data is available
-  useEffect(() => {
-    if (tokenData) {
-      // Validate token data before setting state
-      const newToken = tokenData;
-      if (newToken.tokenAddress && newToken.name && newToken.symbol) {
-        // Calculate price change if we have a previous price
-        if (previousPrice !== null && newToken.price && previousPrice !== newToken.price && previousPrice > 0) {
-          const change = ((newToken.price - previousPrice) / previousPrice) * 100;
-          setPriceChange(change);
-        }
-
-        // Update previous price for next comparison
-        if (newToken.price) {
-          setPreviousPrice(newToken.price);
-        }
-
-        setToken(newToken);
-        setLastUpdate(new Date(dataUpdatedAt));
-      } else {
-        console.error('Invalid token data received:', newToken);
-      }
-    }
-  }, [tokenData, dataUpdatedAt]);
-
-  // Fetch user's positions to check if they own this token (only for supported chains)
   const { data: positionsData } = useQuery<{ positions: Position[] }>({
-    queryKey: ['/api/trades/positions', activeChain],
+    queryKey: ["/api/trades/positions", activeChain],
     queryFn: async () => {
       const res = await fetch(`/api/trades/positions?chain=${activeChain}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch positions');
-      return res.json();
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error("Failed to fetch positions")
+      return res.json()
     },
-    enabled: isAuthenticated && chainSupported,
-  });
+    enabled: isAuthenticated,
+  })
 
   const userPosition = positionsData?.positions?.find(
-    p => p.tokenAddress === tokenAddress
-  );
+    (p) => p.tokenAddress === tokenAddress
+  )
 
-  const openTradeModal = (mode: 'buy' | 'sell') => {
-    setTradeMode(mode);
-    setShowModal(true);
-  };
-
-  // Show error if query failed
-  if (tokenError && !token) {
-    return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8">
-          <Link href="/">
-            <Button variant="ghost" size="sm" className="mb-4" data-testid="button-back">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Trade
-            </Button>
-          </Link>
-          <Card className="p-8 text-center">
-            <h1 className="text-2xl font-bold mb-4 text-destructive">Error Loading Token</h1>
-            <p className="text-muted-foreground mb-6">
-              Could not fetch token data. Please check your connection and try again.
-            </p>
-            <p className="text-sm text-muted-foreground mb-4 font-mono">
-              {tokenAddress}
-            </p>
-            <div className="flex gap-2 justify-center">
-              <Button onClick={() => window.location.reload()} variant="default" data-testid="button-retry">
-                Retry
-              </Button>
-              <Link href="/">
-                <Button variant="outline" data-testid="button-back-home">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Go back to Trade page
-                </Button>
-              </Link>
-            </div>
-          </Card>
-        </div>
-      </div>
-    );
+  const openTradeModal = (mode: "buy" | "sell") => {
+    setTradeMode(mode)
+    setShowModal(true)
   }
 
-  if (!token && tokenLoading) {
+  if (tokenError || (!tokenData && !tokenLoading)) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8">
-          <Card className="p-8 text-center">
-            <h1 className="text-2xl font-bold mb-4">Loading Token...</h1>
-            <p className="text-muted-foreground">
-              Fetching token data...
+      <div className="min-h-screen bg-[var(--bg-base)]">
+        <div className="mx-auto max-w-content px-4 sm:px-6 py-8">
+          <Button variant="ghost" size="sm" onClick={() => setLocation("/")} className="mb-4">
+            <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={1.5} />
+            Back
+          </Button>
+          <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-8 text-center">
+            <h1 className="text-h2 mb-2">Token Not Found</h1>
+            <p className="text-body text-[var(--text-secondary)] mb-6">
+              Could not load token data. It may be too new or not yet indexed.
             </p>
-          </Card>
+            <AddressPill address={tokenAddress || ""} />
+          </div>
         </div>
       </div>
-    );
+    )
   }
 
-  if (!token) {
+  if (!tokenData && tokenLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8">
-          <Card className="p-8 text-center">
-            <h1 className="text-2xl font-bold mb-4">Token Not Found</h1>
-            <p className="text-muted-foreground mb-6">
-              This token is not available in our current feed.
-            </p>
-            <Link href="/">
-              <Button variant="outline" data-testid="button-back-home">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Go back to Trade page
-              </Button>
-            </Link>
-          </Card>
+      <div className="min-h-screen bg-[var(--bg-base)]">
+        <div className="mx-auto max-w-content px-4 sm:px-6 py-8">
+          <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-8 text-center">
+            <div className="skeleton-shimmer h-8 w-48 mx-auto rounded mb-4" />
+            <div className="skeleton-shimmer h-4 w-32 mx-auto rounded" />
+          </div>
         </div>
       </div>
-    );
+    )
   }
 
-  // Validate token price - prevent crashes from invalid/missing price data
-  const hasValidPrice = token?.price && !isNaN(token.price) && isFinite(token.price) && token.price > 0;
+  const token = tokenData!
+  const hasValidPrice = token.price && !isNaN(token.price) && isFinite(token.price) && token.price > 0
 
   if (!hasValidPrice) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8">
-          <Link href="/">
-            <Button variant="ghost" size="sm" className="mb-4" data-testid="button-back">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Tokens
-            </Button>
-          </Link>
-          <Card className="p-8 text-center">
-            <h1 className="text-2xl font-bold mb-4">{token.name}</h1>
-            <Badge variant="outline" className="mb-4">
-              {token.symbol}
-            </Badge>
-            <p className="text-muted-foreground mb-6">
-              Price data is currently unavailable for this token. It may be too new or not yet indexed.
+      <div className="min-h-screen bg-[var(--bg-base)]">
+        <div className="mx-auto max-w-content px-4 sm:px-6 py-8">
+          <Button variant="ghost" size="sm" onClick={() => setLocation("/")} className="mb-4">
+            <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={1.5} />
+            Back
+          </Button>
+          <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-8 text-center">
+            <h1 className="text-h2 mb-2">{token.name}</h1>
+            <Badge variant="outline" className="mb-4">{token.symbol}</Badge>
+            <p className="text-body text-[var(--text-secondary)] mb-4">
+              Price data is currently unavailable for this token.
             </p>
-            <p className="text-sm text-muted-foreground mb-4 font-mono">
-              {tokenAddress}
-            </p>
-            <Link href="/">
-              <Button variant="outline" data-testid="button-back-home">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Go back to Trade page
-              </Button>
-            </Link>
-          </Card>
+            <AddressPill address={tokenAddress || ""} />
+          </div>
         </div>
       </div>
-    );
+    )
   }
 
-  const formatMarketCap = (mc: number | undefined) => {
-    if (!mc || isNaN(mc) || !isFinite(mc)) return '$0';
-    if (mc >= 1_000_000_000) return `$${(mc / 1_000_000_000).toFixed(2)}B`;
-    if (mc >= 1_000_000) return `$${(mc / 1_000_000).toFixed(2)}M`;
-    if (mc >= 1_000) return `$${(mc / 1_000).toFixed(1)}K`;
-    return `$${mc.toFixed(0)}`;
-  };
-
-  const copyToClipboard = async () => {
-    try {
-      await navigator.clipboard.writeText(tokenAddress!);
-      toast({
-        title: 'Copied!',
-        description: 'Token address copied to clipboard',
-      });
-    } catch (err) {
-      toast({
-        title: 'Failed to copy',
-        description: 'Please copy manually',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const explorerUrl = getExplorerUrl(pageChain, tokenAddress!);
-  const explorerName = getExplorerName(pageChain);
+  const priceUsd =
+    token.priceUsd !== undefined
+      ? token.priceUsd
+      : token.price
+      ? token.price / 1_000_000_000
+      : 0
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-6 max-w-7xl">
+    <div className="min-h-screen bg-[var(--bg-base)] pb-20 lg:pb-0">
+      <div className="mx-auto max-w-content px-4 sm:px-6 py-6">
         {/* Header */}
         <div className="mb-6">
-          <Link href="/">
-            <Button variant="ghost" size="sm" className="mb-4" data-testid="button-back">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Tokens
-            </Button>
-          </Link>
+          <Button variant="ghost" size="sm" onClick={() => setLocation("/")} className="mb-4">
+            <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={1.5} />
+            Back
+          </Button>
 
           <div className="flex items-start gap-4 flex-wrap">
+            {token.icon && (
+              <img
+                src={token.icon}
+                alt={token.symbol}
+                className="h-14 w-14 rounded-lg object-cover shrink-0"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none"
+                }}
+              />
+            )}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-2 flex-wrap">
-                {token.icon && (
-                  <img
-                    src={token.icon}
-                    alt={token.symbol}
-                    className="w-12 h-12 rounded-full shrink-0"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
-                )}
-                <div className="flex flex-col gap-1">
-                  <h1 className="text-2xl font-bold text-foreground" data-testid="text-token-name">
-                    {token.name}
-                  </h1>
-                  <Badge variant="outline" className="shrink-0 w-fit">
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                    {token.symbol}
-                  </Badge>
-                </div>
-                {/* Live Indicator */}
-                <Badge
-                  variant="outline"
-                  className="shrink-0 border-destructive/50 bg-destructive/10 text-destructive animate-pulse flex items-center gap-1.5"
-                  data-testid="badge-live"
-                >
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" />
-                  </span>
-                  LIVE
-                </Badge>
-                {/* Chain Badge */}
-                <Badge
-                  variant={chainSupported ? 'secondary' : 'destructive'}
-                  className="shrink-0 w-fit capitalize"
-                  data-testid="badge-chain"
-                >
-                  {pageChain}
-                </Badge>
+              <div className="flex items-center gap-3 flex-wrap mb-2">
+                <h1 className="text-h1">{token.name}</h1>
+                <Badge variant="outline">{token.symbol}</Badge>
+                <ChainChip chain={activeChain} />
               </div>
-
-              <div className="flex items-center gap-2 mt-2">
-                <button
-                  onClick={copyToClipboard}
-                  className="text-sm font-mono text-muted-foreground hover:text-primary transition-colors cursor-pointer flex items-center gap-2 group"
-                  data-testid="button-copy-address"
-                >
-                  {tokenAddress}
-                  <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </button>
+              <div className="flex items-center gap-3 flex-wrap">
+                <AddressPill address={tokenAddress || ""} />
                 <a
-                  href={explorerUrl}
+                  href={getExplorerUrl(activeChain, tokenAddress!)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-muted-foreground hover:text-primary transition-colors"
-                  title={`View on ${explorerName}`}
+                  className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
                 >
-                  <ExternalLink className="h-4 w-4" />
+                  <ExternalLink className="h-4 w-4" strokeWidth={1.5} />
                 </a>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Main Content: Chart on Left, Trading Panel on Right */}
+        {/* Data Row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
+            <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Price</p>
+            <DataCell
+              value={priceUsd < 0.01 && priceUsd > 0 ? `$${priceUsd.toExponential(2)}` : `$${priceUsd.toFixed(4)}`}
+              variant={token.priceChange24h && token.priceChange24h >= 0 ? "gain" : token.priceChange24h && token.priceChange24h < 0 ? "loss" : "default"}
+            />
+          </div>
+          <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
+            <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider mb-1">24h Change</p>
+            <DataCell
+              value={`${token.priceChange24h && token.priceChange24h >= 0 ? "+" : ""}${(token.priceChange24h || 0).toFixed(2)}%`}
+              variant={token.priceChange24h && token.priceChange24h >= 0 ? "gain" : "loss"}
+            />
+          </div>
+          <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
+            <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Market Cap</p>
+            <DataCell value={formatCompactNumber(token.marketCap || 0)} />
+          </div>
+          <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
+            <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Volume (24h)</p>
+            <DataCell value={formatCompactNumber(token.volume24h || 0)} />
+          </div>
+        </div>
+
+        {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Chart Section - Takes 2/3 width on large screens */}
-          <div className="lg:col-span-2 space-y-4">
+          {/* Chart */}
+          <div className="lg:col-span-2">
             <TokenChart
               tokenAddress={tokenAddress!}
               tokenSymbol={token.symbol}
               tokenName={token.name}
-              currentPrice={token.priceUsd !== undefined ? token.priceUsd : (token.price ? token.price / 1_000_000_000 : 0)}
+              currentPrice={priceUsd}
               priceChange24h={token.priceChange24h || 0}
               volume24h={token.volume24h || 0}
-              liquidity={0}
-              height="500px"
-              chain={pageChain}
+              height="480px"
+              chain={activeChain}
             />
           </div>
 
-          {/* Trading Panel - Takes 1/3 width on large screens */}
+          {/* Trade Panel */}
           <div className="space-y-4">
-            {/* Price Card */}
-            <Card className="p-6">
-              <div className="mb-4">
-                <p className="text-xs text-muted-foreground uppercase mb-1">Current Price</p>
-                <div className="flex items-baseline gap-2 flex-wrap">
-                  <span className="text-3xl font-bold font-mono" data-testid="text-current-price">
-                    {token.priceUsd !== undefined ? `$${token.priceUsd < 0.01 ? token.priceUsd.toFixed(6) : token.priceUsd.toFixed(4)}` : formatUSD(token.price)}
-                  </span>
-                  {(token.priceChange24h !== undefined && token.priceChange24h !== 0) ? (
-                    <span
-                      className={`text-sm font-semibold ${token.priceChange24h >= 0 ? 'text-green-500' : 'text-red-500'}`}
-                      data-testid="text-price-change"
-                    >
-                      {token.priceChange24h >= 0 ? '▲' : '▼'} {Math.abs(token.priceChange24h).toFixed(2)}%
-                    </span>
-                  ) : priceChange !== 0 && (
-                    <span
-                      className={`text-sm font-semibold ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
-                      data-testid="text-price-change"
-                    >
-                      {priceChange >= 0 ? '▲' : '▼'} {Math.abs(priceChange).toFixed(2)}%
-                    </span>
-                  )}
-                </div>
-                {lastUpdate && (
-                  <div className="text-xs text-muted-foreground mt-1" data-testid="text-last-update">
-                    Updated: {lastUpdate.toLocaleTimeString()}
-                  </div>
-                )}
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-5">
+              <div className="flex gap-3 mb-5">
+                <Button
+                  className="flex-1"
+                  onClick={() => openTradeModal("buy")}
+                >
+                  Buy {token.symbol}
+                </Button>
+                <Button
+                  variant="danger"
+                  className="flex-1"
+                  onClick={() => openTradeModal("sell")}
+                  disabled={!userPosition}
+                >
+                  Sell {token.symbol}
+                </Button>
               </div>
 
-              {/* Stats Row */}
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase mb-1">Market Cap</p>
-                  <p className="text-lg font-bold text-foreground" data-testid="text-marketcap">
-                    {formatMarketCap(token.marketCap)}
+              {userPosition && (
+                <div className="space-y-3 pt-4 border-t border-[var(--border-subtle)]">
+                  <p className="text-small text-[var(--text-tertiary)] uppercase tracking-wider">
+                    Your Position
                   </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase mb-1">24h Volume</p>
-                  <p className="text-lg font-bold text-foreground">
-                    ${(token.volume24h || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                  </p>
-                </div>
-              </div>
-
-              {/* Trade Buttons */}
-              {chainSupported ? (
-                <div className="flex flex-col gap-3">
-                  <Button
-                    size="lg"
-                    onClick={() => openTradeModal('buy')}
-                    data-testid="button-buy"
-                    className="w-full"
-                  >
-                    Buy {token.symbol}
-                  </Button>
-                  <Button
-                    size="lg"
-                    variant="destructive"
-                    onClick={() => openTradeModal('sell')}
-                    disabled={!userPosition}
-                    data-testid="button-sell"
-                    className="w-full"
-                  >
-                    Sell {token.symbol}
-                  </Button>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-center">
-                  <p className="text-sm font-medium text-destructive">
-                    Trading not available on {pageChain}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    You can view the chart, but buying and selling are not supported yet.
-                  </p>
-                </div>
-              )}
-            </Card>
-
-            {/* Position Info (if user owns this token) */}
-            {userPosition && (
-              <Card className="p-6">
-                <h2 className="text-lg font-bold mb-4">Your Position</h2>
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase mb-1">Amount Held</p>
-                    <p className="text-xl font-bold font-mono">
-                      {Number(formatTokenAmount(userPosition.amount, 2, userPosition.decimals || token.decimals || 6)).toLocaleString()} {token.symbol}
-                    </p>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--text-secondary)]">Amount</span>
+                    <span className="font-mono text-[var(--text-primary)]">
+                      {formatTokenAmount(userPosition.amount, 2, userPosition.decimals || token.decimals || 6)} {token.symbol}
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase mb-1">Entry Price</p>
-                    <p className="text-xl font-bold font-mono">
-                      {formatPricePerTokenUSD(userPosition.entryPrice, 6)}
-                    </p>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--text-secondary)]">Entry</span>
+                    <span className="font-mono text-[var(--text-primary)]">
+                      {formatUSD(userPosition.entryPrice, 6)}
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase mb-1">Current Value</p>
-                    <p className="text-xl font-bold font-mono text-primary">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--text-secondary)]">Value</span>
+                    <span className="font-mono text-[var(--text-primary)]">
                       {(() => {
                         try {
-                          const amount = toBigInt(userPosition.amount);
-                          const price = Number(token.price);
-                          if (!isFinite(price) || price <= 0) {
-                            return '$0.00';
-                          }
-                          const priceLamports = BigInt(Math.floor(price));
-                          const decimals = userPosition.decimals || 6;
-                          const decimalDivisor = BigInt(10 ** decimals);
-                          const valueLamports = (amount * priceLamports) / decimalDivisor;
-                          return formatUSD(valueLamports, 2);
-                        } catch (error) {
-                          console.error('Error calculating position value:', error);
-                          return '$0.00';
+                          const amount = toBigInt(userPosition.amount)
+                          const price = Number(token.price)
+                          if (!isFinite(price) || price <= 0) return "$0.00"
+                          const decimals = userPosition.decimals || 6
+                          const valueLamports = (amount * BigInt(Math.floor(price))) / BigInt(10 ** decimals)
+                          return formatUSD(valueLamports, 2)
+                        } catch {
+                          return "$0.00"
                         }
                       })()}
-                    </p>
+                    </span>
                   </div>
                 </div>
-              </Card>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Trade Modal */}
-      {showModal && chainSupported && (
+      {showModal && (
         <TradeModal
-          token={tradeMode === 'buy' ? token : undefined}
-          position={tradeMode === 'sell' && userPosition ? userPosition : undefined}
+          token={tradeMode === "buy" ? token : undefined}
+          position={
+            tradeMode === "sell" && userPosition
+              ? userPosition
+              : undefined
+          }
+          mode={tradeMode}
           onClose={() => setShowModal(false)}
         />
       )}
     </div>
-  );
+  )
 }

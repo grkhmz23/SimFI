@@ -44,7 +44,7 @@ export function Navigation() {
   }, [])
 
   const navItems = [
-    { path: "/", label: "Trade", icon: TrendingUp },
+    { path: "/trade", label: "Trade", icon: TrendingUp },
     { path: "/trending", label: "Trending", icon: BarChart3 },
     { path: "/leaderboard", label: "Leaderboard", icon: Trophy },
     { path: "/about", label: "About", icon: Info },
