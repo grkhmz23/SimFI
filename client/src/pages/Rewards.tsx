@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Trophy, Clock, Gift, History, ExternalLink, Info, AlertTriangle } from 'lucide-react';
+import { Target, Clock, Coins, History, ExternalLink, Info, AlertTriangle } from 'lucide-react';
 import { formatSol } from '@/lib/lamports';
 import { useState, useEffect } from 'react';
 
@@ -122,7 +122,7 @@ export default function Rewards() {
     <div className="container mx-auto px-4 py-8 max-w-5xl">
       <div className="mb-8">
         <div className="flex items-center gap-4 mb-2">
-          <Gift className="h-10 w-10 text-primary" />
+          <Coins className="h-10 w-10 text-primary" />
           <h1 className="text-4xl font-bold text-foreground">Rewards</h1>
         </div>
         <p className="text-muted-foreground">
@@ -321,7 +321,7 @@ export default function Rewards() {
               {/* Prize Distribution */}
               <div>
                 <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                  <Trophy className="h-5 w-5 text-primary" />
+                  <Target className="h-5 w-5 text-primary" />
                   Prize Distribution
                 </h3>
                 <p className="text-muted-foreground mb-4">

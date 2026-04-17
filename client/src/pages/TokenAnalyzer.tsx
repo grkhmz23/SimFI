@@ -12,11 +12,9 @@ import {
   Activity, 
   BarChart3, 
   Shield, 
-  Zap,
   BookOpen,
   TrendingUp,
   ArrowRight,
-  Sparkles,
   GraduationCap,
   Target
 } from 'lucide-react';
@@ -167,7 +165,7 @@ export default function TokenAnalyzer() {
           >
             {/* Badge */}
             <Badge className="mb-6 px-4 py-2 text-sm bg-primary/10 border-primary/30">
-              <Sparkles className="w-3 h-3 mr-2" />
+              <BarChart3 className="w-3 h-3 mr-2" />
               Coming Soon
             </Badge>
 
@@ -249,7 +247,7 @@ export default function TokenAnalyzer() {
             className="grid grid-cols-1 md:grid-cols-3 gap-8"
           >
             {[
-              { icon: Zap, title: "Helius Powered", desc: "Real-time multi-chain data" },
+              { icon: BarChart3, title: "Real-Time Data", desc: "Live multi-chain market data" },
               { icon: Target, title: "Pro Analysis", desc: "Advanced trading tools" },
               { icon: GraduationCap, title: "Learn & Earn", desc: "Educational content" },
             ].map((item, index) => (

@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Trophy, Medal, Award, Copy, Check } from 'lucide-react';
+import { BarChart3, Activity, Target, Copy, Check } from 'lucide-react';
 import { Link } from 'wouter';
 import { SharePnLCard } from '@/components/SharePnLCard';
 import type { LeaderboardEntry } from '@shared/schema';
@@ -87,7 +87,7 @@ export default function Leaderboard() {
     if (groups.length === 0) {
       return (
         <div className="text-center py-12">
-          <Trophy className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+          <Target className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
           <p className="text-xl text-muted-foreground">No past winners yet</p>
           <p className="text-sm text-muted-foreground mt-2">Trade to become a winner in the next period</p>
         </div>
@@ -117,7 +117,7 @@ export default function Leaderboard() {
     if (leaders.length === 0) {
       return (
         <div className="text-center py-12">
-          <Trophy className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+          <BarChart3 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
           <p className="text-xl text-muted-foreground">No data yet</p>
           <p className="text-sm text-muted-foreground mt-2">Start trading to appear on the leaderboard</p>
         </div>
@@ -211,7 +211,7 @@ export default function Leaderboard() {
     <div className="container mx-auto px-4 py-8 max-w-5xl">
       <div className="mb-8">
         <div className="flex items-center gap-4 mb-2">
-          <Trophy className="h-10 w-10 text-primary" />
+          <BarChart3 className="h-10 w-10 text-primary" />
           <h1 className="text-4xl font-bold text-foreground">Leaderboard</h1>
         </div>
         <p className="text-muted-foreground">Top traders by realized profit every 6 hours</p>
@@ -220,15 +220,15 @@ export default function Leaderboard() {
       <Tabs defaultValue="overall" className="w-full">
         <TabsList className="grid w-full grid-cols-3 mb-8">
           <TabsTrigger value="overall" className="gap-2" data-testid="tab-overall">
-            <Trophy className="h-4 w-4" />
+            <BarChart3 className="h-4 w-4" />
             All Time
           </TabsTrigger>
           <TabsTrigger value="period" className="gap-2" data-testid="tab-period">
-            <Medal className="h-4 w-4" />
+            <Activity className="h-4 w-4" />
             Current 6h
           </TabsTrigger>
           <TabsTrigger value="winners" className="gap-2" data-testid="tab-winners">
-            <Award className="h-4 w-4" />
+            <Target className="h-4 w-4" />
             Past Winners
           </TabsTrigger>
         </TabsList>

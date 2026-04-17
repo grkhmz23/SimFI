@@ -12,7 +12,7 @@ import { usePrice } from '@/lib/price-context';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { formatBalance, formatUSD, formatSol, formatEth, shortenAddress } from '@/lib/token-format';
-import { Wallet, TrendingUp, Activity, LogIn, Sparkles, ArrowUpRight, ArrowDownRight, Zap, Circle, Flame } from 'lucide-react';
+import { Wallet, TrendingUp, Activity, LogIn, ArrowUpRight, ArrowDownRight, Circle, Target, User, Loader2 } from 'lucide-react';
 import { AchievementBadge } from '@/components/AchievementBadge';
 import { ALL_BADGE_IDS } from '@/lib/achievements';
 import type { User, UserAchievement } from '@shared/schema';
@@ -204,11 +204,11 @@ export default function Dashboard() {
               </p>
               <div className="flex gap-3">
                 <Button
-                  className="flex-1 btn-glow"
+                  className="flex-1"
                   onClick={() => setLocation('/login')}
                   data-testid="button-goto-login"
                 >
-                  <Zap className="w-4 h-4 mr-2" />
+                  <LogIn className="w-4 h-4 mr-2" />
                   Login
                 </Button>
                 <Button
@@ -345,8 +345,8 @@ export default function Dashboard() {
             <Card className="p-6 glow-card">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-orange-500/10 text-3xl">
-                    <Flame className="h-8 w-8 text-orange-500" />
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+                    <Target className="h-6 w-6 text-primary" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Daily Streak</p>
@@ -394,7 +394,7 @@ export default function Dashboard() {
           <Card className="glow-card p-8">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2 rounded-lg bg-primary/10">
-                <Sparkles className="h-5 w-5 text-primary" />
+                <User className="h-5 w-5 text-primary" />
               </div>
               <h2 className="text-2xl font-bold text-foreground">Update Profile</h2>
             </div>
@@ -499,17 +499,16 @@ export default function Dashboard() {
                 <Button
                   type="submit"
                   disabled={updateMutation.isPending}
-                  className="btn-glow"
+                  className=""
                   data-testid="button-update"
                 >
                   {updateMutation.isPending ? (
                     <>
-                      <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin mr-2" />
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       Updating...
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-4 h-4 mr-2" />
                       Update Profile
                     </>
                   )}

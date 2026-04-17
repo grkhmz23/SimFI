@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -10,7 +11,7 @@ import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@tanstack/react-query';
-import { TrendingUp, Mail, Lock, ArrowRight, Sparkles, X } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Eye, EyeOff, Loader2, X } from 'lucide-react';
 import type { LoginRequest } from '@shared/schema';
 
 const loginSchema = z.object({
@@ -22,6 +23,7 @@ export default function Login() {
   const [, setLocation] = useLocation();
   const { setAuth } = useAuth();
   const { toast } = useToast();
+  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -36,8 +38,8 @@ export default function Login() {
     onSuccess: (data) => {
       setAuth(data.user);
       toast({
-        title: 'Welcome back!',
-        description: `Logged in as ${data.user.username}`,
+        title: 'Login Successful',
+        description: `Signed in as ${data.user.username}`,
       });
       setLocation('/');
     },
@@ -55,65 +57,37 @@ export default function Login() {
   });
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background relative overflow-hidden">
-      {/* Background effects */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/20 rounded-full blur-3xl" />
-      </div>
-
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: 0.3 }}
         className="relative w-full max-w-md"
       >
-        {/* Card glow */}
-        <div className="absolute -inset-0.5 bg-gradient-to-r from-primary/50 to-accent/50 rounded-3xl blur opacity-30" />
-
-        {/* Card */}
-        <div className="relative bg-card/95 backdrop-blur-xl border border-border/50 rounded-3xl p-8 shadow-2xl">
-          {/* Close button */}
+        <div className="relative bg-card border border-border rounded-2xl p-8 shadow-xl">
           <button
             onClick={() => setLocation('/')}
-            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-muted/50 hover:bg-muted flex items-center justify-center transition-colors group"
+            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors"
             aria-label="Close and return to home"
           >
-            <X className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+            <X className="w-4 h-4 text-muted-foreground" />
           </button>
 
-          {/* Header */}
           <div className="text-center mb-8">
-            {/* Logo */}
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="relative">
-                <div className="absolute inset-0 bg-primary/20 rounded-xl blur-lg animate-pulse" />
-                <div className="relative w-14 h-14 bg-gradient-to-br from-primary to-primary/80 rounded-xl flex items-center justify-center shadow-lg">
-                  <img 
-                    src="/simfi-logo.png" 
-                    alt="SimFi" 
-                    className="w-10 h-10 object-contain"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                    }}
-                  />
-                  <TrendingUp className="w-8 h-8 text-primary-foreground hidden" />
-                </div>
+            <div className="flex items-center justify-center gap-3 mb-6">
+              <div className="relative w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
+                <span className="text-primary-foreground font-bold text-xl">S</span>
               </div>
               <div className="text-left">
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  SimFi
-                </h1>
-                <p className="text-xs text-muted-foreground">Paper Trading</p>
+                <h1 className="text-2xl font-semibold text-foreground tracking-tight">SimFi</h1>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Paper Trading</p>
               </div>
             </div>
 
-            <h2 className="text-xl font-semibold text-foreground mb-1">Welcome Back!</h2>
-            <p className="text-sm text-muted-foreground">Sign in to continue trading</p>
+            <h2 className="text-lg font-medium text-foreground mb-1">Sign In</h2>
+            <p className="text-sm text-muted-foreground">Enter your credentials to access your account</p>
           </div>
 
-          {/* Form */}
           <Form {...form}>
             <form onSubmit={onSubmit} className="space-y-5">
               <FormField
@@ -128,7 +102,7 @@ export default function Login() {
                         <Input
                           type="email"
                           placeholder="you@example.com"
-                          className="pl-10 h-12 rounded-xl border-border/50 bg-background/50 focus:border-primary focus:ring-primary/20"
+                          className="pl-10 h-11 rounded-lg border-border bg-background focus:border-primary"
                           data-testid="input-email"
                           {...field}
                         />
@@ -149,12 +123,20 @@ export default function Login() {
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
-                          type="password"
+                          type={showPassword ? 'text' : 'password'}
                           placeholder="••••••••"
-                          className="pl-10 h-12 rounded-xl border-border/50 bg-background/50 focus:border-primary focus:ring-primary/20"
+                          className="pl-10 pr-10 h-11 rounded-lg border-border bg-background focus:border-primary"
                           data-testid="input-password"
                           {...field}
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((v) => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          tabIndex={-1}
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
                       </div>
                     </FormControl>
                     <FormMessage />
@@ -164,49 +146,46 @@ export default function Login() {
 
               <Button
                 type="submit"
-                className="w-full h-12 text-base font-semibold rounded-xl bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg shadow-primary/25 group"
+                className="w-full h-11 text-sm font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground"
                 disabled={loginMutation.isPending}
                 data-testid="button-login"
               >
                 {loginMutation.isPending ? (
                   <>
-                    <Sparkles className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Signing in...
                   </>
                 ) : (
                   <>
                     Sign In
-                    <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                    <ArrowRight className="w-4 h-4 ml-2" />
                   </>
                 )}
               </Button>
             </form>
           </Form>
 
-          {/* Divider */}
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border/50" />
+              <div className="w-full border-t border-border" />
             </div>
             <div className="relative flex justify-center text-xs">
-              <span className="px-3 bg-card text-muted-foreground">New to SimFi?</span>
+              <span className="px-2 bg-card text-muted-foreground">New to SimFi?</span>
             </div>
           </div>
 
-          {/* Register link */}
           <Link href="/register">
             <Button
               variant="outline"
-              className="w-full h-12 text-base font-medium rounded-xl border-border/50 hover:border-primary/50 hover:bg-primary/5"
+              className="w-full h-11 text-sm font-medium rounded-lg border-border hover:bg-muted"
               data-testid="link-register"
             >
-              Create an Account
+              Create Account
             </Button>
           </Link>
 
-          {/* Footer */}
           <p className="text-center text-xs text-muted-foreground mt-6">
-            Start with 5 ETH + 10 SOL paper balance • Risk-free trading
+            Start with 5 ETH + 10 SOL paper balance. Risk-free trading.
           </p>
         </div>
       </motion.div>

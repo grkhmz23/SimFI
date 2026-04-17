@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Users, UserCheck, Gift } from "lucide-react";
+import { Copy, Users, UserCheck, Coins } from "lucide-react";
 
 interface ReferralStats {
   username: string;
@@ -72,7 +72,7 @@ export default function Referrals() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Pending Rewards</CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-3">
-            <Gift className="h-6 w-6 text-amber-500" />
+            <Coins className="h-6 w-6 text-amber-500" />
             <span className="text-3xl font-bold">{stats?.pending || 0}</span>
           </CardContent>
         </Card>
