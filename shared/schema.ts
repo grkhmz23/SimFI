@@ -332,15 +332,13 @@ export interface BuyRequest {
   tokenAddress: string;
   tokenName: string;
   tokenSymbol: string;
-  amount: number; // native token amount (SOL or ETH)
-  price: number;
+  amount: string; // native token amount (SOL or ETH) as string
   chain: Chain;
 }
 
 export interface SellRequest {
   positionId: string;
-  amount?: number;
-  exitPrice: number;
+  amountLamports?: string; // atomic token amount as string
   chain: Chain;
 }
 

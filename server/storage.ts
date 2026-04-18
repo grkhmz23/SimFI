@@ -692,7 +692,7 @@ class DbStorage implements IStorage {
         tokenName: position.tokenName,
         tokenSymbol: position.tokenSymbol,
         decimals,
-        entryPrice: atomicToDecimal(position.entryPrice as any, nativeDecimals),
+        entryPrice: String(position.entryPrice),
         exitPrice: atomicToDecimal(params.exitPrice, nativeDecimals),
         amount: params.sellAmount,
         solSpent: proportionalCost,

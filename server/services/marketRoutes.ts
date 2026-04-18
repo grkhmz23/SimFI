@@ -52,7 +52,7 @@ export function registerMarketRoutes(
       // Serialize BigInt values for JSON and map to frontend Token shape
       const serializedToken = {
         ...token,
-        price: Number(token.priceNative),
+        price: token.priceUsd,
         priceNative: token.priceNative.toString(),
       };
 
@@ -102,6 +102,7 @@ export function registerMarketRoutes(
       tokensMap.forEach((data, addr) => {
         tokens[addr] = {
           ...data,
+          price: data.priceUsd,
           priceNative: data.priceNative.toString(),
           ageMs: Date.now() - data.lastUpdated,
         };
@@ -137,7 +138,7 @@ export function registerMarketRoutes(
       const serializedTrending = trending.map(token => ({
         ...token,
         priceNative: token.priceNative.toString(),
-        price: Number(token.priceNative),
+        price: token.priceUsd,
       }));
 
       res.json({
@@ -169,7 +170,7 @@ export function registerMarketRoutes(
       const serialized = newPairs.map(token => ({
         ...token,
         priceNative: token.priceNative.toString(),
-        price: Number(token.priceNative),
+        price: token.priceUsd,
       }));
 
       res.json({
@@ -202,7 +203,7 @@ export function registerMarketRoutes(
       const serialized = hot.map(token => ({
         ...token,
         priceNative: token.priceNative.toString(),
-        price: Number(token.priceNative),
+        price: token.priceUsd,
       }));
 
       res.json({
