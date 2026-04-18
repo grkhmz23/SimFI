@@ -37,7 +37,7 @@ import {
   formatNative,
   formatUSD,
   formatTokenAmount,
-  formatPricePerTokenUSD,
+  formatPricePerTokenNative,
   toBigInt,
 } from '@/lib/token-format';
 import { cn } from '@/lib/utils';
@@ -635,13 +635,13 @@ export default function Portfolio() {
                           </TableCell>
                           <TableCell className="text-right">
                             <DataCell
-                              value={formatPricePerTokenUSD(Number(position.entryPrice), 6)}
+                              value={formatPricePerTokenNative(position.entryPrice, activeChain)}
                               variant="secondary"
                             />
                           </TableCell>
                           <TableCell className="text-right">
                             <DataCell
-                              value={formatPricePerTokenUSD(Number(position.currentPrice), 6)}
+                              value={formatPricePerTokenNative(position.currentPrice, activeChain)}
                             />
                           </TableCell>
                           <TableCell className="text-right">

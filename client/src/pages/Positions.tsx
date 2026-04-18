@@ -15,7 +15,7 @@ import {
   formatNative,
   formatUSD,
   formatTokenAmount,
-  formatPricePerTokenUSD,
+  formatPricePerTokenNative,
   toBigInt,
 } from '@/lib/token-format';
 import { cn } from '@/lib/utils';
@@ -314,7 +314,7 @@ export default function Positions() {
                       <div className="flex justify-between text-sm">
                         <span className="text-[var(--text-secondary)]">Entry Price</span>
                         <DataCell
-                          value={formatPricePerTokenUSD(Number(position.entryPrice), 6)}
+                          value={formatPricePerTokenNative(position.entryPrice, activeChain)}
                           variant="secondary"
                           data-testid={`text-entry-price-${position.id}`}
                         />
@@ -322,7 +322,7 @@ export default function Positions() {
                       <div className="flex justify-between text-sm">
                         <span className="text-[var(--text-secondary)]">Current Price</span>
                         <DataCell
-                          value={formatPricePerTokenUSD(Number(position.currentPrice), 6)}
+                          value={formatPricePerTokenNative(position.currentPrice, activeChain)}
                           data-testid={`text-current-price-${position.id}`}
                         />
                       </div>
@@ -332,20 +332,30 @@ export default function Positions() {
                     <div className="border-t border-[var(--border-subtle)] pt-3 space-y-2">
                       <div className="flex justify-between text-sm">
                         <span className="text-[var(--text-secondary)]">Invested</span>
-                        <DataCell
-                          value={formatNative(spent, activeChain, 4)}
-                          suffix={` ${nativeSymbol}`}
-                          variant="secondary"
-                          data-testid={`text-invested-${position.id}`}
-                        />
+                        <div className="text-right">
+                          <DataCell
+                            value={formatNative(spent, activeChain, 4)}
+                            suffix={` ${nativeSymbol}`}
+                            variant="secondary"
+                            data-testid={`text-invested-${position.id}`}
+                          />
+                          <p className="font-mono text-xs text-[var(--text-tertiary)]">
+                            {formatUSD(spent, getPrice(activeChain), activeChain, 2)}
+                          </p>
+                        </div>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-[var(--text-secondary)]">Current Value</span>
-                        <DataCell
-                          value={formatNative(currentValue, activeChain, 4)}
-                          suffix={` ${nativeSymbol}`}
-                          data-testid={`text-value-${position.id}`}
-                        />
+                        <div className="text-right">
+                          <DataCell
+                            value={formatNative(currentValue, activeChain, 4)}
+                            suffix={` ${nativeSymbol}`}
+                            data-testid={`text-value-${position.id}`}
+                          />
+                          <p className="font-mono text-xs text-[var(--text-tertiary)]">
+                            {formatUSD(currentValue, getPrice(activeChain), activeChain, 2)}
+                          </p>
+                        </div>
                       </div>
                     </div>
 

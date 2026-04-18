@@ -9,7 +9,7 @@ import { DataCell } from '@/components/ui/data-cell';
 import { ChainChip } from '@/components/ui/chain-chip';
 import { ChainSelector, ChainBadge } from '@/components/ChainSelector';
 import { useChain } from '@/lib/chain-context';
-import { formatCompactNumber, formatPercentage } from '@/lib/token-format';
+import { formatCompactNumber, formatMarketCap, formatPercentage } from '@/lib/token-format';
 import { useLocation } from 'wouter';
 import { TrendingUp, Activity, Clock, ArrowUpRight, ArrowDownRight, Droplets } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -103,7 +103,7 @@ function TokenRow({ token, rank, showAge = false }: { token: TrendingToken; rank
         <div className="flex items-center gap-3 mt-0.5">
           {token.marketCap > 0 && (
             <span className="text-xs text-[var(--text-tertiary)] font-mono tabular-nums">
-              MC {formatCompactNumber(token.marketCap)}
+              {formatMarketCap(token.marketCap)}
             </span>
           )}
           {token.liquidity > 0 && (
@@ -129,7 +129,7 @@ function TokenRow({ token, rank, showAge = false }: { token: TrendingToken; rank
         />
         {token.priceUsd > 0 && (
           <p className="text-xs text-[var(--text-tertiary)] font-mono tabular-nums mt-0.5">
-            ${token.priceUsd < 0.01 ? token.priceUsd.toExponential(2) : token.priceUsd.toFixed(4)}
+            ${token.priceUsd < 0.000001 ? token.priceUsd.toExponential(2) : token.priceUsd < 0.01 ? token.priceUsd.toFixed(6) : token.priceUsd.toFixed(4)}
           </p>
         )}
       </div>

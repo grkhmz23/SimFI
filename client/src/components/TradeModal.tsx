@@ -32,6 +32,7 @@ import {
   formatTokenAmount,
   nativeToTokens,
   formatUSD,
+  formatPricePerTokenNative,
 } from "@/lib/token-format"
 import { useChain } from "@/lib/chain-context"
 import { cn } from "@/lib/utils"
@@ -123,7 +124,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
               <p className="text-lg font-medium text-[var(--text-primary)] mb-1">{symbol}</p>
               <p className="text-sm text-[var(--text-secondary)] mb-4">{name}</p>
               <p className="text-2xl font-mono font-medium text-[var(--text-primary)]">
-                {formatUSD(currentPrice, 6)}
+                {formatPricePerTokenNative(currentPrice, activeChain)}
               </p>
             </div>
             <div className="flex gap-3">
@@ -289,8 +290,8 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       toast({
         title: isBuying ? "Position Opened" : "Position Closed",
         description: isBuying
-          ? `Bought ${formatTokenAmount(toBigInt(response.tokensReceived || 0), 2, decimals)} ${symbol} for ${nativeAmount} ${nativeSymbol}`
-          : `Sold ${formatTokenAmount(sellAmountBigInt, 2, decimals)} ${symbol}`,
+          ? `Bought ${formatTokenAmount(toBigInt(response.tokensReceived || 0), decimals, 2)} ${symbol} for ${nativeAmount} ${nativeSymbol}`
+          : `Sold ${formatTokenAmount(sellAmountBigInt, decimals, 2)} ${symbol}`,
       })
       onClose()
     },
@@ -364,10 +365,12 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
             ) : (
               <p className="text-mono-lg">
                 {currentPriceUsd !== undefined
-                  ? currentPriceUsd < 0.01 && currentPriceUsd > 0
-                    ? `$${currentPriceUsd.toFixed(6)}`
-                    : `$${currentPriceUsd.toFixed(4)}`
-                  : formatUSD(currentPrice, 6)}
+                  ? currentPriceUsd < 0.000001 && currentPriceUsd > 0
+                    ? `$${currentPriceUsd.toExponential(2)}`
+                    : currentPriceUsd < 0.01
+                      ? `$${currentPriceUsd.toFixed(6)}`
+                      : `$${currentPriceUsd.toFixed(4)}`
+                  : formatPricePerTokenNative(currentPrice, activeChain)}
               </p>
             )}
             <p className="text-xs text-[var(--text-tertiary)] mt-1">
@@ -519,13 +522,13 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                     <div className="flex justify-between text-sm">
                       <span className="text-[var(--text-secondary)]">Position</span>
                       <span className="font-mono">
-                        {formatTokenAmount(position.amount, 2, positionDecimals)} {symbol}
+                        {formatTokenAmount(position.amount, positionDecimals, 2)} {symbol}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-[var(--text-secondary)]">Selling</span>
                       <span className="font-mono font-medium">
-                        {formatTokenAmount(sellAmountBigInt, 2, positionDecimals)} {symbol}
+                        {formatTokenAmount(sellAmountBigInt, positionDecimals, 2)} {symbol}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
@@ -537,7 +540,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                             Quoting...
                           </span>
                         ) : (
-                          formatUSD(sellValueBigInt, 2)
+                          `${formatNative(sellValueBigInt, activeChain, 4)} ${nativeSymbol}`
                         )}
                       </span>
                     </div>
@@ -560,7 +563,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                         )}
                       >
                         {profitLossBigInt >= 0n ? "+" : ""}
-                        {formatUSD(profitLossBigInt, 2)}
+                        {`${formatNative(profitLossBigInt, activeChain, 4)} ${nativeSymbol}`}
                       </span>
                     </div>
                     <p className="text-xs text-[var(--text-tertiary)] text-right">

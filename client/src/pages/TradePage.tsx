@@ -11,7 +11,7 @@ import { TradeModal } from "@/components/TradeModal"
 import TokenChart from "@/components/TokenChart"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TrendingUp, Flame, Sparkles, ArrowRight } from "lucide-react"
-import { formatCompactNumber } from "@/lib/token-format"
+import { formatCompactNumber, formatMarketCap } from "@/lib/token-format"
 import type { Token } from "@shared/schema"
 import { cn } from "@/lib/utils"
 
@@ -139,7 +139,7 @@ export default function TradePage() {
                         </div>
                         <div className="flex items-center gap-2 text-xs mt-0.5">
                           <span className="text-[var(--text-tertiary)]">
-                            {token.marketCap ? formatCompactNumber(token.marketCap) : "—"}
+                            {token.marketCap ? formatMarketCap(token.marketCap) : "—"}
                           </span>
                           {token.priceChange24h !== undefined && (
                             <span
@@ -194,7 +194,7 @@ export default function TradePage() {
                       <h3 className="text-lg font-medium">{selectedToken.name}</h3>
                       <p className="text-mono-sm text-[var(--text-secondary)]">
                         {selectedToken.priceUsd !== undefined
-                          ? `$${selectedToken.priceUsd < 0.01 ? selectedToken.priceUsd.toExponential(2) : selectedToken.priceUsd.toFixed(4)}`
+                          ? `$${selectedToken.priceUsd < 0.000001 ? selectedToken.priceUsd.toExponential(2) : selectedToken.priceUsd < 0.01 ? selectedToken.priceUsd.toFixed(6) : selectedToken.priceUsd.toFixed(4)}`
                           : formatCompactNumber(selectedToken.price || 0)}
                       </p>
                     </div>

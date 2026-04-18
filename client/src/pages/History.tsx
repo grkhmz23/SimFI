@@ -18,7 +18,7 @@ import {
   formatNative,
   formatUSD,
   formatTokenAmount,
-  formatPricePerTokenUSD,
+  formatPricePerTokenNative,
   toBigInt,
 } from '@/lib/token-format';
 import { useChain } from '@/lib/chain-context';
@@ -194,13 +194,13 @@ export default function History() {
                           </TableCell>
                           <TableCell className="text-right">
                             <DataCell
-                              value={formatPricePerTokenUSD(Number(trade.entryPrice), 6)}
+                              value={formatPricePerTokenNative(trade.entryPrice, trade.chain as 'base' | 'solana')}
                               variant="secondary"
                             />
                           </TableCell>
                           <TableCell className="text-right">
                             <DataCell
-                              value={formatPricePerTokenUSD(Number(trade.exitPrice), 6)}
+                              value={formatPricePerTokenNative(trade.exitPrice, trade.chain as 'base' | 'solana')}
                             />
                           </TableCell>
                           <TableCell className="text-right">

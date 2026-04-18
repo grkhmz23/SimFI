@@ -10,12 +10,17 @@ import { TradeModal } from "@/components/TradeModal"
 import TokenChart from "@/components/TokenChart"
 import { useAuth } from "@/lib/auth-context"
 import { useChain } from "@/lib/chain-context"
+import { usePrice } from "@/lib/price-context"
 import { ArrowLeft, ExternalLink } from "lucide-react"
 import {
   formatTokenAmount,
-  toBigInt,
   formatUSD,
   formatCompactNumber,
+  formatMarketCap,
+  formatPricePerTokenNative,
+  computeTokenValueUSD,
+  formatPricePerTokenUSD,
+  formatNative,
 } from "@/lib/token-format"
 import type { Token, Position } from "@shared/schema"
 import { cn } from "@/lib/utils"
@@ -31,7 +36,8 @@ export default function TokenPage() {
   const tokenAddress = params.address
   const [, setLocation] = useLocation()
   const { isAuthenticated } = useAuth()
-  const { activeChain } = useChain()
+  const { activeChain, nativeSymbol } = useChain()
+  const { getPrice } = usePrice()
 
   const [showModal, setShowModal] = useState(false)
   const [tradeMode, setTradeMode] = useState<"buy" | "sell">("buy")
@@ -136,7 +142,7 @@ export default function TokenPage() {
     token.priceUsd !== undefined
       ? token.priceUsd
       : token.price
-      ? token.price / 1_000_000_000
+      ? token.price / (activeChain === 'base' ? 1_000_000_000_000_000_000 : 1_000_000_000)
       : 0
 
   return (
@@ -186,7 +192,7 @@ export default function TokenPage() {
           <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
             <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Price</p>
             <DataCell
-              value={priceUsd < 0.01 && priceUsd > 0 ? `$${priceUsd.toExponential(2)}` : `$${priceUsd.toFixed(4)}`}
+              value={priceUsd < 0.000001 && priceUsd > 0 ? `$${priceUsd.toExponential(2)}` : priceUsd < 0.01 ? `$${priceUsd.toFixed(6)}` : `$${priceUsd.toFixed(4)}`}
               variant={token.priceChange24h && token.priceChange24h >= 0 ? "gain" : token.priceChange24h && token.priceChange24h < 0 ? "loss" : "default"}
             />
           </div>
@@ -199,7 +205,7 @@ export default function TokenPage() {
           </div>
           <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
             <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Market Cap</p>
-            <DataCell value={formatCompactNumber(token.marketCap || 0)} />
+            <DataCell value={formatMarketCap(token.marketCap || 0)} />
           </div>
           <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
             <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Volume (24h)</p>
@@ -251,28 +257,35 @@ export default function TokenPage() {
                   <div className="flex justify-between text-sm">
                     <span className="text-[var(--text-secondary)]">Amount</span>
                     <span className="font-mono text-[var(--text-primary)]">
-                      {formatTokenAmount(userPosition.amount, 2, userPosition.decimals || token.decimals || 6)} {token.symbol}
+                      {formatTokenAmount(userPosition.amount, userPosition.decimals || token.decimals || 6, 2)} {token.symbol}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-[var(--text-secondary)]">Entry</span>
+                    <span className="text-[var(--text-secondary)]">Entry Price</span>
                     <span className="font-mono text-[var(--text-primary)]">
-                      {formatUSD(userPosition.entryPrice, 6)}
+                      {formatPricePerTokenNative(userPosition.entryPrice, activeChain)}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-[var(--text-secondary)]">Value</span>
-                    <span className="font-mono text-[var(--text-primary)]">
+                    <span className="font-mono text-[var(--text-primary)] text-right">
                       {(() => {
                         try {
-                          const amount = toBigInt(userPosition.amount)
-                          const price = Number(token.price)
-                          if (!isFinite(price) || price <= 0) return "$0.00"
-                          const decimals = userPosition.decimals || 6
-                          const valueLamports = (amount * BigInt(Math.floor(price))) / BigInt(10 ** decimals)
-                          return formatUSD(valueLamports, 2)
+                          const decimals = userPosition.decimals || token.decimals || 6;
+                          const valueUsd = computeTokenValueUSD(userPosition.amount, decimals, priceUsd);
+                          const nativePrice = getPrice(activeChain);
+                          const valueNative = nativePrice > 0 ? valueUsd / nativePrice : 0;
+                          if (valueUsd <= 0) return <span>$0.00</span>;
+                          return (
+                            <span className="flex flex-col items-end">
+                              <span>{formatPricePerTokenUSD(valueUsd, 2)}</span>
+                              <span className="text-xs text-[var(--text-tertiary)]">
+                                {valueNative.toFixed(6)} {nativeSymbol}
+                              </span>
+                            </span>
+                          );
                         } catch {
-                          return "$0.00"
+                          return <span>$0.00</span>;
                         }
                       })()}
                     </span>

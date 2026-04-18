@@ -76,15 +76,24 @@ export function formatTokenAmount(
   tokenDecimals: number = 6,
   displayDecimals: number = 2
 ): string {
-  const amountBigInt = typeof amount === 'bigint' ? amount : BigInt(Math.floor(Number(amount || 0)));
+  let amountBigInt: bigint;
+  if (typeof amount === 'bigint') {
+    amountBigInt = amount;
+  } else if (typeof amount === 'string') {
+    const trimmed = amount.trim();
+    amountBigInt = trimmed ? BigInt(trimmed) : 0n;
+  } else {
+    amountBigInt = BigInt(Math.floor(Number(amount || 0)));
+  }
+
   const divisor = BigInt(10 ** tokenDecimals);
   const wholePart = amountBigInt / divisor;
   const fractionalPart = amountBigInt % divisor;
-  
+
   // Pad fractional part with leading zeros
   const paddedFraction = fractionalPart.toString().padStart(tokenDecimals, '0');
   const trimmedFraction = paddedFraction.slice(0, displayDecimals).replace(/0+$/, '');
-  
+
   if (trimmedFraction) {
     return `${wholePart}.${trimmedFraction}`;
   }
@@ -155,12 +164,17 @@ export function formatCompactNumber(num: number): string {
     return `${(num / 1_000_000_000).toFixed(2)}B`;
   }
   if (num >= 1_000_000) {
-    return `${(num / 1_000_000).toFixed(2)}M`;
+    return `${(num / 1_000_000).toFixed(1)}M`;
   }
   if (num >= 1_000) {
-    return `${(num / 1_000).toFixed(2)}K`;
+    return `${Math.round(num / 1_000)}K`;
   }
   return num.toFixed(2);
+}
+
+/** Format market cap with MC suffix like real DEXes: 216K MC, 5.2M MC */
+export function formatMarketCap(num: number): string {
+  return `${formatCompactNumber(num)} MC`;
 }
 
 // ============================================================================
@@ -189,6 +203,15 @@ export function shortenAddress(address: string, chars: number = 4): string {
 // These functions existed in the old lamports.ts and are kept for compatibility
 export function toBigInt(value: string | number | bigint): bigint {
   if (typeof value === 'bigint') return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return 0n;
+    try {
+      return BigInt(trimmed);
+    } catch {
+      return BigInt(Math.floor(Number(value || 0)));
+    }
+  }
   return BigInt(Math.floor(Number(value || 0)));
 }
 
@@ -200,8 +223,83 @@ export function formatPricePerToken(price: number, decimals: number = 9): string
 
 export function formatPricePerTokenUSD(price: number, decimals: number = 6): string {
   if (price === 0) return '$0';
-  if (price < 0.01) return `$${price.toExponential(2)}`;
+  if (price < 0.000001) return `$${price.toExponential(2)}`;
+  if (price < 0.01) return `$${price.toFixed(6)}`;
+  if (price < 1) return `$${price.toFixed(4)}`;
   return `$${price.toFixed(decimals)}`;
+}
+
+// ============================================================================
+// Native Price Per Token Formatting (e.g. 0.00000123 SOL or 0.00000713 ETH)
+// ============================================================================
+
+/**
+ * Format a native price (lamports or wei per whole token) into a human-readable
+ * string with the chain's native symbol.
+ *
+ * Example:
+ *   formatPricePerTokenNative(1230n, 'solana') => '0.00000123 SOL'
+ *   formatPricePerTokenNative('7130000000000', 'base') => '0.00000713 ETH'
+ */
+export function formatPricePerTokenNative(
+  priceNative: bigint | number | string,
+  chain: Chain
+): string {
+  const nativeDecimals = chain === 'solana' ? 9 : 18;
+  const symbol = chain === 'solana' ? 'SOL' : 'ETH';
+
+  let priceBigInt: bigint;
+  if (typeof priceNative === 'bigint') {
+    priceBigInt = priceNative;
+  } else if (typeof priceNative === 'string') {
+    const trimmed = priceNative.trim();
+    priceBigInt = trimmed ? BigInt(trimmed) : 0n;
+  } else {
+    priceBigInt = BigInt(Math.floor(Number(priceNative || 0)));
+  }
+
+  const divisor = BigInt(10 ** nativeDecimals);
+  const wholePart = priceBigInt / divisor;
+  const fracPart = priceBigInt % divisor;
+
+  const fracStr = fracPart.toString().padStart(nativeDecimals, '0');
+  const trimmedFrac = fracStr.replace(/0+$/, '');
+
+  if (trimmedFrac) {
+    return `${wholePart}.${trimmedFrac} ${symbol}`;
+  }
+  return `${wholePart} ${symbol}`;
+}
+
+/**
+ * Compute the USD value of a token holding given the raw amount,
+ * token decimals, and current USD price per token.
+ *
+ * Uses bigint math to avoid precision loss on large Base token amounts.
+ */
+export function computeTokenValueUSD(
+  amountRaw: bigint | number | string,
+  tokenDecimals: number,
+  priceUsd: number
+): number {
+  let amountBigInt: bigint;
+  if (typeof amountRaw === 'bigint') {
+    amountBigInt = amountRaw;
+  } else if (typeof amountRaw === 'string') {
+    const trimmed = amountRaw.trim();
+    amountBigInt = trimmed ? BigInt(trimmed) : 0n;
+  } else {
+    amountBigInt = BigInt(Math.floor(Number(amountRaw || 0)));
+  }
+
+  if (priceUsd <= 0 || amountBigInt <= 0n) return 0;
+
+  // Scale price to avoid floating point: priceUsd * 1_000_000
+  const priceScaled = Math.round(priceUsd * 1_000_000);
+  const divisor = BigInt(10 ** tokenDecimals);
+
+  const valueMicro = (amountBigInt * BigInt(priceScaled)) / divisor;
+  return Number(valueMicro) / 1_000_000;
 }
 
 // Legacy function names

@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/command"
 import { ChainChip } from "@/components/ui/chain-chip"
 import { Search, Loader2, TrendingUp, Clock } from "lucide-react"
-import { formatCompactNumber } from "@/lib/token-format"
+import { formatCompactNumber, formatMarketCap } from "@/lib/token-format"
 
 interface SearchResult {
   tokenAddress: string
@@ -163,7 +163,7 @@ export function CommandSearch() {
                     </div>
                     <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
                       {result.marketCap !== undefined && (
-                        <span>MCap {formatCompactNumber(result.marketCap)}</span>
+                        <span>{formatMarketCap(result.marketCap)}</span>
                       )}
                       {result.priceChange24h !== undefined && (
                         <span
