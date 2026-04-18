@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, bigint, integer, timestamp, unique, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, bigint, integer, timestamp, unique, jsonb, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -52,7 +52,7 @@ export const positions = pgTable("positions", {
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
   decimals: integer("decimals").notNull().default(6),
-  entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(), // lamports or wei per token
+  entryPrice: numeric("entry_price", { precision: 38, scale: 18 }).notNull(), // price in native token (decimal)
   amount: bigint("amount", { mode: "bigint" }).notNull(), // token amount in smallest unit
   solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(), // native token spent (lamports or wei)
   openedAt: timestamp("opened_at").defaultNow().notNull(),
@@ -69,8 +69,8 @@ export const tradeHistory = pgTable("trade_history", {
   tokenName: text("token_name").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
   decimals: integer("decimals").notNull().default(6),
-  entryPrice: bigint("entry_price", { mode: "bigint" }).notNull(),
-  exitPrice: bigint("exit_price", { mode: "bigint" }).notNull(),
+  entryPrice: numeric("entry_price", { precision: 38, scale: 18 }).notNull(),
+  exitPrice: numeric("exit_price", { precision: 38, scale: 18 }).notNull(),
   amount: bigint("amount", { mode: "bigint" }).notNull(),
   solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(), // native token spent
   solReceived: bigint("sol_received", { mode: "bigint" }).notNull(), // native token received

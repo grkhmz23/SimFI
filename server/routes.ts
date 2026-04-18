@@ -1066,7 +1066,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { password, ...userWithoutPassword } = user;
       res.status(201).json(serializeBigInts({ user: userWithoutPassword }));
     } catch (error: any) {
-      console.error('Registration error:', error);
+      console.error('Registration error:', error?.message || String(error));
       let message = 'Registration failed';
       if (error.errors && Array.isArray(error.errors)) {
         message = error.errors[0]?.message || message;

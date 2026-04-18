@@ -736,6 +736,10 @@ class MarketDataService {
   }
 
   private async fetchTrendingFromUpstream(limit: number, chain: Chain): Promise<TokenData[]> {
+    if (chain === 'base') {
+      return this.fetchBaseTrendingFromSearch(limit);
+    }
+
     if (this.isCircuitOpen('dexscreener')) {
       return [];
     }
@@ -784,7 +788,66 @@ class MarketDataService {
     }
   }
 
+  private async fetchBaseTrendingFromSearch(limit: number): Promise<TokenData[]> {
+    if (this.isCircuitOpen('dexscreener')) {
+      return [];
+    }
+
+    this.stats.upstreamCalls++;
+
+    try {
+      const searchTerms = ['pepe', 'doge', 'brett', 'degen', 'cat', 'ai', 'meme', 'wolf', 'mog'];
+      const seen = new Set<string>();
+      const results: TokenData[] = [];
+
+      for (const term of searchTerms.slice(0, 5)) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+
+        const response = await fetch(
+          `https://api.dexscreener.com/latest/dex/search/?q=${encodeURIComponent(term)}`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeout);
+
+        if (!response.ok) continue;
+
+        const data = await response.json();
+        const basePairs = (data.pairs || [])
+          .filter((p: any) => p.chainId === 'base')
+          .slice(0, 6);
+
+        for (const pair of basePairs) {
+          const address = pair.baseToken?.address;
+          if (!address || seen.has(address)) continue;
+          seen.add(address);
+
+          const fullData = await this.getToken(address, 'base');
+          if (fullData) {
+            results.push(fullData);
+          }
+        }
+      }
+
+      if (results.length > 0) {
+        this.recordSuccess('dexscreener');
+      }
+
+      return results
+        .sort((a, b) => b.volume24h - a.volume24h)
+        .slice(0, limit);
+    } catch (error: any) {
+      this.recordFailure('dexscreener');
+      console.warn(`❌ Failed to fetch Base trending:`, error.message);
+      return [];
+    }
+  }
+
   private async fetchNewPairsFromUpstream(ageHours: number, chain: Chain): Promise<TokenData[]> {
+    if (chain === 'base') {
+      return this.fetchBaseNewPairsFromSearch(ageHours);
+    }
+
     if (this.isCircuitOpen('dexscreener')) {
       return [];
     }
@@ -841,8 +904,18 @@ class MarketDataService {
     }
   }
 
+  private async fetchBaseNewPairsFromSearch(ageHours: number): Promise<TokenData[]> {
+    const trending = await this.fetchBaseTrendingFromSearch(40);
+    const cutoff = Date.now() - (ageHours * 60 * 60 * 1000);
+
+    return trending
+      .filter((t) => (t.pairCreatedAt || 0) >= cutoff)
+      .sort((a, b) => (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0))
+      .slice(0, 30);
+  }
+
   private async fetchHotFromUpstream(limit: number, chain: Chain): Promise<TokenData[]> {
-    // Hot = highest volume-to-liquidity ratio from trending + top boosted
+    // Hot = highest volume-to-liquidity ratio from trending
     const trending = await this.getTrending(limit * 3, chain);
 
     const scored = trending.map((t) => ({

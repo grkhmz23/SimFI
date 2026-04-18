@@ -137,6 +137,7 @@ export function registerMarketRoutes(
       const serializedTrending = trending.map(token => ({
         ...token,
         priceNative: token.priceNative.toString(),
+        price: Number(token.priceNative),
       }));
 
       res.json({
@@ -168,6 +169,7 @@ export function registerMarketRoutes(
       const serialized = newPairs.map(token => ({
         ...token,
         priceNative: token.priceNative.toString(),
+        price: Number(token.priceNative),
       }));
 
       res.json({
@@ -200,6 +202,7 @@ export function registerMarketRoutes(
       const serialized = hot.map(token => ({
         ...token,
         priceNative: token.priceNative.toString(),
+        price: Number(token.priceNative),
       }));
 
       res.json({

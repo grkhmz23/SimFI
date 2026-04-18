@@ -6,6 +6,7 @@ import {
   type InsertUser, type InsertPosition, type InsertTrade, 
   LAMPORTS_PER_SOL, WEI_PER_ETH, type Chain, type BadgeId
 } from '@shared/schema';
+import { atomicToDecimal, decimalToAtomic } from './lib/priceDecimal';
 
 export interface IStorage {
   // User operations
@@ -104,6 +105,31 @@ export interface IStorage {
 }
 
 class DbStorage implements IStorage {
+  // =========================================================================
+  // PRICE DECIMAL HELPERS (persistence boundary)
+  // =========================================================================
+
+  private nativeDecimalsForChain(chain: Chain): number {
+    return chain === 'solana' ? 9 : 18;
+  }
+
+  private hydratePosition(row: any): Position {
+    const nativeDecimals = this.nativeDecimalsForChain(row.chain as Chain);
+    return {
+      ...row,
+      entryPrice: decimalToAtomic(row.entryPrice, nativeDecimals),
+    } as Position;
+  }
+
+  private hydrateTrade(row: any): Trade {
+    const nativeDecimals = this.nativeDecimalsForChain(row.chain as Chain);
+    return {
+      ...row,
+      entryPrice: decimalToAtomic(row.entryPrice, nativeDecimals),
+      exitPrice: decimalToAtomic(row.exitPrice, nativeDecimals),
+    } as Trade;
+  }
+
   async createUser(data: InsertUser & { password: string }): Promise<User> {
     // Set default balances based on provided wallets
     const solanaBalance = data.solanaWalletAddress ? BigInt(10 * LAMPORTS_PER_SOL) : 0n;
@@ -191,43 +217,57 @@ class DbStorage implements IStorage {
   }
 
   async createPosition(data: Omit<InsertPosition, 'id'> & { userId: string }): Promise<Position> {
-    const [position] = await db.insert(positions).values(data).returning();
-    return position;
+    const nativeDecimals = this.nativeDecimalsForChain(data.chain as Chain);
+    const [rawPosition] = await db.insert(positions).values({
+      ...data,
+      entryPrice: atomicToDecimal(data.entryPrice as any, nativeDecimals),
+    } as any).returning();
+    return this.hydratePosition(rawPosition);
   }
 
   async createOrAggregatePosition(data: Omit<InsertPosition, 'id'> & { userId: string }): Promise<Position> {
-    // Use INSERT ... ON CONFLICT to atomically create or aggregate position
-    // This prevents race conditions by using database-level conflict resolution
-    const [position] = await db.insert(positions)
-      .values(data)
+    const nativeDecimals = this.nativeDecimalsForChain(data.chain as Chain);
+    const [rawPosition] = await db.insert(positions)
+      .values({
+        ...data,
+        entryPrice: atomicToDecimal(data.entryPrice as any, nativeDecimals),
+      } as any)
       .onConflictDoUpdate({
         target: [positions.userId, positions.tokenAddress, positions.chain],
         set: {
-          // Increment amount and solSpent atomically
           amount: sql`${positions.amount} + ${data.amount}`,
           solSpent: sql`${positions.solSpent} + ${data.solSpent}`,
-          // Recalculate weighted average entry price: (total_solSpent * 10^decimals) / total_amount
-          entryPrice: sql`FLOOR(((${positions.solSpent} + EXCLUDED.sol_spent)::numeric * power(10::numeric, COALESCE(${positions.decimals}, EXCLUDED.decimals, 6))) / NULLIF((${positions.amount} + EXCLUDED.amount), 0))::bigint`,
+          entryPrice: sql`ROUND(
+            FLOOR(
+              (
+                (${positions.solSpent} + EXCLUDED.sol_spent)::numeric
+                * power(10::numeric, COALESCE(${positions.decimals}, EXCLUDED.decimals, 6))
+              )
+              / NULLIF((${positions.amount} + EXCLUDED.amount), 0)
+            )::numeric
+            / power(10::numeric, CASE WHEN EXCLUDED.chain = 'solana' THEN 9 ELSE 18 END),
+            18
+          )`,
         },
       })
       .returning();
-    return position;
+    return this.hydratePosition(rawPosition);
   }
 
   async getPositionById(id: string): Promise<Position | undefined> {
-    const [position] = await db.select().from(positions).where(eq(positions.id, id));
-    return position;
+    const [rawPosition] = await db.select().from(positions).where(eq(positions.id, id));
+    return rawPosition ? this.hydratePosition(rawPosition) : undefined;
   }
 
   async getPositionByUserAndToken(userId: string, tokenAddress: string, chain: Chain): Promise<Position | undefined> {
-    const [position] = await db.select()
+    const [rawPosition] = await db.select()
       .from(positions)
       .where(and(
         eq(positions.userId, userId), 
         eq(positions.tokenAddress, tokenAddress),
         eq(positions.chain, chain)
       ));
-    return position;
+    return rawPosition ? this.hydratePosition(rawPosition) : undefined;
   }
 
   async getUserPositions(userId: string, chain?: Chain): Promise<Position[]> {
@@ -240,25 +280,42 @@ class DbStorage implements IStorage {
       ));
     }
     
-    return query.orderBy(desc(positions.openedAt));
+    const rows = await query.orderBy(desc(positions.openedAt));
+    return rows.map(r => this.hydratePosition(r));
   }
 
   async updatePosition(id: string, data: Partial<Omit<Position, 'id' | 'userId' | 'tokenAddress' | 'tokenName' | 'tokenSymbol' | 'openedAt'>>): Promise<Position | undefined> {
-    const [position] = await db.update(positions).set(data).where(eq(positions.id, id)).returning();
-    return position;
+    const updateData: any = { ...data };
+    if (data.entryPrice !== undefined) {
+      const [existing] = await db.select({ chain: positions.chain }).from(positions).where(eq(positions.id, id));
+      if (existing) {
+        updateData.entryPrice = atomicToDecimal(data.entryPrice as any, this.nativeDecimalsForChain(existing.chain as Chain));
+      }
+    }
+    const [rawPosition] = await db.update(positions).set(updateData).where(eq(positions.id, id)).returning();
+    return rawPosition ? this.hydratePosition(rawPosition) : undefined;
   }
 
   async aggregatePosition(id: string, additionalAmount: bigint, additionalNativeSpent: bigint): Promise<Position | undefined> {
-    // Use SQL-level increments to avoid race conditions
-    const [position] = await db.update(positions)
+    const [rawPosition] = await db.update(positions)
       .set({
         amount: sql`${positions.amount} + ${additionalAmount}`,
         solSpent: sql`${positions.solSpent} + ${additionalNativeSpent}`,
-        entryPrice: sql`FLOOR(((${positions.solSpent} + ${additionalNativeSpent})::numeric * power(10::numeric, COALESCE(${positions.decimals}, 6))) / NULLIF((${positions.amount} + ${additionalAmount}), 0))::bigint`,
+        entryPrice: sql`ROUND(
+          FLOOR(
+            (
+              (${positions.solSpent} + ${additionalNativeSpent})::numeric
+              * power(10::numeric, COALESCE(${positions.decimals}, 6))
+            )
+            / NULLIF((${positions.amount} + ${additionalAmount}), 0)
+          )::numeric
+          / power(10::numeric, CASE WHEN ${positions.chain} = 'solana' THEN 9 ELSE 18 END),
+          18
+        )`,
       })
       .where(eq(positions.id, id))
       .returning();
-    return position;
+    return rawPosition ? this.hydratePosition(rawPosition) : undefined;
   }
 
   async deletePosition(id: string): Promise<void> {
@@ -284,10 +341,11 @@ class DbStorage implements IStorage {
         ));
     }
     
-    return query
+    const rows = await query
       .orderBy(desc(tradeHistory.closedAt))
       .limit(limit)
       .offset(offset);
+    return rows.map(r => this.hydrateTrade(r));
   }
 
   async getUserTradesCount(userId: string, chain?: Chain): Promise<number> {
@@ -527,7 +585,8 @@ class DbStorage implements IStorage {
       }
 
       // 2. Create or aggregate position
-      const [position] = await tx.insert(positions)
+      const nativeDecimals = this.nativeDecimalsForChain(params.chain);
+      const [rawPosition] = await tx.insert(positions)
         .values({
           userId: params.userId,
           chain: params.chain,
@@ -535,21 +594,31 @@ class DbStorage implements IStorage {
           tokenName: params.tokenName,
           tokenSymbol: params.tokenSymbol,
           decimals: params.decimals,
-          entryPrice: params.entryPrice,
+          entryPrice: atomicToDecimal(params.entryPrice, nativeDecimals),
           amount: params.amount,
           solSpent: params.nativeSpent,
-        })
+        } as any)
         .onConflictDoUpdate({
           target: [positions.userId, positions.tokenAddress, positions.chain],
           set: {
             amount: sql`${positions.amount} + ${params.amount}`,
             solSpent: sql`${positions.solSpent} + ${params.nativeSpent}`,
-            entryPrice: sql`FLOOR(((${positions.solSpent} + EXCLUDED.sol_spent)::numeric * power(10::numeric, COALESCE(${positions.decimals}, EXCLUDED.decimals, 6))) / NULLIF((${positions.amount} + EXCLUDED.amount), 0))::bigint`,
+            entryPrice: sql`ROUND(
+              FLOOR(
+                (
+                  (${positions.solSpent} + EXCLUDED.sol_spent)::numeric
+                  * power(10::numeric, COALESCE(${positions.decimals}, EXCLUDED.decimals, 6))
+                )
+                / NULLIF((${positions.amount} + EXCLUDED.amount), 0)
+              )::numeric
+              / power(10::numeric, CASE WHEN EXCLUDED.chain = 'solana' THEN 9 ELSE 18 END),
+              18
+            )`,
           },
         })
         .returning();
 
-      return position;
+      return this.hydratePosition(rawPosition);
     });
   }
 
@@ -615,6 +684,7 @@ class DbStorage implements IStorage {
       if (!updatedUser) throw new Error("User not found");
 
       // Create trade history
+      const nativeDecimals = this.nativeDecimalsForChain(position.chain as Chain);
       await tx.insert(tradeHistory).values({
         userId: params.userId,
         chain: position.chain as Chain,
@@ -622,14 +692,14 @@ class DbStorage implements IStorage {
         tokenName: position.tokenName,
         tokenSymbol: position.tokenSymbol,
         decimals,
-        entryPrice: position.entryPrice,
-        exitPrice: params.exitPrice,
+        entryPrice: atomicToDecimal(position.entryPrice as any, nativeDecimals),
+        exitPrice: atomicToDecimal(params.exitPrice, nativeDecimals),
         amount: params.sellAmount,
         solSpent: proportionalCost,
         solReceived: nativeReceived,
         profitLoss,
         openedAt: position.openedAt,
-      });
+      } as any);
 
       // Use UPDATE for partial sells, DELETE only for full sells
       if (params.sellAmount < position.amount) {
@@ -796,9 +866,12 @@ class DbStorage implements IStorage {
     if (chain) {
       whereClause = and(whereClause, eq(tradeHistory.chain, chain)) as any;
     }
-    const [best] = await db.select().from(tradeHistory).where(whereClause).orderBy(desc(tradeHistory.profitLoss)).limit(1);
-    const [worst] = await db.select().from(tradeHistory).where(whereClause).orderBy(asc(tradeHistory.profitLoss)).limit(1);
-    return { best, worst };
+    const [bestRaw] = await db.select().from(tradeHistory).where(whereClause).orderBy(desc(tradeHistory.profitLoss)).limit(1);
+    const [worstRaw] = await db.select().from(tradeHistory).where(whereClause).orderBy(asc(tradeHistory.profitLoss)).limit(1);
+    return {
+      best: bestRaw ? this.hydrateTrade(bestRaw) : undefined,
+      worst: worstRaw ? this.hydrateTrade(worstRaw) : undefined,
+    };
   }
 
   async getTradeWinLoss(userId: string, chain?: Chain): Promise<{ winCount: number; lossCount: number; totalCount: number }> {
