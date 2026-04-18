@@ -72,13 +72,14 @@ export function formatBalanceWithSymbol(
 // ============================================================================
 
 export function formatTokenAmount(
-  amount: bigint,
+  amount: bigint | number | string,
   tokenDecimals: number = 6,
   displayDecimals: number = 2
 ): string {
+  const amountBigInt = typeof amount === 'bigint' ? amount : BigInt(Math.floor(Number(amount || 0)));
   const divisor = BigInt(10 ** tokenDecimals);
-  const wholePart = amount / divisor;
-  const fractionalPart = amount % divisor;
+  const wholePart = amountBigInt / divisor;
+  const fractionalPart = amountBigInt % divisor;
   
   // Pad fractional part with leading zeros
   const paddedFraction = fractionalPart.toString().padStart(tokenDecimals, '0');
