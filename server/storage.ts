@@ -118,6 +118,8 @@ class DbStorage implements IStorage {
     return {
       ...row,
       entryPrice: decimalToAtomic(row.entryPrice, nativeDecimals),
+      amount: BigInt(row.amount),
+      solSpent: BigInt(row.solSpent),
     } as Position;
   }
 
@@ -127,6 +129,10 @@ class DbStorage implements IStorage {
       ...row,
       entryPrice: decimalToAtomic(row.entryPrice, nativeDecimals),
       exitPrice: decimalToAtomic(row.exitPrice, nativeDecimals),
+      amount: BigInt(row.amount),
+      solSpent: BigInt(row.solSpent),
+      solReceived: BigInt(row.solReceived),
+      profitLoss: BigInt(row.profitLoss),
     } as Trade;
   }
 
@@ -221,6 +227,8 @@ class DbStorage implements IStorage {
     const [rawPosition] = await db.insert(positions).values({
       ...data,
       entryPrice: atomicToDecimal(data.entryPrice as any, nativeDecimals),
+      amount: (data.amount as any)?.toString?.() ?? data.amount,
+      solSpent: (data.solSpent as any)?.toString?.() ?? data.solSpent,
     } as any).returning();
     return this.hydratePosition(rawPosition);
   }
@@ -231,6 +239,8 @@ class DbStorage implements IStorage {
       .values({
         ...data,
         entryPrice: atomicToDecimal(data.entryPrice as any, nativeDecimals),
+        amount: (data.amount as any)?.toString?.() ?? data.amount,
+        solSpent: (data.solSpent as any)?.toString?.() ?? data.solSpent,
       } as any)
       .onConflictDoUpdate({
         target: [positions.userId, positions.tokenAddress, positions.chain],
@@ -595,8 +605,8 @@ class DbStorage implements IStorage {
           tokenSymbol: params.tokenSymbol,
           decimals: params.decimals,
           entryPrice: atomicToDecimal(params.entryPrice, nativeDecimals),
-          amount: params.amount,
-          solSpent: params.nativeSpent,
+          amount: params.amount.toString(),
+          solSpent: params.nativeSpent.toString(),
         } as any)
         .onConflictDoUpdate({
           target: [positions.userId, positions.tokenAddress, positions.chain],
@@ -645,15 +655,18 @@ class DbStorage implements IStorage {
       if (!position) throw new Error("Position not found");
       if (position.userId !== params.userId) throw new Error("Unauthorized");
 
+      const positionAmount = BigInt(position.amount);
+      const positionSolSpent = BigInt(position.solSpent);
+
       if (params.sellAmount <= 0n) throw new Error("Sell amount must be positive");
-      if (params.sellAmount > position.amount) throw new Error("Sell amount exceeds position size");
+      if (params.sellAmount > positionAmount) throw new Error("Sell amount exceeds position size");
 
       const decimals = position.decimals || 6;
       const decimalDivisor = BigInt(10 ** decimals);
 
       // Recompute server-side to avoid trusting caller-provided math
       const nativeReceived = (params.sellAmount * params.exitPrice) / decimalDivisor;
-      const proportionalCost = (position.solSpent * params.sellAmount) / position.amount;
+      const proportionalCost = (positionSolSpent * params.sellAmount) / positionAmount;
       const profitLoss = nativeReceived - proportionalCost;
 
       // Update user balance and profit based on chain
@@ -694,18 +707,18 @@ class DbStorage implements IStorage {
         decimals,
         entryPrice: String(position.entryPrice),
         exitPrice: atomicToDecimal(params.exitPrice, nativeDecimals),
-        amount: params.sellAmount,
-        solSpent: proportionalCost,
-        solReceived: nativeReceived,
-        profitLoss,
+        amount: params.sellAmount.toString(),
+        solSpent: proportionalCost.toString(),
+        solReceived: nativeReceived.toString(),
+        profitLoss: profitLoss.toString(),
         openedAt: position.openedAt,
       } as any);
 
       // Use UPDATE for partial sells, DELETE only for full sells
-      if (params.sellAmount < position.amount) {
+      if (params.sellAmount < positionAmount) {
         // PARTIAL SELL: Update position with remaining amount
-        const remainingAmount = position.amount - params.sellAmount;
-        const remainingCost = position.solSpent - proportionalCost;
+        const remainingAmount = positionAmount - params.sellAmount;
+        const remainingCost = positionSolSpent - proportionalCost;
 
         const [updated] = await tx
           .update(positions)

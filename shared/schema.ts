@@ -53,8 +53,8 @@ export const positions = pgTable("positions", {
   tokenSymbol: text("token_symbol").notNull(),
   decimals: integer("decimals").notNull().default(6),
   entryPrice: numeric("entry_price", { precision: 38, scale: 18 }).notNull(), // price in native token (decimal)
-  amount: bigint("amount", { mode: "bigint" }).notNull(), // token amount in smallest unit
-  solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(), // native token spent (lamports or wei)
+  amount: numeric("amount", { precision: 38, scale: 0 }).notNull(), // token amount in smallest unit
+  solSpent: numeric("sol_spent", { precision: 38, scale: 0 }).notNull(), // native token spent (lamports or wei)
   openedAt: timestamp("opened_at").defaultNow().notNull(),
 }, (table) => ({
   // Unique constraint now includes chain
@@ -71,10 +71,10 @@ export const tradeHistory = pgTable("trade_history", {
   decimals: integer("decimals").notNull().default(6),
   entryPrice: numeric("entry_price", { precision: 38, scale: 18 }).notNull(),
   exitPrice: numeric("exit_price", { precision: 38, scale: 18 }).notNull(),
-  amount: bigint("amount", { mode: "bigint" }).notNull(),
-  solSpent: bigint("sol_spent", { mode: "bigint" }).notNull(), // native token spent
-  solReceived: bigint("sol_received", { mode: "bigint" }).notNull(), // native token received
-  profitLoss: bigint("profit_loss", { mode: "bigint" }).notNull(),
+  amount: numeric("amount", { precision: 38, scale: 0 }).notNull(),
+  solSpent: numeric("sol_spent", { precision: 38, scale: 0 }).notNull(), // native token spent
+  solReceived: numeric("sol_received", { precision: 38, scale: 0 }).notNull(), // native token received
+  profitLoss: numeric("profit_loss", { precision: 38, scale: 0 }).notNull(),
   openedAt: timestamp("opened_at").notNull(),
   closedAt: timestamp("closed_at").defaultNow().notNull(),
 });
