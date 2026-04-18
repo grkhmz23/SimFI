@@ -419,11 +419,11 @@ async function fetchDexScreenerPriceForChain(
   }
 }
 
-// ✅ PRECISION FIX: Parse decimal price string to lamports without float math
+// ✅ PRECISION FIX: Parse decimal price string to native units without float math
 // Handles strings like "0.000000123" from DexScreener API
-// Returns integer lamports (minimum 1 for valid prices)
-function parseDecimalToLamports(decimalString: string): number {
-  if (!decimalString || decimalString === '0') return 0;
+// nativeDecimals = 9 for Solana (lamports), 18 for Base (wei)
+function parseDecimalToNative(decimalString: string, nativeDecimals: number = 9): bigint {
+  if (!decimalString || decimalString === '0') return 0n;
 
   // Remove any whitespace
   const str = decimalString.trim();
@@ -431,7 +431,7 @@ function parseDecimalToLamports(decimalString: string): number {
   // Validate format
   if (!/^\d*\.?\d+$/.test(str)) {
     console.warn(`Invalid price format: ${str}`);
-    return 0;
+    return 0n;
   }
 
   // Split on decimal point
@@ -439,26 +439,20 @@ function parseDecimalToLamports(decimalString: string): number {
   const wholePart = parts[0] || '0';
   let fracPart = parts[1] || '';
 
-  // Lamports = 9 decimal places
-  // Pad or truncate fractional part to exactly 9 digits
-  if (fracPart.length > 9) {
-    fracPart = fracPart.slice(0, 9);
+  // Pad or truncate fractional part to exactly nativeDecimals digits
+  if (fracPart.length > nativeDecimals) {
+    fracPart = fracPart.slice(0, nativeDecimals);
   } else {
-    fracPart = fracPart.padEnd(9, '0');
+    fracPart = fracPart.padEnd(nativeDecimals, '0');
   }
 
-  // Remove leading zeros from whole part (but keep at least one digit)
-  const cleanWhole = wholePart.replace(/^0+/, '') || '0';
+  // Combine and parse as BigInt to avoid precision loss
+  const nativeStr = wholePart + fracPart;
+  const nativeUnits = BigInt(nativeStr);
 
-  // Combine and parse
-  const lamportsStr = cleanWhole + fracPart;
-  const lamports = parseInt(lamportsStr, 10);
-
-  // Return at least 1 for any valid non-zero price (sub-lamport tokens)
-  if (isNaN(lamports)) return 0;
-  if (lamports > 0) return lamports;
-  // If we parsed 0 but input wasn't "0", return 1 (sub-lamport price)
-  return str !== '0' && parseFloat(str) > 0 ? 1 : 0;
+  // Return at least 1n for any valid non-zero price (sub-atomic tokens)
+  if (nativeUnits > 0n) return nativeUnits;
+  return str !== '0' && parseFloat(str) > 0 ? 1n : 0n;
 }
 
 // ============================================================================
@@ -755,28 +749,30 @@ function serializeBigInts(obj: any): any {
 // Alias for backward compatibility
 const fetchSolPrice = getSolPrice;
 
-// Helper to find the best (highest liquidity) Solana pair from DexScreener pairs array
+// Helper to find the best (highest liquidity) pair from DexScreener pairs array
 // This ensures we get the most accurate price from the most liquid market
-function findBestSolanaPair(pairs: any[], tokenAddress: string): any | null {
+function findBestPair(pairs: any[], tokenAddress: string, chain: string): any | null {
   if (!pairs || pairs.length === 0) return null;
 
-  // Filter for Solana pairs matching this token
-  const solanaPairs = pairs.filter((pair: any) => 
-    pair.chainId === 'solana' && 
+  const chainId = chain === 'base' ? 'base' : 'solana';
+
+  // Filter for pairs matching this token on the specified chain
+  const matchedPairs = pairs.filter((pair: any) =>
+    pair.chainId === chainId &&
     pair.baseToken?.address === tokenAddress &&
     pair.priceNative
   );
 
-  if (solanaPairs.length === 0) return null;
+  if (matchedPairs.length === 0) return null;
 
   // Sort by liquidity (USD) descending - highest liquidity = most accurate price
-  solanaPairs.sort((a: any, b: any) => {
+  matchedPairs.sort((a: any, b: any) => {
     const liquidityA = parseFloat(a.liquidity?.usd || '0');
     const liquidityB = parseFloat(b.liquidity?.usd || '0');
     return liquidityB - liquidityA;
   });
 
-  return solanaPairs[0]; // Return highest liquidity pair
+  return matchedPairs[0]; // Return highest liquidity pair
 }
 
 // ✅ FIX: Request coalescing for DexScreener
@@ -802,11 +798,11 @@ async function fetchDexScreenerPriceInternal(tokenAddress: string): Promise<Pric
     const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 3000);
     if (dexResponse.ok) {
       const dexData = await dexResponse.json();
-      const solanaPair = findBestSolanaPair(dexData.pairs, tokenAddress);
+      const solanaPair = findBestPair(dexData.pairs, tokenAddress, 'solana');
 
       if (solanaPair && solanaPair.priceNative) {
         // ✅ PRECISION FIX: Parse without float math
-        const priceLamports = Math.max(1, parseDecimalToLamports(solanaPair.priceNative));
+        const priceLamports = Number(parseDecimalToNative(solanaPair.priceNative, 9));
         const decimals = solanaPair.baseToken?.decimals || 6;
         const liquidityUsd = parseFloat(solanaPair.liquidity?.usd || '0');
         const volume24hUsd = parseFloat(solanaPair.volume?.h24 || '0');
@@ -889,7 +885,7 @@ async function fetchTokenMetadata(tokenAddress: string): Promise<{ icon?: string
     const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 3000);
     if (dexResponse.ok) {
       const dexData = await dexResponse.json();
-      const solanaPair = findBestSolanaPair(dexData.pairs, tokenAddress);
+      const solanaPair = findBestPair(dexData.pairs, tokenAddress, 'solana');
 
       if (solanaPair) {
         dexMetadata = {
@@ -1545,13 +1541,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const pairs = dexData.pairs || [];
 
               // Build price map using best (highest liquidity) pair for each token
+              // Group by chain to avoid cross-chain confusion
+              const tokenChainMap = new Map<string, string>();
+              for (const p of positions) {
+                if (!tokenChainMap.has(p.tokenAddress)) {
+                  tokenChainMap.set(p.tokenAddress, p.chain);
+                }
+              }
               for (const tokenAddr of batch) {
-                const bestPair = findBestSolanaPair(pairs, tokenAddr);
+                const tokenChain = tokenChainMap.get(tokenAddr) || 'solana';
+                const bestPair = findBestPair(pairs, tokenAddr, tokenChain);
                 if (bestPair && bestPair.priceNative) {
                   // ✅ PRECISION FIX: Parse without float math
-                  // Clamp to 1 lamport minimum (sub-lamport tokens <$0.0000002 are negligible)
-                  const priceLamports = BigInt(Math.max(1, parseDecimalToLamports(bestPair.priceNative)));
-                  priceMap.set(tokenAddr, priceLamports);
+                  const nativeDecimals = tokenChain === 'solana' ? 9 : 18;
+                  const priceNative = parseDecimalToNative(bestPair.priceNative, nativeDecimals);
+                  if (priceNative > 0n) {
+                    priceMap.set(tokenAddr, priceNative);
+                  }
                 }
               }
             }
@@ -1570,7 +1576,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // ✅ Recalculate current value based on FRESH price, not stale DB value
         const decimals = p.decimals || 6;
-        const divisor = BigInt(10 ** decimals);
+        const divisor = BigInt(10) ** BigInt(decimals);
         const amountBigInt = BigInt(p.amount);
         const priceBigInt = BigInt(priceToUse);
         const recalculatedValue = (amountBigInt * priceBigInt) / divisor;
@@ -1586,8 +1592,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`📊 Position enrichment - ${enrichedPositions.length} positions updated with fresh prices`);
       enrichedPositions.forEach(p => {
         const hasFreshPrice = priceMap.has(p.tokenAddress);
-        const priceSOL = Number(p.currentPrice) / 1_000_000_000;
-        console.log(`   ${p.tokenSymbol}: fresh=${hasFreshPrice}, price=$${priceSOL.toFixed(9)}`);
+        const isBase = p.chain === 'base';
+        const displayPrice = isBase
+          ? Number(p.currentPrice) / Number(10n ** 18n)
+          : Number(p.currentPrice) / 1_000_000_000;
+        console.log(`   ${p.tokenSymbol}: fresh=${hasFreshPrice}, price=${isBase ? displayPrice.toFixed(18) : displayPrice.toFixed(9)} ${isBase ? 'ETH' : 'SOL'}`);
       });
 
       res.json(serializeBigInts({ positions: enrichedPositions }));
@@ -2350,16 +2359,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (dexResponse?.ok) {
             const dexData = await dexResponse.json();
 
-            // Find the best (highest liquidity) Solana pair for this token
-            const solanaPair = findBestSolanaPair(dexData.pairs, address);
+            // Detect chain from address format
+            const detectedChain = address.startsWith('0x') ? 'base' : 'solana';
+            // Find the best (highest liquidity) pair for this token on the detected chain
+            const bestPair = findBestPair(dexData.pairs, address, detectedChain);
 
-            if (solanaPair) {
+            if (bestPair) {
               // ✅ PRECISION FIX: Parse price without float math
-              const priceLamports = solanaPair.priceNative ? parseDecimalToLamports(solanaPair.priceNative) : 0;
-              const priceUsd = solanaPair.priceUsd ? parseFloat(solanaPair.priceUsd) : 0; // Float OK for USD display
+              const nativeDecimals = detectedChain === 'base' ? 18 : 9;
+              const priceNative = bestPair.priceNative ? parseDecimalToNative(bestPair.priceNative, nativeDecimals) : 0n;
+              const priceUsd = bestPair.priceUsd ? parseFloat(bestPair.priceUsd) : 0; // Float OK for USD display
 
               // Validate price exists
-              if (priceLamports === 0 && priceUsd === 0) {
+              if (priceNative === 0n && priceUsd === 0) {
                 console.warn(`⚠️ Token ${address} has no price data on DexScreener`);
                 return res.status(404).json({ error: 'Token price data unavailable' });
               }
@@ -2369,19 +2381,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
               token = {
                 tokenAddress: address,
-                name: metadata?.name || solanaPair.baseToken?.name || 'Unknown Token',
-                symbol: metadata?.symbol || solanaPair.baseToken?.symbol || '???',
-                price: priceLamports,
+                name: metadata?.name || bestPair.baseToken?.name || 'Unknown Token',
+                symbol: metadata?.symbol || bestPair.baseToken?.symbol || '???',
+                price: Number(priceNative),
                 priceUsd: priceUsd,
-                marketCap: solanaPair.fdv || solanaPair.marketCap || 0,
-                volume24h: solanaPair.volume?.h24 || 0,
-                priceChange24h: solanaPair.priceChange?.h24 || 0,
+                marketCap: bestPair.fdv || bestPair.marketCap || 0,
+                volume24h: bestPair.volume?.h24 || 0,
+                priceChange24h: bestPair.priceChange?.h24 || 0,
                 creator: undefined,
                 timestamp: new Date().toISOString(),
-                icon: metadata?.icon || solanaPair.info?.imageUrl,
+                icon: metadata?.icon || bestPair.info?.imageUrl,
               };
 
-              console.log(`✅ Found token ${address} on DexScreener: ${token.name} (${token.symbol}) - Price: $${priceUsd} (${priceLamports / 1_000_000_000} SOL) - MCap: $${token.marketCap} - Icon: ${token.icon ? 'Yes' : 'No'}`);
+              const displayNative = detectedChain === 'base'
+                ? Number(priceNative) / Number(10n ** 18n)
+                : Number(priceNative) / 1_000_000_000;
+              console.log(`✅ Found token ${address} on DexScreener: ${token.name} (${token.symbol}) - Price: $${priceUsd} (${displayNative} ${detectedChain === 'base' ? 'ETH' : 'SOL'}) - MCap: $${token.marketCap} - Icon: ${token.icon ? 'Yes' : 'No'}`);
             }
           }
         } catch (dexError) {
