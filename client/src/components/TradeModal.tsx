@@ -61,6 +61,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const [, setLocation] = useLocation()
   const { activeChain, nativeSymbol, nativeDecimals } = useChain()
   const isBuying = mode === "buy" || !position
+  const effectiveMode = mode || "buy"
   const [lastQuoteUpdate, setLastQuoteUpdate] = useState<Date>(new Date())
 
   const tokenAddress = position?.tokenAddress || token?.tokenAddress || ""
@@ -153,20 +154,82 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const percentage = sellForm.watch("percentage") || 100
   const buyTokenDecimals = activeToken?.decimals || 6
 
+  // Debounce amount for quote requests
+  const [debouncedAmount, setDebouncedAmount] = useState(nativeAmount)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedAmount(nativeAmount), 300)
+    return () => clearTimeout(timer)
+  }, [nativeAmount])
+
   const positionDecimals = position?.decimals || 6
   const sellAmountBigInt =
     !isBuying && position
       ? (toBigInt(position.amount) * BigInt(percentage)) / BigInt(100)
       : BigInt(0)
 
+  // Server-authoritative quote
+  const {
+    data: quote,
+    isLoading: isQuoting,
+    error: quoteError,
+  } = useQuery<{
+    quoteId: string
+    priceNative: string
+    estimatedOutput: string
+    expiresAt: number
+    expiresInMs: number
+    priceImpactBps: number
+    nativeSymbol: string
+  }>({
+    queryKey: ["/api/quote", tokenAddress, activeChain, effectiveMode, isBuying ? debouncedAmount : percentage],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      params.set("token", tokenAddress)
+      params.set("chain", activeChain)
+      params.set("side", effectiveMode)
+      if (isBuying) {
+        params.set("amountNative", debouncedAmount.toString())
+      } else {
+        params.set("amountTokens", sellAmountBigInt.toString())
+      }
+      const res = await fetch(`/api/quote?${params.toString()}`, {
+        credentials: "include",
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Quote failed")
+      }
+      return res.json()
+    },
+    enabled:
+      !!tokenAddress &&
+      isAuthenticated &&
+      (isBuying ? debouncedAmount > 0 : sellAmountBigInt > 0n),
+    refetchInterval: 5000,
+    retry: 1,
+  })
+
+  useEffect(() => {
+    if (quote) {
+      setLastQuoteUpdate(new Date())
+    }
+  }, [quote])
+
   const currentPriceNumber = Number(currentPrice)
-  const estimatedTokens =
+  const clientEstimatedTokens =
     isBuying && currentPriceNumber > 0 && isFinite(currentPriceNumber)
       ? (nativeAmount * 10 ** nativeDecimals) / currentPriceNumber
       : 0
 
   const tokenDecimals = position?.decimals || activeToken?.decimals || 6
-  const sellValueBigInt = !isBuying
+
+  const estimatedTokens = isBuying && quote
+    ? Number(quote.estimatedOutput) / 10 ** tokenDecimals
+    : clientEstimatedTokens
+
+  const sellValueBigInt = !isBuying && quote
+    ? toBigInt(quote.estimatedOutput)
+    : !isBuying
     ? (sellAmountBigInt * currentPrice) / BigInt(10) ** BigInt(tokenDecimals)
     : BigInt(0)
 
@@ -358,9 +421,24 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                   <div className="flex justify-between text-sm">
                     <span className="text-[var(--text-secondary)]">Est. Tokens</span>
                     <span className="font-mono font-medium">
-                      {estimatedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} {symbol}
+                      {isQuoting && debouncedAmount > 0 ? (
+                        <span className="flex items-center gap-1">
+                          <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.5} />
+                          Quoting...
+                        </span>
+                      ) : (
+                        `${estimatedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${symbol}`
+                      )}
                     </span>
                   </div>
+                  {quote && quote.priceImpactBps > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-[var(--text-secondary)]">Price Impact</span>
+                      <span className="font-mono text-[var(--accent-premium)]">
+                        {(quote.priceImpactBps / 100).toFixed(2)}%
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm">
                     <span className="text-[var(--text-secondary)]">Balance</span>
                     <span className="font-mono">
@@ -368,7 +446,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                     </span>
                   </div>
                   <p className="text-xs text-[var(--text-tertiary)] text-right">
-                    Final amount determined at execution
+                    {quoteError ? "Estimate unavailable — using cached price" : quote ? "Live server quote" : "Final amount determined at execution"}
                   </p>
                 </div>
 
@@ -453,9 +531,24 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                     <div className="flex justify-between text-sm">
                       <span className="text-[var(--text-secondary)]">Est. Value</span>
                       <span className="font-mono font-medium">
-                        {formatUSD(sellValueBigInt, 2)}
+                        {isQuoting && percentage > 0 ? (
+                          <span className="flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.5} />
+                            Quoting...
+                          </span>
+                        ) : (
+                          formatUSD(sellValueBigInt, 2)
+                        )}
                       </span>
                     </div>
+                    {quote && quote.priceImpactBps > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[var(--text-secondary)]">Price Impact</span>
+                        <span className="font-mono text-[var(--accent-premium)]">
+                          {(quote.priceImpactBps / 100).toFixed(2)}%
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm pt-2 border-t border-[var(--border-subtle)]">
                       <span className="text-[var(--text-secondary)]">Est. P&L</span>
                       <span
@@ -470,6 +563,9 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                         {formatUSD(profitLossBigInt, 2)}
                       </span>
                     </div>
+                    <p className="text-xs text-[var(--text-tertiary)] text-right">
+                      {quoteError ? "Estimate unavailable — using cached price" : quote ? "Live server quote" : "Final amount determined at execution"}
+                    </p>
                   </div>
                 )}
 
