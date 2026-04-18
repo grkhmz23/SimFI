@@ -1029,10 +1029,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create user
+      const walletAddress = req.body.walletAddress as string | undefined;
       const user = await storage.createUser({
         ...data,
         password: hashedPassword,
-      });
+        walletAddress: walletAddress || data.solanaWalletAddress,
+      } as any);
 
       // Apply referral bonus if valid referrer
       if (referrerId) {
