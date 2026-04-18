@@ -1604,7 +1604,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(serializeBigInts({ positions: enrichedPositions }));
     } catch (error: any) {
       console.error('Get positions error:', error);
-      res.status(500).json({ error: 'Could not fetch positions', details: error?.message || String(error) });
+      res.status(500).json({ error: 'Could not fetch positions' });
     }
   });
 
@@ -1773,7 +1773,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error: any) {
       console.error('Buy error:', error);
-      res.status(500).json({ error: 'Could not execute buy order', details: error?.message || String(error) });
+      res.status(500).json({ error: 'Could not execute buy order' });
     }
   });
 
