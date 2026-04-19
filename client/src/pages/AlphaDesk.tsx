@@ -5,35 +5,29 @@ import { useChain } from "@/lib/chain-context";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlphaDeskCard } from "@/components/alpha-desk/AlphaDeskCard";
-import { TradeModal } from "@/components/TradeModal";
 import { motion } from "framer-motion";
-import { Sparkles, TrendingUp, History, Info, ChevronDown, ChevronUp } from "lucide-react";
+import { Rocket, Wrench, Sparkles, History, Info, ChevronDown, ChevronUp } from "lucide-react";
 
 interface AlphaDeskIdea {
   id: number;
   rank: number;
   chain: string;
-  symbol: string;
+  ideaType: "meme_launch" | "dev_build";
+  title: string;
   name: string;
+  symbol: string | null;
   narrativeThesis: string;
   whyNow: string;
   confidenceScore: string;
   riskFlags: string[];
-  priceAtPublishUsd: string | null;
-  tokenAddress: string;
-  outcomes?: Array<{
-    horizon: string;
-    priceUsd: string | null;
-    pctChange: string | null;
-  }>;
+  evidence: Record<string, any>;
 }
 
-interface TrackRecord {
-  totalIdeas: number;
-  profitablePct: number;
-  medianReturn: number;
-  bestCall: { token: string; return: number };
-  worstCall: { token: string; return: number };
+interface TodayData {
+  runDate: string;
+  chain: string;
+  memeIdeas: AlphaDeskIdea[];
+  devIdeas: AlphaDeskIdea[];
 }
 
 const easeOutExpo = [0.16, 1, 0.3, 1];
@@ -41,27 +35,13 @@ const easeOutExpo = [0.16, 1, 0.3, 1];
 export default function AlphaDesk() {
   const [, setLocation] = useLocation();
   const { activeChain } = useChain();
-  const [tradeToken, setTradeToken] = useState<{ address: string; name: string; symbol: string } | null>(null);
   const [showMethodology, setShowMethodology] = useState(false);
 
-  const { data: todayData, isLoading: todayLoading } = useQuery<{
-    runDate: string;
-    chain: string;
-    ideas: AlphaDeskIdea[];
-  }>({
+  const { data: todayData, isLoading: todayLoading } = useQuery<TodayData>({
     queryKey: [`/api/alpha-desk/today`, activeChain],
     queryFn: async () => {
       const res = await fetch(`/api/alpha-desk/today?chain=${activeChain}`);
       if (!res.ok) throw new Error("Failed to fetch Alpha Desk picks");
-      return res.json();
-    },
-  });
-
-  const { data: trackRecord } = useQuery<TrackRecord>({
-    queryKey: [`/api/alpha-desk/track-record`, activeChain],
-    queryFn: async () => {
-      const res = await fetch(`/api/alpha-desk/track-record?chain=${activeChain}&horizon=24h`);
-      if (!res.ok) throw new Error("Failed to fetch track record");
       return res.json();
     },
   });
@@ -77,9 +57,8 @@ export default function AlphaDesk() {
     },
   });
 
-  const handlePaperTrade = (tokenAddress: string, chain: string, name: string, symbol: string) => {
-    setTradeToken({ address: tokenAddress, name, symbol });
-  };
+  const hasMemes = (todayData?.memeIdeas?.length ?? 0) > 0;
+  const hasDevs = (todayData?.devIdeas?.length ?? 0) > 0;
 
   return (
     <div className="min-h-screen bg-[var(--bg-base)]">
@@ -100,39 +79,40 @@ export default function AlphaDesk() {
             </h1>
           </div>
           <p className="text-[var(--text-secondary)] max-w-2xl">
-            AI-curated memecoin signals on Base and Solana. Three high-conviction picks every day,
-            backed by social momentum, on-chain liquidity trends, and developer activity.
+            AI-generated daily ideation for blockchain creators. Meme token concepts for launchers
+            and project ideas for developers — powered by Reddit, Twitter, GitHub, and on-chain signals.
           </p>
         </motion.div>
 
-        {/* Today's picks */}
+        {/* Meme Launch Ideas */}
         <section className="mb-12">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-[var(--accent-premium)]" />
-            Today&apos;s Picks
-          </h2>
+          <div className="flex items-center gap-2 mb-4">
+            <Rocket className="h-5 w-5 text-[var(--accent-premium)]" />
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+              Today's Launch Ideas
+            </h2>
+            <span className="text-xs text-[var(--text-tertiary)] ml-2">
+              Meme token concepts for creators
+            </span>
+          </div>
 
           {todayLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-80 rounded-xl" />
+                <Skeleton key={i} className="h-96 rounded-xl" />
               ))}
             </div>
-          ) : todayData?.ideas?.length ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {todayData.ideas.map((idea) => (
-                <AlphaDeskCard
-                  key={idea.id}
-                  idea={idea}
-                  onPaperTrade={(addr, chain) => handlePaperTrade(addr, chain, idea.name, idea.symbol)}
-                />
+          ) : hasMemes ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {todayData!.memeIdeas.map((idea) => (
+                <AlphaDeskCard key={idea.id} idea={idea} />
               ))}
             </div>
           ) : (
             <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-12 text-center">
-              <Sparkles className="h-12 w-12 mx-auto text-[var(--text-tertiary)] mb-4" />
+              <Rocket className="h-12 w-12 mx-auto text-[var(--text-tertiary)] mb-4" />
               <h3 className="text-xl font-bold text-[var(--text-primary)] mb-2">
-                No Picks Available
+                No Launch Ideas Yet
               </h3>
               <p className="text-[var(--text-secondary)] mb-6">
                 The Alpha Desk pipeline hasn&apos;t run yet for today. Check back later or switch chains.
@@ -142,39 +122,42 @@ export default function AlphaDesk() {
           )}
         </section>
 
-        {/* Track record */}
-        {trackRecord && (
-          <section className="mb-12">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-              <History className="h-4 w-4 text-[var(--accent-premium)]" />
-              Track Record
+        {/* Dev Build Ideas */}
+        <section className="mb-12">
+          <div className="flex items-center gap-2 mb-4">
+            <Wrench className="h-5 w-5 text-blue-400" />
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+              Build Ideas for Developers
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-5">
-                <p className="text-xs text-[var(--text-secondary)] uppercase tracking-wider mb-1">Total Calls</p>
-                <p className="text-2xl font-mono font-bold text-[var(--text-primary)]">{trackRecord.totalIdeas}</p>
-              </div>
-              <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-5">
-                <p className="text-xs text-[var(--text-secondary)] uppercase tracking-wider mb-1">Profitable %</p>
-                <p className="text-2xl font-mono font-bold text-emerald-400">{trackRecord.profitablePct}%</p>
-              </div>
-              <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-5">
-                <p className="text-xs text-[var(--text-secondary)] uppercase tracking-wider mb-1">Median Return</p>
-                <p className="text-2xl font-mono font-bold text-[var(--text-primary)]">
-                  {trackRecord.medianReturn >= 0 ? "+" : ""}
-                  {trackRecord.medianReturn}%
-                </p>
-              </div>
-              <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-5">
-                <p className="text-xs text-[var(--text-secondary)] uppercase tracking-wider mb-1">Best Call</p>
-                <p className="text-2xl font-mono font-bold text-emerald-400">
-                  +{trackRecord.bestCall.return}%
-                </p>
-                <p className="text-xs text-[var(--text-tertiary)]">{trackRecord.bestCall.token}</p>
-              </div>
+            <span className="text-xs text-[var(--text-tertiary)] ml-2">
+              Project concepts for builders
+            </span>
+          </div>
+
+          {todayLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-96 rounded-xl" />
+              ))}
             </div>
-          </section>
-        )}
+          ) : hasDevs ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {todayData!.devIdeas.map((idea) => (
+                <AlphaDeskCard key={idea.id} idea={idea} />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-blue-500/10 bg-blue-500/[0.02] p-12 text-center">
+              <Wrench className="h-12 w-12 mx-auto text-[var(--text-tertiary)] mb-4" />
+              <h3 className="text-xl font-bold text-[var(--text-primary)] mb-2">
+                No Build Ideas Yet
+              </h3>
+              <p className="text-[var(--text-secondary)] mb-6">
+                The pipeline hasn&apos;t generated developer ideas for today. Check back later.
+              </p>
+            </div>
+          )}
+        </section>
 
         {/* History */}
         {historyData?.history?.length ? (
@@ -184,37 +167,50 @@ export default function AlphaDesk() {
               Recent History
             </h2>
             <div className="space-y-3">
-              {historyData.history.map((day) => (
-                <div
-                  key={day.runDate}
-                  className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-mono text-[var(--text-secondary)]">{day.runDate}</span>
-                    <span className="text-xs text-[var(--text-tertiary)]">{day.ideas.length} picks</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {day.ideas.map((idea) => {
-                      const outcome = idea.outcomes?.find((o) => o.horizon === "24h");
-                      const pct = outcome?.pctChange ? parseFloat(outcome.pctChange) : 0;
-                      return (
-                        <div
+              {historyData.history.map((day) => {
+                const memes = day.ideas.filter((i) => i.ideaType === "meme_launch");
+                const devs = day.ideas.filter((i) => i.ideaType === "dev_build");
+                return (
+                  <div
+                    key={day.runDate}
+                    className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-mono text-[var(--text-secondary)]">
+                        {day.runDate}
+                      </span>
+                      <div className="flex gap-3 text-xs text-[var(--text-tertiary)]">
+                        <span className="flex items-center gap-1">
+                          <Rocket className="h-3 w-3" /> {memes.length} launch
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Wrench className="h-3 w-3" /> {devs.length} build
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {memes.map((idea) => (
+                        <span
                           key={idea.id}
-                          className="flex items-center gap-2 rounded-lg bg-[var(--bg-base)] px-3 py-2"
+                          className="inline-flex items-center gap-1 rounded-lg bg-[var(--bg-base)] px-2 py-1 text-xs text-[var(--text-primary)]"
                         >
-                          <span className="text-sm font-bold text-[var(--text-primary)]">{idea.symbol}</span>
-                          <span
-                            className={`text-xs font-mono ${pct >= 0 ? "text-emerald-400" : "text-red-400"}`}
-                          >
-                            {pct >= 0 ? "+" : ""}
-                            {pct.toFixed(1)}%
-                          </span>
-                        </div>
-                      );
-                    })}
+                          <Rocket className="h-3 w-3 text-[var(--accent-premium)]" />
+                          {idea.symbol ?? idea.name}
+                        </span>
+                      ))}
+                      {devs.map((idea) => (
+                        <span
+                          key={idea.id}
+                          className="inline-flex items-center gap-1 rounded-lg bg-blue-500/5 px-2 py-1 text-xs text-blue-300"
+                        >
+                          <Wrench className="h-3 w-3" />
+                          {idea.name}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         ) : null}
@@ -236,30 +232,42 @@ export default function AlphaDesk() {
               className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-5 text-sm text-[var(--text-secondary)] leading-relaxed"
             >
               <p className="mb-3">
-                We track social momentum, developer activity, on-chain liquidity trends, and token age.
-                Our AI agent weighs these signals, clusters the strongest candidates, and surfaces the
-                top three each day.
+                Alpha Desk runs two parallel AI pipelines every day at 13:00 UTC:
               </p>
-              <ul className="list-disc list-inside space-y-1 text-[var(--text-tertiary)]">
-                <li>Social signals from Twitter/X (mentions, engagement, unique authors)</li>
-                <li>Developer activity from GitHub (commits, contributors, releases)</li>
-                <li>On-chain metrics from DexScreener (volume, liquidity, price momentum)</li>
-                <li>Novelty bonus for newer tokens (decaying over 60 days)</li>
-                <li>Hype-only penalty when &gt;80% of social signals are pure hype</li>
-              </ul>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                <div className="space-y-1">
+                  <p className="font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                    <Rocket className="h-4 w-4 text-[var(--accent-premium)]" />
+                    Launch Ideas
+                  </p>
+                  <ul className="list-disc list-inside text-[var(--text-tertiary)] text-xs space-y-1">
+                    <li>Reddit hot posts from r/memecoins, r/wallstreetbets, r/CryptoCurrency</li>
+                    <li>Twitter/X viral narratives and hashtag trends</li>
+                    <li>On-chain volume and liquidity momentum</li>
+                    <li>Current news and cultural moments</li>
+                  </ul>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                    <Wrench className="h-4 w-4 text-blue-400" />
+                    Build Ideas
+                  </p>
+                  <ul className="list-disc list-inside text-[var(--text-tertiary)] text-xs space-y-1">
+                    <li>GitHub developer activity and trending repos</li>
+                    <li>Market gaps identified from on-chain data</li>
+                    <li>Developer complaints and feature requests on Twitter/Reddit</li>
+                    <li>Emerging narrative trends with no product yet</li>
+                  </ul>
+                </div>
+              </div>
+              <p className="text-[var(--text-tertiary)] text-xs">
+                All ideas are generated by Moonshot/OpenRouter LLMs and stored with source attribution.
+                No financial advice — these are creative concepts, not investment recommendations.
+              </p>
             </motion.div>
           )}
         </section>
       </div>
-
-      {/* Trade Modal */}
-      {tradeToken && (
-        <TradeModal
-          token={{ tokenAddress: tradeToken.address, name: tradeToken.name, symbol: tradeToken.symbol, price: 0, marketCap: 0 }}
-          mode="buy"
-          onClose={() => setTradeToken(null)}
-        />
-      )}
     </div>
   );
 }

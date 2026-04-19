@@ -37,6 +37,10 @@ export async function getUnmeasuredIdeas(
     .from(alphaDeskIdeas)
     .where(eq(alphaDeskIdeas.chain, chain));
 
+  // Only track outcomes for ideas that have an associated token address
+  // (launch ideas that reference existing tokens, not pure concepts)
+  const ideasWithTokens = ideas.filter((i) => i.tokenAddress != null);
+
   if (ideas.length === 0) return [];
 
   const ideaIds = ideas.map((i) => i.id);
@@ -51,5 +55,5 @@ export async function getUnmeasuredIdeas(
     );
 
   const measuredSet = new Set(measured.map((m) => m.ideaId));
-  return ideas.filter((i) => !measuredSet.has(i.id));
+  return ideasWithTokens.filter((i) => !measuredSet.has(i.id));
 }

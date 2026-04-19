@@ -3118,7 +3118,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       );
 
-      res.json({ runDate, chain, ideas: ideasWithOutcomes });
+      const memeIdeas = ideasWithOutcomes.filter((i) => i.ideaType === 'meme_launch');
+      const devIdeas = ideasWithOutcomes.filter((i) => i.ideaType === 'dev_build');
+
+      res.json({ runDate, chain, memeIdeas, devIdeas });
     } catch (error: any) {
       console.error('[AlphaDesk] /today error:', error);
       res.status(500).json({ error: 'Could not fetch Alpha Desk picks' });
@@ -3256,7 +3259,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const result = await runDailyPipeline(chain);
-      res.json({ success: true, runId: result.runId, ideaCount: result.ideaCount });
+      res.json({ success: true, runId: result.runId, memeCount: result.memeCount, devCount: result.devCount });
     } catch (error: any) {
       console.error('[AlphaDesk] Admin run error:', error);
       res.status(500).json({ error: error.message || 'Pipeline failed' });

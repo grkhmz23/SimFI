@@ -34,6 +34,23 @@ export interface GithubSignal {
   releases: number;
 }
 
+export interface RedditPost {
+  id: string;
+  title: string;
+  subreddit: string;
+  upvotes: number;
+  commentCount: number;
+  url: string;
+  createdAt: number;
+}
+
+export interface MarketSignal {
+  trend: string;
+  sentiment: "bullish" | "bearish" | "neutral";
+  volumeChange24h?: number;
+  liquidityChange24h?: number;
+}
+
 // =============================================================================
 // Scoring types
 // =============================================================================
@@ -76,25 +93,49 @@ export interface ScoredToken {
 // LLM types
 // =============================================================================
 
-export interface AlphaDeskIdeaGenerated {
+export interface MemeLaunchIdeaGenerated {
+  ideaType: "meme_launch";
   rank: number;
-  narrativeTitle: string;
+  title: string;
   tokenName: string;
   ticker: string;
   thesis: string;
   whyNow: string;
-  twitterEvidence: string[];
+  memeTheme: string;
+  redditInspiration: string[];
+  twitterNarrative: string;
+  marketSignal: string;
   riskFlags: string[];
   confidence: number;
   chain: Chain;
-  tokenAddress: string;
-  category: "utility" | "meme";
+  category: "meme" | "culture" | "political" | "tech";
   riskLevel: "low" | "medium" | "high";
 }
+
+export interface DevBuildIdeaGenerated {
+  ideaType: "dev_build";
+  rank: number;
+  title: string;
+  projectName: string;
+  concept: string;
+  whyNow: string;
+  targetAudience: string;
+  suggestedStack: string[];
+  complexity: "weekend" | "sprint" | "quarter";
+  monetization: string;
+  chain: Chain;
+  confidence: number;
+  evidence: string[];
+}
+
+export type AlphaDeskIdeaGenerated = MemeLaunchIdeaGenerated | DevBuildIdeaGenerated;
 
 export interface AlphaDeskIdeaInput {
   periodLabel: string;
   tokens: ScoredToken[];
+  redditPosts: RedditPost[];
+  tweets: SocialDataTweet[];
+  githubSignals: GithubSignal[];
   worldNews?: string[];
 }
 
@@ -106,7 +147,8 @@ export interface AlphaDeskRunResult {
   runId: number;
   runDate: string;
   chain: Chain;
-  ideaCount: number;
+  memeCount: number;
+  devCount: number;
   status: "pending" | "succeeded" | "failed";
 }
 

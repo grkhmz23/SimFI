@@ -1,11 +1,12 @@
 // server/services/alphaDesk/index.ts
-// Main entry: runDailyPipeline(chain)
+// Main entry: runDailyPipeline(chain) — generates meme launch ideas + dev build ideas.
 
 import type { Chain } from "@shared/schema";
 import type { ScoredToken, AlphaDeskIdeaGenerated, PipelineContext } from "./types";
 import { fetchTrendingTokens, fetchTokenProfiles } from "./ingest/dexscreener";
 import { ingestTwitterSignals } from "./ingest/socialdata";
 import { ingestGithubSignals } from "./ingest/github";
+import { ingestRedditSignals } from "./ingest/reddit";
 import { resolveWeights } from "./score/weights";
 import { zScore } from "./score/zscore";
 import { computeNoveltyBonus } from "./score/bonuses";
@@ -29,7 +30,7 @@ function getPeriodDates(): { since: string; until: string; periodLabel: string }
   return { since, until, periodLabel: `${since} → ${until}` };
 }
 
-export async function runDailyPipeline(chain: Chain): Promise<{ runId: number; ideaCount: number }> {
+export async function runDailyPipeline(chain: Chain): Promise<{ runId: number; memeCount: number; devCount: number }> {
   const runDate = formatDateIso(new Date());
   const { since, until, periodLabel } = getPeriodDates();
 
@@ -37,7 +38,7 @@ export async function runDailyPipeline(chain: Chain): Promise<{ runId: number; i
   const existing = await findTodayRun(runDate, chain);
   if (existing && existing.status === "succeeded") {
     console.log(`[AlphaDesk] Run already succeeded for ${runDate} / ${chain}, skipping`);
-    return { runId: existing.id, ideaCount: 0 };
+    return { runId: existing.id, memeCount: 0, devCount: 0 };
   }
 
   // Cost guard
@@ -63,13 +64,15 @@ export async function runDailyPipeline(chain: Chain): Promise<{ runId: number; i
     console.log(`[AlphaDesk] Starting pipeline for ${chain}, runId=${runId}`);
 
     // === Ingestion ===
-    const [trendingRaw, twitterResult] = await Promise.all([
+    const [trendingRaw, twitterResult, redditPosts] = await Promise.all([
       fetchTrendingTokens(chain, 30),
       ingestTwitterSignals(chain, since, until),
+      ingestRedditSignals(),
     ]);
 
     context.sourcesUsed["dexscreener"] = true;
     context.sourcesUsed["socialdata"] = !!process.env.SOCIALDATA_API_KEY;
+    context.sourcesUsed["reddit"] = redditPosts.length > 0;
 
     const tokensWithProfiles = await fetchTokenProfiles(trendingRaw);
 
@@ -88,7 +91,6 @@ export async function runDailyPipeline(chain: Chain): Promise<{ runId: number; i
     const hasSocialData = !!process.env.SOCIALDATA_API_KEY;
     const weights = resolveWeights(hasGithub, hasSocialData);
 
-    // Map DexScreener tokens to ScoredToken skeletons
     const tokenSkeletons: ScoredToken[] = tokensWithProfiles.map((t) => ({
       key: t.tokenAddress,
       tokenAddress: t.tokenAddress,
@@ -129,18 +131,20 @@ export async function runDailyPipeline(chain: Chain): Promise<{ runId: number; i
     context.llmProvider = providerInfo?.id;
     context.llmModel = providerInfo?.model;
 
-    const ideas = await generateAlphaDeskIdeas({
+    const allIdeas = await generateAlphaDeskIdeas({
       periodLabel,
+      chain,
       tokens: topTokens,
-      worldNews: [], // TODO: optionally wire world-news ingestor
+      redditPosts,
+      tweets: twitterResult.tweets,
+      githubSignals,
     });
 
-    // === Persistence ===
-    // Use the first idea's token price as a rough publish price
-    const publishPrice = topTokens[0]?.priceUsd;
-    const publishPriceNative = topTokens[0]?.priceUsd; // Same for now
+    const memeIdeas = allIdeas.filter((i) => i.ideaType === "meme_launch");
+    const devIdeas = allIdeas.filter((i) => i.ideaType === "dev_build");
 
-    await insertAlphaDeskIdeas(runId, ideas, publishPrice, publishPriceNative);
+    // === Persistence ===
+    await insertAlphaDeskIdeas(runId, allIdeas);
 
     await updateAlphaDeskRun(runId, {
       status: "succeeded",
@@ -150,8 +154,8 @@ export async function runDailyPipeline(chain: Chain): Promise<{ runId: number; i
       errorMessage: null,
     });
 
-    console.log(`[AlphaDesk] Pipeline succeeded for ${chain}, runId=${runId}, ideas=${ideas.length}`);
-    return { runId, ideaCount: ideas.length };
+    console.log(`[AlphaDesk] Pipeline succeeded for ${chain}, runId=${runId}, memes=${memeIdeas.length}, dev=${devIdeas.length}`);
+    return { runId, memeCount: memeIdeas.length, devCount: devIdeas.length };
   } catch (error: any) {
     console.error(`[AlphaDesk] Pipeline failed for ${chain}:`, error.message);
     await updateAlphaDeskRun(runId, {
