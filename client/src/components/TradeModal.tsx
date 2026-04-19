@@ -27,13 +27,14 @@ import { useMutation, useQuery } from "@tanstack/react-query"
 import type { Token, Position } from "@shared/schema"
 import { LogIn, Loader2, RefreshCw } from "lucide-react"
 import {
-  formatNative,
+  formatNativeAmount,
   toBigInt,
   formatTokenAmount,
   nativeToTokens,
   formatUSD,
   formatPricePerTokenNative,
 } from "@/lib/token-format"
+import { formatUsd, formatTokenQty, formatPct } from "@/lib/format"
 import { useChain } from "@/lib/chain-context"
 import { cn } from "@/lib/utils"
 
@@ -312,7 +313,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     if (nativeSpentBigInt > userBalanceBigInt) {
       toast({
         title: "Insufficient Balance",
-        description: `You need ${data.amount} ${nativeSymbol} but only have ${formatNative(userBalance || 0, activeChain)} ${nativeSymbol}`,
+        description: `You need ${data.amount} ${nativeSymbol} but only have ${formatNativeAmount(userBalance || 0, activeChain)} ${nativeSymbol}`,
         variant: "destructive",
       })
       return
@@ -365,11 +366,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
             ) : (
               <p className="text-mono-lg">
                 {currentPriceUsd !== undefined
-                  ? currentPriceUsd < 0.000001 && currentPriceUsd > 0
-                    ? `$${currentPriceUsd.toExponential(2)}`
-                    : currentPriceUsd < 0.01
-                      ? `$${currentPriceUsd.toFixed(6)}`
-                      : `$${currentPriceUsd.toFixed(4)}`
+                  ? formatUsd(currentPriceUsd)
                   : formatPricePerTokenNative(currentPrice, activeChain)}
               </p>
             )}
@@ -430,7 +427,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                           Quoting...
                         </span>
                       ) : (
-                        `${estimatedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${symbol}`
+                        formatTokenQty(estimatedTokens) + ' ' + symbol
                       )}
                     </span>
                   </div>
@@ -438,14 +435,14 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                     <div className="flex justify-between text-sm">
                       <span className="text-[var(--text-secondary)]">Price Impact</span>
                       <span className="font-mono text-[var(--accent-premium)]">
-                        {(quote.priceImpactBps / 100).toFixed(2)}%
+                        {formatPct(quote.priceImpactBps / 100)}
                       </span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm">
                     <span className="text-[var(--text-secondary)]">Balance</span>
                     <span className="font-mono">
-                      {formatNative(user?.balance || 0, activeChain, 4)} {nativeSymbol}
+                      {formatNativeAmount(user?.balance || 0, activeChain, 4)} {nativeSymbol}
                     </span>
                   </div>
                   <p className="text-xs text-[var(--text-tertiary)] text-right">
@@ -540,7 +537,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                             Quoting...
                           </span>
                         ) : (
-                          `${formatNative(sellValueBigInt, activeChain, 4)} ${nativeSymbol}`
+                          `${formatNativeAmount(sellValueBigInt, activeChain, 4)} ${nativeSymbol}`
                         )}
                       </span>
                     </div>
@@ -548,7 +545,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                       <div className="flex justify-between text-sm">
                         <span className="text-[var(--text-secondary)]">Price Impact</span>
                         <span className="font-mono text-[var(--accent-premium)]">
-                          {(quote.priceImpactBps / 100).toFixed(2)}%
+                          {formatPct(quote.priceImpactBps / 100)}
                         </span>
                       </div>
                     )}
@@ -563,7 +560,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                         )}
                       >
                         {profitLossBigInt >= 0n ? "+" : ""}
-                        {`${formatNative(profitLossBigInt, activeChain, 4)} ${nativeSymbol}`}
+                        {`${formatNativeAmount(profitLossBigInt, activeChain, 4)} ${nativeSymbol}`}
                       </span>
                     </div>
                     <p className="text-xs text-[var(--text-tertiary)] text-right">

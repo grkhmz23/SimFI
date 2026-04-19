@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { ChainChip } from "@/components/ui/chain-chip"
 import { useAuth } from "@/lib/auth-context"
 import { useChain } from "@/lib/chain-context"
+import { formatUsdText } from "@/lib/format"
 import { useQuery } from "@tanstack/react-query"
 import { motion } from "framer-motion"
 import {
@@ -149,7 +150,7 @@ export default function Trade() {
                       </span>
                       <span className="text-mono-sm text-[var(--accent-gain)]">
                         +$
-                        {Number(leader.periodProfit || leader.totalProfit || 0).toLocaleString()}
+                        {formatUsdText(Number(leader.periodProfit || leader.totalProfit || 0))}
                       </span>
                     </div>
                   ))}

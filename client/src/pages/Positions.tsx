@@ -12,10 +12,15 @@ import { useAuth } from '@/lib/auth-context';
 import { usePrice } from '@/lib/price-context';
 import { useChain } from '@/lib/chain-context';
 import {
+  formatUsd,
+  formatUsdText,
+  formatTokenQty,
   formatNative,
-  formatUSD,
-  formatTokenAmount,
-  formatPricePerTokenNative,
+  formatPct,
+} from '@/lib/format';
+import {
+  lamportsToSol,
+  weiToEth,
   toBigInt,
 } from '@/lib/token-format';
 import { cn } from '@/lib/utils';
@@ -55,14 +60,23 @@ const cardVariants = {
 };
 
 /* ------------------------------------------------------------------ */
+//  Helpers
+/* ------------------------------------------------------------------ */
+
+function toNativeNumber(value: bigint, chain: 'solana' | 'base'): number {
+  return chain === 'solana' ? lamportsToSol(value) : weiToEth(value);
+}
+
+/* ------------------------------------------------------------------ */
 //  Page
 /* ------------------------------------------------------------------ */
 
 export default function Positions() {
   const { isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
-  const { activeChain, nativeSymbol } = useChain();
+  const { activeChain } = useChain();
   const { getPrice } = usePrice();
+  const nativePrice = getPrice(activeChain) ?? NaN;
 
   const [tradeModal, setTradeModal] = useState<{
     position: EnrichedPosition;
@@ -101,6 +115,10 @@ export default function Positions() {
   const totalPnL = totalValue - totalInvested;
   const totalPnLPercent =
     totalInvested > 0n ? (Number(totalPnL) / Number(totalInvested)) * 100 : 0;
+
+  const totalValueNative = toNativeNumber(totalValue, activeChain);
+  const totalInvestedNative = toNativeNumber(totalInvested, activeChain);
+  const totalPnLNative = toNativeNumber(totalPnL, activeChain);
 
   /* ------------------- Unauthenticated ------------------- */
 
@@ -163,19 +181,19 @@ export default function Positions() {
                 <div>
                   <p className="text-sm text-[var(--text-secondary)] mb-1">Total Invested</p>
                   <p className="font-mono text-2xl font-medium text-[var(--text-primary)] tabular-nums">
-                    {formatNative(totalInvested, activeChain, 4)} {nativeSymbol}
+                    {formatNative(totalInvestedNative, activeChain)}
                   </p>
                   <p className="font-mono text-sm text-[var(--text-tertiary)] tabular-nums">
-                    {formatUSD(totalInvested, getPrice(activeChain), activeChain, 2)}
+                    {formatUsdText(totalInvestedNative * nativePrice)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-[var(--text-secondary)] mb-1">Current Value</p>
                   <p className="font-mono text-2xl font-medium text-[var(--text-primary)] tabular-nums">
-                    {formatNative(totalValue, activeChain, 4)} {nativeSymbol}
+                    {formatNative(totalValueNative, activeChain)}
                   </p>
                   <p className="font-mono text-sm text-[var(--text-tertiary)] tabular-nums">
-                    {formatUSD(totalValue, getPrice(activeChain), activeChain, 2)}
+                    {formatUsdText(totalValueNative * nativePrice)}
                   </p>
                 </div>
                 <div>
@@ -184,25 +202,28 @@ export default function Positions() {
                     <p
                       className={cn(
                         'font-mono text-2xl font-medium tabular-nums',
-                        totalPnL >= 0n ? 'text-[var(--accent-gain)]' : 'text-[var(--accent-loss)]'
+                        totalPnLNative >= 0
+                          ? 'text-[var(--accent-gain)]'
+                          : 'text-[var(--accent-loss)]'
                       )}
                     >
-                      {totalPnL >= 0n ? '+' : ''}
-                      {formatNative(totalPnL, activeChain, 4)} {nativeSymbol}
+                      {totalPnLNative >= 0 ? '+' : ''}
+                      {formatNative(totalPnLNative, activeChain)}
                     </p>
-                    <Badge variant={totalPnL >= 0n ? 'gain' : 'loss'}>
-                      {totalPnL >= 0n ? '+' : ''}
-                      {totalPnLPercent.toFixed(2)}%
+                    <Badge variant={totalPnLNative >= 0 ? 'gain' : 'loss'}>
+                      {formatPct(totalPnLPercent)}
                     </Badge>
                   </div>
                   <p
                     className={cn(
                       'font-mono text-sm tabular-nums',
-                      totalPnL >= 0n ? 'text-[var(--accent-gain)]' : 'text-[var(--accent-loss)]'
+                      totalPnLNative >= 0
+                        ? 'text-[var(--accent-gain)]'
+                        : 'text-[var(--accent-loss)]'
                     )}
                   >
-                    {totalPnL >= 0n ? '+' : ''}
-                    {formatUSD(totalPnL, getPrice(activeChain), activeChain, 2)}
+                    {totalPnLNative >= 0 ? '+' : ''}
+                    {formatUsdText(totalPnLNative * nativePrice)}
                   </p>
                 </div>
               </div>
@@ -257,8 +278,28 @@ export default function Positions() {
             const currentValue = toBigInt(position.currentValue);
             const spent = toBigInt(position.solSpent);
             const pnl = currentValue - spent;
-            const pnlPercent = spent > 0n ? (Number(pnl) / Number(spent)) * 100 : 0;
+            const pnlPercent =
+              spent > 0n ? (Number(pnl) / Number(spent)) * 100 : 0;
             const isGain = pnl >= 0n;
+
+            const spentNative = toNativeNumber(spent, activeChain);
+            const currentValueNative = toNativeNumber(currentValue, activeChain);
+            const pnlNative = toNativeNumber(pnl, activeChain);
+
+            const entryPriceNative = toNativeNumber(
+              toBigInt(position.entryPrice),
+              activeChain
+            );
+            const currentPriceNative = toNativeNumber(
+              toBigInt(position.currentPrice),
+              activeChain
+            );
+            const entryPriceUsd = entryPriceNative * nativePrice;
+            const currentPriceUsd = currentPriceNative * nativePrice;
+
+            const tokenQty =
+              Number(toBigInt(position.amount)) /
+              10 ** (position.decimals || 6);
 
             return (
               <motion.div
@@ -268,7 +309,10 @@ export default function Positions() {
                 initial="hidden"
                 animate="visible"
               >
-                <Card className="card-raised h-full flex flex-col" data-testid={`card-position-${position.id}`}>
+                <Card
+                  className="card-raised h-full flex flex-col"
+                  data-testid={`card-position-${position.id}`}
+                >
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -289,7 +333,9 @@ export default function Positions() {
                         variant="ghost"
                         size="icon"
                         className="shrink-0"
-                        onClick={() => setLocation(`/token/${position.tokenAddress}`)}
+                        onClick={() =>
+                          setLocation(`/token/${position.tokenAddress}`)
+                        }
                         data-testid={`button-view-token-${position.id}`}
                       >
                         <ExternalLink className="h-4 w-4 text-[var(--text-tertiary)]" />
@@ -301,59 +347,73 @@ export default function Positions() {
                     {/* Price & Holdings */}
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span className="text-[var(--text-secondary)]">Holdings</span>
+                        <span className="text-[var(--text-secondary)]">
+                          Holdings
+                        </span>
                         <DataCell
-                          value={formatTokenAmount(
-                            toBigInt(position.amount),
-                            position.decimals || 6,
-                            2
-                          )}
+                          value={formatTokenQty(tokenQty)}
                           data-testid={`text-holdings-${position.id}`}
                         />
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-[var(--text-secondary)]">Entry Price</span>
-                        <DataCell
-                          value={formatPricePerTokenNative(position.entryPrice, activeChain)}
-                          variant="secondary"
-                          data-testid={`text-entry-price-${position.id}`}
-                        />
+                        <span className="text-[var(--text-secondary)]">
+                          Entry Price
+                        </span>
+                        <span
+                          className="font-mono text-[var(--text-secondary)] tabular-nums"
+                          data-testid={`text-entry-nativePrice-${position.id}`}
+                        >
+                          {formatUsd(entryPriceUsd)}
+                        </span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-[var(--text-secondary)]">Current Price</span>
-                        <DataCell
-                          value={formatPricePerTokenNative(position.currentPrice, activeChain)}
-                          data-testid={`text-current-price-${position.id}`}
-                        />
+                        <span className="text-[var(--text-secondary)]">
+                          Current Price
+                        </span>
+                        <span
+                          className="font-mono text-[var(--text-primary)] tabular-nums"
+                          data-testid={`text-current-nativePrice-${position.id}`}
+                        >
+                          {formatUsd(currentPriceUsd)}
+                        </span>
                       </div>
                     </div>
 
                     {/* Value */}
                     <div className="border-t border-[var(--border-subtle)] pt-3 space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span className="text-[var(--text-secondary)]">Invested</span>
+                        <span className="text-[var(--text-secondary)]">
+                          Invested
+                        </span>
                         <div className="text-right">
                           <DataCell
-                            value={formatNative(spent, activeChain, 4)}
-                            suffix={` ${nativeSymbol}`}
+                            value={formatNative(spentNative, activeChain)}
                             variant="secondary"
                             data-testid={`text-invested-${position.id}`}
                           />
                           <p className="font-mono text-xs text-[var(--text-tertiary)]">
-                            {formatUSD(spent, getPrice(activeChain), activeChain, 2)}
+                            {formatUsdText(
+                              spentNative * nativePrice
+                            )}
                           </p>
                         </div>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-[var(--text-secondary)]">Current Value</span>
+                        <span className="text-[var(--text-secondary)]">
+                          Current Value
+                        </span>
                         <div className="text-right">
                           <DataCell
-                            value={formatNative(currentValue, activeChain, 4)}
-                            suffix={` ${nativeSymbol}`}
+                            value={formatNative(
+                              currentValueNative,
+                              activeChain
+                            )}
                             data-testid={`text-value-${position.id}`}
                           />
                           <p className="font-mono text-xs text-[var(--text-tertiary)]">
-                            {formatUSD(currentValue, getPrice(activeChain), activeChain, 2)}
+                            {formatUsdText(
+                              currentValueNative * nativePrice
+                            )}
                           </p>
                         </div>
                       </div>
@@ -362,7 +422,9 @@ export default function Positions() {
                     {/* P&L */}
                     <div className="border-t border-[var(--border-subtle)] pt-3">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-[var(--text-secondary)]">Profit / Loss</span>
+                        <span className="text-sm text-[var(--text-secondary)]">
+                          Profit / Loss
+                        </span>
                         {isGain ? (
                           <TrendingUp className="h-4 w-4 text-[var(--accent-gain)]" />
                         ) : (
@@ -371,26 +433,31 @@ export default function Positions() {
                       </div>
                       <div className="flex items-baseline gap-2">
                         <DataCell
-                          value={formatNative(pnl, activeChain, 4)}
+                          value={formatNative(pnlNative, activeChain)}
                           prefix={isGain ? '+' : ''}
-                          suffix={` ${nativeSymbol}`}
                           variant={isGain ? 'gain' : 'loss'}
                           className="text-xl font-bold"
                           data-testid={`text-pnl-${position.id}`}
                         />
-                        <Badge variant={isGain ? 'gain' : 'loss'} data-testid={`badge-pnl-percent-${position.id}`}>
-                          {isGain ? '+' : ''}
-                          {pnlPercent.toFixed(2)}%
+                        <Badge
+                          variant={isGain ? 'gain' : 'loss'}
+                          data-testid={`badge-pnl-percent-${position.id}`}
+                        >
+                          {formatPct(pnlPercent)}
                         </Badge>
                       </div>
                       <p
                         className={cn(
                           'font-mono text-xs tabular-nums mt-0.5',
-                          isGain ? 'text-[var(--accent-gain)]' : 'text-[var(--accent-loss)]'
+                          isGain
+                            ? 'text-[var(--accent-gain)]'
+                            : 'text-[var(--accent-loss)]'
                         )}
                       >
                         {isGain ? '+' : ''}
-                        {formatUSD(pnl, getPrice(activeChain), activeChain, 2)}
+                        {formatUsdText(
+                          pnlNative * nativePrice
+                        )}
                       </p>
                     </div>
 
@@ -400,7 +467,9 @@ export default function Positions() {
                         variant="default"
                         size="sm"
                         className="flex-1 gap-2"
-                        onClick={() => setTradeModal({ position, mode: 'buy' })}
+                        onClick={() =>
+                          setTradeModal({ position, mode: 'buy' })
+                        }
                         data-testid={`button-buy-more-${position.id}`}
                       >
                         <ShoppingCart className="h-4 w-4" />
@@ -410,7 +479,9 @@ export default function Positions() {
                         variant="outline"
                         size="sm"
                         className="flex-1 gap-2 border-[var(--accent-loss)] text-[var(--accent-loss)] hover:bg-[var(--accent-loss)]/10"
-                        onClick={() => setTradeModal({ position, mode: 'sell' })}
+                        onClick={() =>
+                          setTradeModal({ position, mode: 'sell' })
+                        }
                         data-testid={`button-sell-${position.id}`}
                       >
                         <DollarSign className="h-4 w-4" />

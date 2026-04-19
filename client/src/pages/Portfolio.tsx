@@ -14,7 +14,6 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DataCell } from '@/components/ui/data-cell';
 import {
   Tooltip,
   TooltipContent,
@@ -34,12 +33,13 @@ import { useAuth } from '@/lib/auth-context';
 import { usePrice } from '@/lib/price-context';
 import { useChain } from '@/lib/chain-context';
 import {
-  formatNative,
-  formatUSD,
   formatTokenAmount,
   formatPricePerTokenNative,
   toBigInt,
+  lamportsToSol,
+  weiToEth,
 } from '@/lib/token-format';
+import { formatUsd, formatUsdText, formatTokenQty, formatNative, formatPct } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { Position, Trade } from '@shared/schema';
 import {
@@ -131,7 +131,7 @@ function formatHoldTime(ms: number): string {
 /* ------------------------------------------------------------------ */
 
 function BalanceChart({ data }: { data: { date: string; balance: number }[] }) {
-  const { activeChain, nativeSymbol } = useChain();
+  const { activeChain } = useChain();
 
   return (
     <div className="h-56 w-full">
@@ -152,7 +152,7 @@ function BalanceChart({ data }: { data: { date: string; balance: number }[] }) {
             fontSize={11}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(v: number) => `${v.toFixed(2)}`}
+            tickFormatter={(v: number) => formatNative(v, activeChain)}
             width={48}
           />
           <RechartsTooltip
@@ -164,7 +164,7 @@ function BalanceChart({ data }: { data: { date: string; balance: number }[] }) {
             }}
             labelStyle={{ color: 'var(--text-secondary)' }}
             formatter={(v: number) => [
-              `${v.toFixed(4)} ${nativeSymbol}`,
+              formatNative(v, activeChain),
               'Balance',
             ]}
             labelFormatter={(l: string) =>
@@ -196,7 +196,7 @@ function BalanceChart({ data }: { data: { date: string; balance: number }[] }) {
 export default function Portfolio() {
   const { isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
-  const { activeChain, nativeSymbol } = useChain();
+  const { activeChain } = useChain();
   const { getPrice } = usePrice();
 
   const [sort, setSort] = useState<SortState>({ key: 'currentValue', direction: 'desc' });
@@ -321,6 +321,9 @@ export default function Portfolio() {
     );
   };
 
+  const nativePriceUSD = getPrice(activeChain);
+  const nativeDivider = activeChain === 'solana' ? 1e9 : 1e18;
+
   /* ------------------- Unauthenticated ------------------- */
 
   if (!isAuthenticated) {
@@ -373,10 +376,10 @@ export default function Portfolio() {
               <span className="text-sm text-[var(--text-secondary)]">Total Value</span>
             </div>
             <div className="font-mono text-2xl font-medium text-[var(--text-primary)] tabular-nums">
-              {formatNative(totals.current, activeChain, 4)} {nativeSymbol}
+              {formatNative(activeChain === 'solana' ? lamportsToSol(totals.current) : weiToEth(totals.current), activeChain)}
             </div>
             <div className="font-mono text-sm text-[var(--text-tertiary)] tabular-nums mt-1">
-              {formatUSD(totals.current, getPrice(activeChain), activeChain, 2)}
+              {formatUsdText(nativePriceUSD != null ? (activeChain === 'solana' ? lamportsToSol(totals.current) : weiToEth(totals.current)) * nativePriceUSD : null)}
             </div>
           </Card>
         </motion.div>
@@ -391,10 +394,10 @@ export default function Portfolio() {
               <span className="text-sm text-[var(--text-secondary)]">Total Invested</span>
             </div>
             <div className="font-mono text-2xl font-medium text-[var(--text-primary)] tabular-nums">
-              {formatNative(totals.invested, activeChain, 4)} {nativeSymbol}
+              {formatNative(activeChain === 'solana' ? lamportsToSol(totals.invested) : weiToEth(totals.invested), activeChain)}
             </div>
             <div className="font-mono text-sm text-[var(--text-tertiary)] tabular-nums mt-1">
-              {formatUSD(totals.invested, getPrice(activeChain), activeChain, 2)}
+              {formatUsdText(nativePriceUSD != null ? (activeChain === 'solana' ? lamportsToSol(totals.invested) : weiToEth(totals.invested)) * nativePriceUSD : null)}
             </div>
           </Card>
         </motion.div>
@@ -424,7 +427,7 @@ export default function Portfolio() {
               )}
             >
               {totals.pnl >= 0n ? '+' : ''}
-              {formatNative(totals.pnl, activeChain, 4)} {nativeSymbol}
+              {formatNative(activeChain === 'solana' ? lamportsToSol(totals.pnl) : weiToEth(totals.pnl), activeChain)}
             </div>
             <div
               className={cn(
@@ -433,7 +436,7 @@ export default function Portfolio() {
               )}
             >
               {totals.pnl >= 0n ? '+' : ''}
-              {formatUSD(totals.pnl, getPrice(activeChain), activeChain, 2)}
+              {formatUsdText(nativePriceUSD != null ? (activeChain === 'solana' ? lamportsToSol(totals.pnl) : weiToEth(totals.pnl)) * nativePriceUSD : null)}
             </div>
           </Card>
         </motion.div>
@@ -448,7 +451,7 @@ export default function Portfolio() {
               <span className="text-sm text-[var(--text-secondary)]">Win Rate</span>
             </div>
             <div className="font-mono text-2xl font-medium text-[var(--text-primary)] tabular-nums">
-              {winRate.toFixed(1)}%
+              {formatPct(winRate)}
             </div>
             <div className="font-mono text-sm text-[var(--text-tertiary)] tabular-nums mt-1">
               {analyticsData?.winCount ?? 0}W / {analyticsData?.lossCount ?? 0}L
@@ -600,6 +603,16 @@ export default function Portfolio() {
                       const pnlPercent = calculatePnLPercent(position);
                       const isGain = pnl >= 0n;
 
+                      const entryPriceNativeNum = Number(position.entryPrice) / nativeDivider;
+                      const currentPriceNativeNum = Number(position.currentPrice) / nativeDivider;
+                      const entryPriceUsd = nativePriceUSD != null ? entryPriceNativeNum * nativePriceUSD : null;
+                      const currentPriceUsd = nativePriceUSD != null ? currentPriceNativeNum * nativePriceUSD : null;
+
+                      const currentValueNative = activeChain === 'solana'
+                        ? lamportsToSol(toBigInt(position.currentValue))
+                        : weiToEth(toBigInt(position.currentValue));
+                      const currentValueUsd = nativePriceUSD != null ? currentValueNative * nativePriceUSD : null;
+
                       return (
                         <TableRow
                           key={position.id}
@@ -634,56 +647,41 @@ export default function Portfolio() {
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
-                            <DataCell
-                              value={formatPricePerTokenNative(position.entryPrice, activeChain)}
-                              variant="secondary"
-                            />
+                            <span className="font-mono text-[var(--text-secondary)]">
+                              {formatUsd(entryPriceUsd)}
+                            </span>
                           </TableCell>
                           <TableCell className="text-right">
-                            <DataCell
-                              value={formatPricePerTokenNative(position.currentPrice, activeChain)}
-                            />
+                            <span className="font-mono text-[var(--text-primary)]">
+                              {formatUsd(currentPriceUsd)}
+                            </span>
                           </TableCell>
                           <TableCell className="text-right">
-                            <DataCell
-                              value={formatTokenAmount(
-                                toBigInt(position.amount),
-                                position.decimals || 6,
-                                2
-                              )}
-                            />
+                            <span className="font-mono text-[var(--text-primary)]">
+                              {formatTokenQty(Number(toBigInt(position.amount)) / 10 ** (position.decimals || 6))}
+                            </span>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex flex-col items-end gap-0.5">
-                              <DataCell
-                                value={formatNative(
-                                  toBigInt(position.currentValue),
-                                  activeChain,
-                                  4
-                                )}
-                                suffix={` ${nativeSymbol}`}
-                              />
+                              <span className="font-mono text-[var(--text-primary)]">
+                                {formatNative(currentValueNative, activeChain)}
+                              </span>
                               <span className="font-mono text-xs text-[var(--text-tertiary)]">
-                                {formatUSD(
-                                  toBigInt(position.currentValue),
-                                  getPrice(activeChain),
-                                  activeChain,
-                                  2
-                                )}
+                                {formatUsdText(currentValueUsd)}
                               </span>
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex flex-col items-end gap-0.5">
-                              <DataCell
-                                value={formatNative(pnl, activeChain, 4)}
-                                prefix={isGain ? '+' : ''}
-                                suffix={` ${nativeSymbol}`}
-                                variant={isGain ? 'gain' : 'loss'}
-                              />
-                              <Badge variant={isGain ? 'gain' : 'loss'} className="text-xs">
+                              <span className={cn(
+                                "font-mono",
+                                isGain ? "text-[var(--accent-gain)]" : "text-[var(--accent-loss)]"
+                              )}>
                                 {isGain ? '+' : ''}
-                                {pnlPercent.toFixed(2)}%
+                                {formatNative(activeChain === 'solana' ? lamportsToSol(pnl) : weiToEth(pnl), activeChain)}
+                              </span>
+                              <Badge variant={isGain ? 'gain' : 'loss'} className="text-xs">
+                                {formatPct(pnlPercent)}
                               </Badge>
                             </div>
                           </TableCell>

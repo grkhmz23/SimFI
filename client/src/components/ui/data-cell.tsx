@@ -1,6 +1,7 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import { ArrowUpRight, ArrowDownRight } from "lucide-react"
+import { formatPct } from "@/lib/format"
 
 interface DataCellProps extends React.HTMLAttributes<HTMLSpanElement> {
   value: string | number
@@ -52,7 +53,7 @@ const DataCell = React.forwardRef<HTMLSpanElement, DataCellProps>(
             ) : (
               <ArrowDownRight className="h-3 w-3" strokeWidth={1.5} />
             )}
-            {Math.abs(diff).toFixed(2)}%
+            {formatPct(diff)}
           </span>
         )}
       </span>

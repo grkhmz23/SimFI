@@ -15,12 +15,17 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  formatNative,
-  formatUSD,
-  formatTokenAmount,
-  formatPricePerTokenNative,
+  lamportsToSol,
+  weiToEth,
   toBigInt,
 } from '@/lib/token-format';
+import {
+  formatUsd,
+  formatUsdText,
+  formatTokenQty,
+  formatNative,
+  formatPct,
+} from '@/lib/format';
 import { useChain } from '@/lib/chain-context';
 import { usePrice } from '@/lib/price-context';
 import { History as HistoryIcon, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -176,6 +181,31 @@ export default function History() {
                       const plPercent = spent > 0n ? (Number(pl) / Number(spent)) * 100 : 0;
                       const isGain = pl >= 0n;
 
+                      const plNative =
+                        trade.chain === 'solana'
+                          ? lamportsToSol(pl)
+                          : weiToEth(pl);
+                      const plUsd =
+                        plNative * (getPrice(trade.chain as 'base' | 'solana') ?? 0);
+
+                      const entryPriceNative =
+                        trade.chain === 'solana'
+                          ? lamportsToSol(toBigInt(trade.entryPrice))
+                          : weiToEth(toBigInt(trade.entryPrice));
+                      const entryPriceUsd =
+                        entryPriceNative * (getPrice(trade.chain as 'base' | 'solana') ?? 0);
+
+                      const exitPriceNative =
+                        trade.chain === 'solana'
+                          ? lamportsToSol(toBigInt(trade.exitPrice))
+                          : weiToEth(toBigInt(trade.exitPrice));
+                      const exitPriceUsd =
+                        exitPriceNative * (getPrice(trade.chain as 'base' | 'solana') ?? 0);
+
+                      const tokenQty =
+                        Number(toBigInt(trade.amount)) /
+                        10 ** (trade.decimals || 6);
+
                       return (
                         <TableRow
                           key={trade.id}
@@ -194,36 +224,29 @@ export default function History() {
                           </TableCell>
                           <TableCell className="text-right">
                             <DataCell
-                              value={formatPricePerTokenNative(trade.entryPrice, trade.chain as 'base' | 'solana')}
+                              value={formatUsdText(entryPriceUsd)}
                               variant="secondary"
                             />
                           </TableCell>
                           <TableCell className="text-right">
-                            <DataCell
-                              value={formatPricePerTokenNative(trade.exitPrice, trade.chain as 'base' | 'solana')}
-                            />
+                            <DataCell value={formatUsdText(exitPriceUsd)} />
                           </TableCell>
                           <TableCell className="text-right">
-                            <DataCell
-                              value={formatTokenAmount(
-                                toBigInt(trade.amount),
-                                trade.decimals || 6,
-                                2
-                              )}
-                            />
+                            <DataCell value={formatTokenQty(tokenQty)} />
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex flex-col items-end gap-0.5">
                               <DataCell
-                                value={formatNative(pl, trade.chain as 'base' | 'solana', 4)}
+                                value={formatNative(
+                                  plNative,
+                                  trade.chain as 'base' | 'solana'
+                                )}
                                 prefix={isGain ? '+' : ''}
-                                suffix={` ${trade.chain === 'base' ? 'ETH' : 'SOL'}`}
                                 variant={isGain ? 'gain' : 'loss'}
                                 data-testid={`text-pl-${trade.id}`}
                               />
                               <Badge variant={isGain ? 'gain' : 'loss'} className="text-xs">
-                                {isGain ? '+' : ''}
-                                {plPercent.toFixed(2)}%
+                                {formatPct(plPercent)}
                               </Badge>
                               <span
                                 className={
@@ -231,12 +254,7 @@ export default function History() {
                                 }
                               >
                                 {isGain ? '+' : ''}
-                                {formatUSD(
-                                  pl,
-                                  getPrice(trade.chain as 'base' | 'solana'),
-                                  trade.chain as 'base' | 'solana',
-                                  2
-                                )}
+                                {formatUsdText(plUsd)}
                               </span>
                             </div>
                           </TableCell>

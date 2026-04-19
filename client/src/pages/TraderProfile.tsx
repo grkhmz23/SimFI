@@ -8,7 +8,8 @@ import { DataCell } from '@/components/ui/data-cell';
 import { ChainChip } from '@/components/ui/chain-chip';
 import { AchievementBadge } from '@/components/AchievementBadge';
 import { useAuth } from '@/lib/auth-context';
-import { formatNative } from '@/lib/token-format';
+import { formatNativeAmount } from '@/lib/token-format';
+import { formatCount } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { Trade, BadgeId, Chain } from '@shared/schema';
 import { ArrowLeft, TrendingUp, TrendingDown, Clock, Target, Users, Award, Calendar } from 'lucide-react';
@@ -67,7 +68,7 @@ function TradeRow({ trade }: { trade: Trade }) {
       <div className="flex items-center gap-3 min-w-0">
         <Badge variant={isPositive ? 'gain' : 'loss'} className="shrink-0">
           {isPositive ? '+' : ''}
-          {formatNative(trade.profitLoss, trade.chain as Chain)} {trade.chain === 'base' ? 'ETH' : 'SOL'}
+          {formatNativeAmount(trade.profitLoss, trade.chain as Chain)} {trade.chain === 'base' ? 'ETH' : 'SOL'}
         </Badge>
         <span className="font-medium text-[var(--text-primary)] truncate">${trade.tokenSymbol}</span>
         <span className="text-xs text-[var(--text-tertiary)] whitespace-nowrap">
@@ -208,7 +209,7 @@ export default function TraderProfile() {
               label="Solana P&L"
               value={
                 <DataCell
-                  value={formatNative(profile.totalProfit, 'solana')}
+                  value={formatNativeAmount(profile.totalProfit, 'solana')}
                   variant={Number(profile.totalProfit) >= 0 ? 'gain' : 'loss'}
                   prefix={Number(profile.totalProfit) >= 0 ? '+' : ''}
                   suffix=" SOL"
@@ -220,7 +221,7 @@ export default function TraderProfile() {
               label="Base P&L"
               value={
                 <DataCell
-                  value={formatNative(profile.baseTotalProfit, 'base')}
+                  value={formatNativeAmount(profile.baseTotalProfit, 'base')}
                   variant={Number(profile.baseTotalProfit) >= 0 ? 'gain' : 'loss'}
                   prefix={Number(profile.baseTotalProfit) >= 0 ? '+' : ''}
                   suffix=" ETH"
@@ -240,7 +241,7 @@ export default function TraderProfile() {
             />
             <StatCard
               label="Followers"
-              value={profile.followerCount.toLocaleString()}
+              value={formatCount(profile.followerCount)}
               icon={Users}
             />
             {bestTrade && (
@@ -248,7 +249,7 @@ export default function TraderProfile() {
                 label="Best Trade"
                 value={
                   <DataCell
-                    value={formatNative(bestTrade.profitLoss, bestTrade.chain as Chain)}
+                    value={formatNativeAmount(bestTrade.profitLoss, bestTrade.chain as Chain)}
                     variant="gain"
                     prefix="+"
                     suffix={` ${bestTrade.chain === 'base' ? 'ETH' : 'SOL'}`}
@@ -262,7 +263,7 @@ export default function TraderProfile() {
                 label="Worst Trade"
                 value={
                   <DataCell
-                    value={formatNative(worstTrade.profitLoss, worstTrade.chain as Chain)}
+                    value={formatNativeAmount(worstTrade.profitLoss, worstTrade.chain as Chain)}
                     variant="loss"
                     suffix={` ${worstTrade.chain === 'base' ? 'ETH' : 'SOL'}`}
                   />

@@ -8,7 +8,7 @@ import { ChainChip } from '@/components/ui/chain-chip';
 import { BarChart3, Activity, Target, Clock, Trophy } from 'lucide-react';
 import { Link } from 'wouter';
 import { useChain } from '@/lib/chain-context';
-import { formatNative } from '@/lib/token-format';
+import { formatNativeAmount } from '@/lib/token-format';
 import { cn } from '@/lib/utils';
 import type { LeaderboardEntry, Chain } from '@shared/schema';
 import { useState, useEffect, useMemo } from 'react';
@@ -113,7 +113,7 @@ function LeaderboardRow({
 
       <div className="text-right shrink-0">
         <DataCell
-          value={formatNative(profit, chain as Chain)}
+          value={formatNativeAmount(profit, chain as Chain)}
           variant={isPositive ? 'gain' : 'loss'}
           prefix={isPositive ? '+' : ''}
           suffix={` ${chain === 'solana' ? 'SOL' : 'ETH'}`}

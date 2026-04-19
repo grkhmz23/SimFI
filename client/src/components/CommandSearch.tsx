@@ -13,6 +13,7 @@ import {
 import { ChainChip } from "@/components/ui/chain-chip"
 import { Search, Loader2, TrendingUp, Clock } from "lucide-react"
 import { formatCompactNumber, formatMarketCap } from "@/lib/token-format"
+import { formatPct } from "@/lib/format"
 
 interface SearchResult {
   tokenAddress: string
@@ -173,8 +174,7 @@ export function CommandSearch() {
                               : "text-[var(--accent-loss)]"
                           }
                         >
-                          {result.priceChange24h >= 0 ? "+" : ""}
-                          {result.priceChange24h.toFixed(2)}%
+                          {formatPct(result.priceChange24h)}
                         </span>
                       )}
                     </div>

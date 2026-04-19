@@ -14,6 +14,7 @@ import { TrendingUp, Flame, Sparkles, ArrowRight } from "lucide-react"
 import { formatCompactNumber, formatMarketCap } from "@/lib/token-format"
 import type { Token } from "@shared/schema"
 import { cn } from "@/lib/utils"
+import { formatUsdText, formatPct } from "@/lib/format"
 
 type ListType = "trending" | "new-pairs" | "hot"
 
@@ -150,8 +151,7 @@ export default function TradePage() {
                                   : "text-[var(--accent-loss)]"
                               )}
                             >
-                              {token.priceChange24h >= 0 ? "+" : ""}
-                              {token.priceChange24h.toFixed(2)}%
+                              {formatPct(token.priceChange24h)}
                             </span>
                           )}
                         </div>
@@ -194,7 +194,7 @@ export default function TradePage() {
                       <h3 className="text-lg font-medium">{selectedToken.name}</h3>
                       <p className="text-mono-sm text-[var(--text-secondary)]">
                         {selectedToken.priceUsd !== undefined
-                          ? `$${selectedToken.priceUsd < 0.000001 ? selectedToken.priceUsd.toExponential(2) : selectedToken.priceUsd < 0.01 ? selectedToken.priceUsd.toFixed(6) : selectedToken.priceUsd.toFixed(4)}`
+                          ? formatUsdText(selectedToken.priceUsd)
                           : formatCompactNumber(selectedToken.price || 0)}
                       </p>
                     </div>

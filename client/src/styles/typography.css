@@ -138,3 +138,13 @@
 .tracking-tight-editorial {
   letter-spacing: -0.02em;
 }
+
+/* --------------------------------------------------------------------------
+   SUBSCRIPT RENDERING (for sub-penny USD prices)
+   -------------------------------------------------------------------------- */
+
+.numeric-subscript sub {
+  font-size: 0.7em;
+  vertical-align: -0.15em;
+  letter-spacing: -0.02em;
+}

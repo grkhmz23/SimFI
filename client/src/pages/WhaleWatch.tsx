@@ -11,6 +11,7 @@ import { ArrowRight, TrendingUp, TrendingDown, RefreshCw, Waves } from 'lucide-r
 import { formatDistanceToNow } from 'date-fns';
 import type { Chain } from '@shared/schema';
 import { cn } from '@/lib/utils';
+import { formatNative } from '@/lib/format';
 
 interface WhaleActivity {
   id: string;
@@ -123,7 +124,7 @@ export default function WhaleWatch() {
                           <span className="font-medium text-[var(--text-primary)]">${item.tokenSymbol}</span>{' '}
                           for{' '}
                           <span className="font-mono tabular-nums text-[var(--text-primary)]">
-                            {item.amountNative.toFixed(4)} {chain === 'base' ? 'ETH' : 'SOL'}
+                            {formatNative(item.amountNative, chain)}
                           </span>
                         </p>
                       </div>
