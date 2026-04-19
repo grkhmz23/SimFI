@@ -35,6 +35,19 @@ export default function TradePage() {
   const [tradeMode, setTradeMode] = useState<"buy" | "sell">("buy")
   const [showModal, setShowModal] = useState(false)
 
+  const { data: alphaDeskData } = useQuery<{
+    ideas: Array<{ symbol: string; tokenAddress: string; narrativeThesis: string }>
+  }>({
+    queryKey: [`/api/alpha-desk/today`, activeChain],
+    queryFn: async () => {
+      const res = await fetch(`/api/alpha-desk/today?chain=${activeChain}`)
+      if (!res.ok) return { ideas: [] }
+      return res.json()
+    },
+  })
+
+  const topPick = alphaDeskData?.ideas?.[0]
+
   const { data, isLoading } = useQuery<TokenListResponse>({
     queryKey: [`/api/market/${listType}`, activeChain],
     queryFn: async () => {
@@ -68,6 +81,23 @@ export default function TradePage() {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-[calc(100vh-120px)]">
           {/* Left: Token List */}
           <div className="lg:col-span-2 flex flex-col h-full overflow-hidden">
+            {topPick && (
+              <button
+                onClick={() => setLocation("/alpha-desk")}
+                className="mb-3 flex items-center gap-3 rounded-lg border border-[var(--accent-premium)]/20 bg-[var(--accent-premium)]/5 px-4 py-3 text-left transition-colors hover:bg-[var(--accent-premium)]/10"
+              >
+                <Sparkles className="h-4 w-4 text-[var(--accent-premium)] shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-[var(--accent-premium)] uppercase tracking-wider">
+                    Alpha Desk Pick
+                  </p>
+                  <p className="text-sm text-[var(--text-primary)] truncate">
+                    {topPick.symbol} — {topPick.narrativeThesis}
+                  </p>
+                </div>
+                <ArrowRight className="h-3.5 w-3.5 text-[var(--text-tertiary)] ml-auto shrink-0" />
+              </button>
+            )}
             <Tabs value={listType} onValueChange={(v) => setListType(v as ListType)} className="mb-4">
               <TabsList className="w-full">
                 <TabsTrigger value="trending" className="flex-1 gap-1.5">

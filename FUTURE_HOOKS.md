@@ -238,4 +238,25 @@ Switching chains updates global state but does not rewrite the URL. A refresh lo
 
 ---
 
-*Last updated: 2026-04-17*
+## 12. Alpha Desk Extensions
+
+**Location:** `server/services/alphaDesk/`  
+**Status:** Core pipeline shipped (v1). Deferred work documented below.  
+**Integration effort:** ~1–2 days per item
+
+### 12.1 Weekly Trenches Watch (Narrative Reports)
+Repurposed from Trailblazer's narrative-report code. Weekly deep-dive reports that cluster protocols into narratives, generate build ideas, and produce action packs. Not migrated now because it requires the full `Report` → `Narrative` → `Idea` → `InvestigationStep` data model.
+
+### 12.2 Real-Time Spike Detector
+Trailblazer has a spike-detector workflow (`spike-detector.yml`) that runs every hour and flags tokens with abnormal volume/price movement. Deferred because Alpha Desk v1 focuses on daily curation, not real-time alerts.
+
+### 12.3 Additional Chains
+Current allowlist is `["base", "solana"]`. Extending to Sui, TON, Arbitrum, etc. requires:
+- Chain-specific DexScreener/GeckoTerminal network IDs
+- Native token price feeds
+- Chain-aware address validation
+- SocialData query keyword expansion
+
+---
+
+*Last updated: 2026-04-19*

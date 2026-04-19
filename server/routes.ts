@@ -16,14 +16,17 @@ import { heliusService } from "./helius-enhanced";
 import { insertUserSchema, solToLamports, WEI_PER_ETH, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest, type Chain } from "@shared/schema";
 
 
-import { getSolPrice, getCachedSolPrice, fetchEthPrice, getAllNativePricesDetailed } from './nativePrice';
+import { getSolPrice, getCachedSolPrice, fetchEthPrice, getNativePrice, getAllNativePricesDetailed } from './nativePrice';
 import { registerMarketRoutes } from "./services/marketRoutes";
-import { registerRewardsRoutes } from "./services/rewardsRoutes";
-import { rewardsEngine } from "./services/rewardsEngine";
 import { achievementEngine } from "./services/achievementEngine";
 import { portfolioAnalytics } from "./services/portfolioAnalytics";
 import { whaleFeed } from "./services/whaleFeed";
 import { jupiterService, SOL_MINT } from "./services/jupiterService";
+import { runDailyPipeline } from "./services/alphaDesk";
+import { getIdeasForRun } from "./services/alphaDesk/persist/ideas";
+import { findTodayRun, countRunsToday } from "./services/alphaDesk/persist/runs";
+import { alphaDeskRuns, alphaDeskIdeas, alphaDeskIdeaOutcomes } from "@shared/schema";
+import { db } from "./db";
 
 // ============================================================================
 // RATE LIMITING WITH REDIS STORE (for multi-instance deployments)
@@ -1207,6 +1210,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Unified native prices endpoint (ETH + SOL)
   app.get('/api/market/native-prices', async (req, res) => {
     try {
+      // Populate cache before reading — on fresh server start the cache is empty
+      await getNativePrice('solana');
+      await getNativePrice('base');
       const detailed = getAllNativePricesDetailed();
 
       const eth = detailed.eth;
@@ -3082,8 +3088,180 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize leaderboard service for period management
   leaderboardService.start();
   registerMarketRoutes(app, { authenticateToken, searchLimiter });
-  // Rewards system disabled for Base pivot (Phase 0)
-  // registerRewardsRoutes(app);
-  // rewardsEngine.start();
+
+  // ============================================================================
+  // Alpha Desk API
+  // ============================================================================
+
+  // GET /api/alpha-desk/today?chain=base|solana
+  app.get('/api/alpha-desk/today', async (req, res) => {
+    try {
+      const chain = (req.query.chain as string) || 'base';
+      if (chain !== 'base' && chain !== 'solana') {
+        return res.status(400).json({ error: 'Invalid chain. Use base or solana.' });
+      }
+
+      const runDate = new Date().toISOString().split('T')[0];
+      const run = await findTodayRun(runDate, chain);
+      if (!run || run.status !== 'succeeded') {
+        return res.status(404).json({ error: 'No Alpha Desk picks available for today' });
+      }
+
+      const ideas = await getIdeasForRun(run.id);
+      const ideasWithOutcomes = await Promise.all(
+        ideas.map(async (idea) => {
+          const outcomes = await db
+            .select()
+            .from(alphaDeskIdeaOutcomes)
+            .where(eq(alphaDeskIdeaOutcomes.ideaId, idea.id));
+          return { ...idea, outcomes };
+        })
+      );
+
+      res.json({ runDate, chain, ideas: ideasWithOutcomes });
+    } catch (error: any) {
+      console.error('[AlphaDesk] /today error:', error);
+      res.status(500).json({ error: 'Could not fetch Alpha Desk picks' });
+    }
+  });
+
+  // GET /api/alpha-desk/history?chain=base|solana&days=30
+  app.get('/api/alpha-desk/history', async (req, res) => {
+    try {
+      const chain = (req.query.chain as string) || 'base';
+      if (chain !== 'base' && chain !== 'solana') {
+        return res.status(400).json({ error: 'Invalid chain. Use base or solana.' });
+      }
+      const days = Math.min(30, Math.max(1, parseInt(req.query.days as string) || 7));
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      const runs = await db
+        .select()
+        .from(alphaDeskRuns)
+        .where(and(eq(alphaDeskRuns.chain, chain), sql`${alphaDeskRuns.runDate} >= ${since.toISOString().split('T')[0]}`))
+        .orderBy(sql`${alphaDeskRuns.runDate} desc`);
+
+      const result = await Promise.all(
+        runs.map(async (run) => {
+          const ideas = await getIdeasForRun(run.id);
+          const ideasWithOutcomes = await Promise.all(
+            ideas.map(async (idea) => {
+              const outcomes = await db
+                .select()
+                .from(alphaDeskIdeaOutcomes)
+                .where(eq(alphaDeskIdeaOutcomes.ideaId, idea.id));
+              return { ...idea, outcomes };
+            })
+          );
+          return { runDate: run.runDate, status: run.status, ideas: ideasWithOutcomes };
+        })
+      );
+
+      res.json({ chain, days, history: result });
+    } catch (error: any) {
+      console.error('[AlphaDesk] /history error:', error);
+      res.status(500).json({ error: 'Could not fetch Alpha Desk history' });
+    }
+  });
+
+  // GET /api/alpha-desk/track-record?chain=base|solana&horizon=24h
+  app.get('/api/alpha-desk/track-record', async (req, res) => {
+    try {
+      const chain = (req.query.chain as string) || 'base';
+      if (chain !== 'base' && chain !== 'solana') {
+        return res.status(400).json({ error: 'Invalid chain. Use base or solana.' });
+      }
+      const horizon = (req.query.horizon as string) || '24h';
+      if (!['1h', '6h', '24h', '7d'].includes(horizon)) {
+        return res.status(400).json({ error: 'Invalid horizon. Use 1h, 6h, 24h, or 7d.' });
+      }
+
+      const runs = await db
+        .select()
+        .from(alphaDeskRuns)
+        .where(and(eq(alphaDeskRuns.chain, chain), eq(alphaDeskRuns.status, 'succeeded')));
+
+      let totalIdeas = 0;
+      let profitableCount = 0;
+      const returns: number[] = [];
+      let bestCall: { token: string; return: number } | null = null;
+      let worstCall: { token: string; return: number } | null = null;
+
+      for (const run of runs) {
+        const ideas = await getIdeasForRun(run.id);
+        for (const idea of ideas) {
+          const outcomes = await db
+            .select()
+            .from(alphaDeskIdeaOutcomes)
+            .where(and(eq(alphaDeskIdeaOutcomes.ideaId, idea.id), eq(alphaDeskIdeaOutcomes.horizon, horizon)));
+
+          for (const outcome of outcomes) {
+            totalIdeas++;
+            const pct = outcome.pctChange ? parseFloat(outcome.pctChange) : 0;
+            if (pct > 0) profitableCount++;
+            returns.push(pct);
+
+            if (!bestCall || pct > bestCall.return) {
+              bestCall = { token: idea.symbol, return: pct };
+            }
+            if (!worstCall || pct < worstCall.return) {
+              worstCall = { token: idea.symbol, return: pct };
+            }
+          }
+        }
+      }
+
+      const sortedReturns = [...returns].sort((a, b) => a - b);
+      const medianReturn = sortedReturns.length
+        ? sortedReturns.length % 2 === 0
+          ? (sortedReturns[sortedReturns.length / 2 - 1] + sortedReturns[sortedReturns.length / 2]) / 2
+          : sortedReturns[Math.floor(sortedReturns.length / 2)]
+        : 0;
+
+      res.json({
+        chain,
+        horizon,
+        totalIdeas,
+        profitablePct: totalIdeas ? Math.round((profitableCount / totalIdeas) * 100) : 0,
+        medianReturn: Math.round(medianReturn * 100) / 100,
+        bestCall: bestCall ?? { token: '-', return: 0 },
+        worstCall: worstCall ?? { token: '-', return: 0 },
+      });
+    } catch (error: any) {
+      console.error('[AlphaDesk] /track-record error:', error);
+      res.status(500).json({ error: 'Could not fetch track record' });
+    }
+  });
+
+  // POST /api/admin/alpha-desk/run
+  app.post('/api/admin/alpha-desk/run', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      const adminToken = process.env.ADMIN_TOKEN;
+      if (!adminToken || !authHeader || !authHeader.startsWith('Bearer ') || authHeader.slice(7) !== adminToken) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const chain = req.body.chain;
+      if (chain !== 'base' && chain !== 'solana') {
+        return res.status(400).json({ error: 'Invalid chain. Use base or solana.' });
+      }
+
+      // Cost guard
+      const runDate = new Date().toISOString().split('T')[0];
+      const runCount = await countRunsToday(runDate, chain);
+      const maxRuns = parseInt(process.env.ALPHA_DESK_MAX_RUNS_PER_DAY || '2', 10);
+      if (runCount >= maxRuns) {
+        return res.status(429).json({ error: `Run limit exceeded for ${runDate} / ${chain} (${maxRuns})` });
+      }
+
+      const result = await runDailyPipeline(chain);
+      res.json({ success: true, runId: result.runId, ideaCount: result.ideaCount });
+    } catch (error: any) {
+      console.error('[AlphaDesk] Admin run error:', error);
+      res.status(500).json({ error: error.message || 'Pipeline failed' });
+    }
+  });
+
   return httpServer;
 }

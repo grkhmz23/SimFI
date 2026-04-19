@@ -25,7 +25,7 @@ function useNativePrices(): NativePricesResponse | null {
     staleTime: 20_000,
     refetchInterval: 30_000,
     retry: (failureCount, error: any) => {
-      if (error?.message?.includes('503')) return false;
+      if (error?.message?.includes('503') || error?.message?.includes('Native prices temporarily unavailable')) return false;
       return failureCount < 2;
     },
   });

@@ -33,6 +33,7 @@ const TokenAnalyzer = React.lazy(() => import("@/pages/TokenAnalyzer"));
 const Referrals = React.lazy(() => import("@/pages/Referrals"));
 const TraderProfile = React.lazy(() => import("@/pages/TraderProfile"));
 const WhaleWatch = React.lazy(() => import("@/pages/WhaleWatch"));
+const AlphaDesk = React.lazy(() => import("@/pages/AlphaDesk"));
 const NotFound = React.lazy(() => import("@/pages/not-found"));
 
 const DesignSystem = import.meta.env.DEV
@@ -131,6 +132,11 @@ function Router() {
       <Route path="/whales">
         <Suspense fallback={<PageSkeleton />}>
           <PageLayout component={WhaleWatch} />
+        </Suspense>
+      </Route>
+      <Route path="/alpha-desk">
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={AlphaDesk} />
         </Suspense>
       </Route>
       {import.meta.env.DEV && DesignSystem && (

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, bigint, integer, timestamp, unique, jsonb, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, bigint, integer, timestamp, unique, uniqueIndex, jsonb, numeric, date, serial } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -153,87 +153,6 @@ export const follows = pgTable("follows", {
 }));
 
 // =============================================================================
-// Rewards Engine Tables
-// =============================================================================
-
-export type PayoutPlanEntry = {
-  rank: 1 | 2 | 3;
-  wallet: string;
-  amountLamports: string;
-  userId?: string | null;
-  profitLamports?: string;
-  tradeCount?: number;
-};
-
-export const rewardsState = pgTable("rewards_state", {
-  id: integer("id").primaryKey().default(1),
-
-  carryRewardsLamports: bigint("carry_rewards_lamports", { mode: "bigint" }).notNull().default(sql`0`),
-  treasuryAccruedLamports: bigint("treasury_accrued_lamports", { mode: "bigint" }).notNull().default(sql`0`),
-
-  lastProcessedPeriodId: varchar("last_processed_period_id").references(() => leaderboardPeriods.id),
-  lastProcessedPeriodEnd: timestamp("last_processed_period_end"),
-
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const rewardsEpochs = pgTable("rewards_epochs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-
-  leaderboardPeriodId: varchar("leaderboard_period_id").notNull().references(() => leaderboardPeriods.id),
-  periodStart: timestamp("period_start").notNull(),
-  periodEnd: timestamp("period_end").notNull(),
-
-  rewardsPoolBps: integer("rewards_pool_bps").notNull().default(5000),
-
-  beforeBalanceLamports: bigint("before_balance_lamports", { mode: "bigint" }),
-  afterBalanceLamports: bigint("after_balance_lamports", { mode: "bigint" }),
-
-  totalInflowLamports: bigint("total_inflow_lamports", { mode: "bigint" }).notNull().default(sql`0`),
-  rewardInflowLamports: bigint("reward_inflow_lamports", { mode: "bigint" }).notNull().default(sql`0`),
-  treasuryInflowLamports: bigint("treasury_inflow_lamports", { mode: "bigint" }).notNull().default(sql`0`),
-
-  carryInLamports: bigint("carry_in_lamports", { mode: "bigint" }).notNull().default(sql`0`),
-  totalPotLamports: bigint("total_pot_lamports", { mode: "bigint" }).notNull().default(sql`0`),
-
-  claimStartedAt: timestamp("claim_started_at"),
-  claimCompletedAt: timestamp("claim_completed_at"),
-  claimTxSignatures: jsonb("claim_tx_signatures").$type<string[]>().default(sql`'[]'::jsonb`),
-
-  payoutPlan: jsonb("payout_plan").$type<PayoutPlanEntry[]>().default(sql`'[]'::jsonb`),
-  payoutStartedAt: timestamp("payout_started_at"),
-  payoutCompletedAt: timestamp("payout_completed_at"),
-  payoutTxSignature: text("payout_tx_signature"),
-  totalPaidLamports: bigint("total_paid_lamports", { mode: "bigint" }).notNull().default(sql`0`),
-
-  status: varchar("status", { length: 20 }).notNull().default("created"),
-  failureReason: text("failure_reason"),
-
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (t) => ({
-  periodUnique: unique("rewards_epochs_period_unique").on(t.leaderboardPeriodId),
-}));
-
-export const rewardsWinners = pgTable("rewards_winners", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  epochId: varchar("epoch_id").notNull().references(() => rewardsEpochs.id, { onDelete: "cascade" }),
-
-  rank: integer("rank").notNull(),
-  walletAddress: text("wallet_address").notNull(),
-  userId: varchar("user_id").references(() => users.id),
-
-  profitLamports: bigint("profit_lamports", { mode: "bigint" }).notNull().default(sql`0`),
-  tradeCount: integer("trade_count").notNull().default(0),
-  payoutLamports: bigint("payout_lamports", { mode: "bigint" }).notNull().default(sql`0`),
-
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (t) => ({
-  epochRankUnique: unique("rewards_winners_epoch_rank_unique").on(t.epochId, t.rank),
-  epochWalletUnique: unique("rewards_winners_epoch_wallet_unique").on(t.epochId, t.walletAddress),
-}));
-
-// =============================================================================
 // Insert Schemas
 // =============================================================================
 
@@ -287,14 +206,14 @@ export type Position = typeof positions.$inferSelect;
 export type Trade = typeof tradeHistory.$inferSelect;
 export type LeaderboardPeriod = typeof leaderboardPeriods.$inferSelect;
 export type TelegramSession = typeof telegramSessions.$inferSelect;
-export type RewardsState = typeof rewardsState.$inferSelect;
-export type RewardsEpoch = typeof rewardsEpochs.$inferSelect;
-export type RewardsWinner = typeof rewardsWinners.$inferSelect;
 export type InsertPosition = z.infer<typeof insertPositionSchema>;
 export type InsertTrade = z.infer<typeof insertTradeSchema>;
 export type UserAchievement = typeof userAchievements.$inferSelect;
 export type Referral = typeof referrals.$inferSelect;
 export type Follow = typeof follows.$inferSelect;
+export type AlphaDeskRun = typeof alphaDeskRuns.$inferSelect;
+export type AlphaDeskIdea = typeof alphaDeskIdeas.$inferSelect;
+export type AlphaDeskIdeaOutcome = typeof alphaDeskIdeaOutcomes.$inferSelect;
 
 // =============================================================================
 // Interfaces
@@ -352,6 +271,55 @@ export interface LeaderboardEntry {
   rank?: number;
   chain?: Chain;
 }
+
+// =============================================================================
+// Alpha Desk (Daily Token Ideas)
+// =============================================================================
+
+export const alphaDeskRuns = pgTable("alpha_desk_runs", {
+  id: serial("id").primaryKey(),
+  runDate: date("run_date").notNull(),
+  chain: varchar("chain", { length: 16 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("pending"),
+  sourcesUsed: jsonb("sources_used").notNull().default(sql`'{}'::jsonb`),
+  llmProvider: varchar("llm_provider", { length: 32 }),
+  llmModel: varchar("llm_model", { length: 64 }),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  errorMessage: text("error_message"),
+}, (t) => ({
+  runDateChainIdx: uniqueIndex("alpha_desk_runs_date_chain_uidx").on(t.runDate, t.chain),
+}));
+
+export const alphaDeskIdeas = pgTable("alpha_desk_ideas", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull().references(() => alphaDeskRuns.id, { onDelete: "cascade" }),
+  rank: integer("rank").notNull(),
+  chain: varchar("chain", { length: 16 }).notNull(),
+  tokenAddress: varchar("token_address", { length: 64 }).notNull(),
+  symbol: varchar("symbol", { length: 32 }).notNull(),
+  name: varchar("name", { length: 128 }).notNull(),
+  pairAddress: varchar("pair_address", { length: 64 }),
+  narrativeThesis: text("narrative_thesis").notNull(),
+  whyNow: text("why_now").notNull(),
+  confidenceScore: numeric("confidence_score", { precision: 5, scale: 2 }).notNull(),
+  riskFlags: jsonb("risk_flags").notNull().default(sql`'{}'::jsonb`),
+  evidence: jsonb("evidence").notNull().default(sql`'{}'::jsonb`),
+  priceAtPublishUsd: numeric("price_at_publish_usd", { precision: 38, scale: 18 }),
+  priceAtPublishNative: numeric("price_at_publish_native", { precision: 38, scale: 18 }),
+  publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const alphaDeskIdeaOutcomes = pgTable("alpha_desk_idea_outcomes", {
+  id: serial("id").primaryKey(),
+  ideaId: integer("idea_id").notNull().references(() => alphaDeskIdeas.id, { onDelete: "cascade" }),
+  horizon: varchar("horizon", { length: 16 }).notNull(),
+  priceUsd: numeric("price_usd", { precision: 38, scale: 18 }),
+  pctChange: numeric("pct_change", { precision: 10, scale: 4 }),
+  measuredAt: timestamp("measured_at", { withTimezone: true }).notNull(),
+}, (t) => ({
+  ideaHorizonIdx: uniqueIndex("alpha_desk_outcomes_idea_horizon_uidx").on(t.ideaId, t.horizon),
+}));
 
 // =============================================================================
 // Utility Functions - Solana

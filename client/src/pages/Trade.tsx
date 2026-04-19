@@ -13,6 +13,7 @@ import {
   Shield,
   BarChart3,
   Trophy,
+  Sparkles,
 } from "lucide-react"
 
 interface LeaderboardEntry {
@@ -33,6 +34,109 @@ const fadeUp = {
     y: 0,
     transition: { duration: 0.5, delay: i * 0.08, ease: easeOutExpo },
   }),
+}
+
+function AlphaDeskSection() {
+  const [, setLocation] = useLocation()
+  const { activeChain } = useChain()
+
+  const { data: todayData, isLoading } = useQuery<{
+    runDate: string
+    chain: string
+    ideas: Array<{
+      id: number
+      rank: number
+      chain: string
+      symbol: string
+      name: string
+      narrativeThesis: string
+      confidenceScore: string
+      riskFlags: string[]
+      tokenAddress: string
+    }>
+  }>({
+    queryKey: [`/api/alpha-desk/today`, activeChain],
+    queryFn: async () => {
+      const res = await fetch(`/api/alpha-desk/today?chain=${activeChain}`)
+      if (!res.ok) throw new Error("Failed to fetch Alpha Desk picks")
+      return res.json()
+    },
+  })
+
+  if (isLoading) {
+    return (
+      <section className="py-16 border-t border-[var(--border-subtle)]">
+        <div className="mx-auto max-w-content px-4 sm:px-6">
+          <div className="flex items-center gap-2 mb-6">
+            <Sparkles className="h-5 w-5 text-[var(--accent-premium)]" />
+            <h2 className="text-h2">Today&apos;s Alpha Desk</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-40 rounded-xl bg-[var(--bg-raised)] animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  if (!todayData?.ideas?.length) return null
+
+  return (
+    <section className="py-16 border-t border-[var(--border-subtle)]">
+      <div className="mx-auto max-w-content px-4 sm:px-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-[var(--accent-premium)]" />
+            <h2 className="text-h2">Today&apos;s Alpha Desk</h2>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setLocation("/alpha-desk")}>
+            View All
+            <ArrowRight className="h-4 w-4 ml-1" strokeWidth={1.5} />
+          </Button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {todayData.ideas.map((idea, i) => (
+            <motion.div
+              key={idea.id}
+              custom={i}
+              variants={fadeUp}
+              initial="hidden"
+              animate="visible"
+              className="group relative flex flex-col gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-5 transition-all hover:border-[var(--border-strong)] hover:shadow-lg cursor-pointer"
+              onClick={() => setLocation(`/token/${idea.tokenAddress}`)}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-premium)]/10 text-[var(--accent-premium)] font-mono text-xs font-bold">
+                    {idea.rank}
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-[var(--text-primary)]">{idea.symbol}</h3>
+                    <p className="text-[10px] text-[var(--text-secondary)]">{idea.name}</p>
+                  </div>
+                </div>
+              </div>
+              <p className="text-sm font-serif italic text-[var(--text-primary)] line-clamp-2">
+                {idea.narrativeThesis}
+              </p>
+              <div className="flex flex-wrap gap-1 mt-auto">
+                {idea.riskFlags.slice(0, 2).map((flag) => (
+                  <span
+                    key={flag}
+                    className="inline-flex items-center rounded-md border border-[var(--border-subtle)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-tertiary)]"
+                  >
+                    {flag}
+                  </span>
+                ))}
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
 }
 
 export default function Trade() {
@@ -160,6 +264,9 @@ export default function Trade() {
           </div>
         </div>
       </section>
+
+      {/* Alpha Desk Section */}
+      <AlphaDeskSection />
 
       {/* Feature Sections */}
       <section className="py-24 border-t border-[var(--border-subtle)]">

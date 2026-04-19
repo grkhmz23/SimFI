@@ -1,0 +1,42 @@
+name: Alpha Desk Daily Pipeline
+
+on:
+  schedule:
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-alpha-desk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Alpha Desk pipeline (Base)
+        run: |
+          curl -X POST "${{ secrets.API_BASE_URL || 'https://simfi.fun' }}/api/admin/alpha-desk/run" \
+            -H "Authorization: Bearer ${{ secrets.ADMIN_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"chain":"base"}' \
+            --fail --silent --show-error
+
+      - name: Run Alpha Desk pipeline (Solana)
+        run: |
+          curl -X POST "${{ secrets.API_BASE_URL || 'https://simfi.fun' }}/api/admin/alpha-desk/run" \
+            -H "Authorization: Bearer ${{ secrets.ADMIN_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"chain":"solana"}' \
+            --fail --silent --show-error
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Alpha Desk daily pipeline failed. Check logs above."
