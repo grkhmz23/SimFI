@@ -1,30 +1,13 @@
 import type { Chain } from "@shared/schema";
 import type { SocialDataTweet } from "../types";
+import { ingestFetch } from "./client";
 
-const API_BASE = "https://api.socialdata.tools/twitter/search";
-const FETCH_TIMEOUT_MS = 15_000;
-const REQUEST_DELAY_MS = 500;
+const API_NAME = "socialdata";
 
 function buildQuery(chain: Chain, since: string, until: string): string {
   const chainTerms = chain === "solana" ? "solana OR $SOL OR memecoin" : "base OR $BASE OR memecoin";
   const query = `${chainTerms} since:${since} until:${until}`;
   return encodeURIComponent(query);
-}
-
-async function fetchWithTimeout(url: string, timeoutMs: number, apiKey: string): Promise<Response> {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json",
-      },
-    });
-  } finally {
-    clearTimeout(t);
-  }
 }
 
 export async function ingestTwitterSignals(
@@ -38,15 +21,22 @@ export async function ingestTwitterSignals(
     return { tweets: [], totalMentions: 0, uniqueAuthors: 0 };
   }
 
-  const url = `${API_BASE}?query=${buildQuery(chain, since, until)}&type=Latest`;
+  const url = `https://api.socialdata.tools/twitter/search?query=${buildQuery(chain, since, until)}&type=Latest`;
+
+  const res = await ingestFetch({
+    apiName: API_NAME,
+    url,
+    timeoutMs: 20_000,
+    headers: { Authorization: `Bearer ${apiKey}` },
+    retries: 2,
+    retryDelayMs: 2_000,
+  });
+
+  if (!res) {
+    return { tweets: [], totalMentions: 0, uniqueAuthors: 0 };
+  }
 
   try {
-    const res = await fetchWithTimeout(url, FETCH_TIMEOUT_MS, apiKey);
-    if (!res.ok) {
-      console.warn(`[AlphaDesk] SocialData error: ${res.status}`);
-      return { tweets: [], totalMentions: 0, uniqueAuthors: 0 };
-    }
-
     const data = await res.json();
     const rawTweets = data?.tweets ?? [];
     const tweets: SocialDataTweet[] = rawTweets.map((t: any) => ({
@@ -66,7 +56,7 @@ export async function ingestTwitterSignals(
       uniqueAuthors: authors.size,
     };
   } catch (err) {
-    console.warn("[AlphaDesk] SocialData fetch failed:", (err as Error).message);
+    console.warn("[AlphaDesk] SocialData parse failed:", (err as Error).message);
     return { tweets: [], totalMentions: 0, uniqueAuthors: 0 };
   }
 }

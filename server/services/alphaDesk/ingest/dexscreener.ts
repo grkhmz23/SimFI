@@ -1,35 +1,28 @@
 import type { Chain } from "@shared/schema";
 import type { DexScreenerToken } from "../types";
+import { ingestFetch } from "./client";
 
-const FETCH_TIMEOUT_MS = 15_000;
+const API_NAME = "dexscreener";
 
 function chainToDexScreenerId(chain: Chain): string {
   return chain === "solana" ? "solana" : "base";
 }
 
-async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { signal: controller.signal, headers: { "User-Agent": "SimFi-AlphaDesk/1.0" } });
-  } finally {
-    clearTimeout(t);
-  }
-}
-
 export async function fetchTrendingTokens(chain: Chain, limit = 50): Promise<DexScreenerToken[]> {
   const chainId = chainToDexScreenerId(chain);
-  const url = `https://api.dexscreener.com/token-boosts/latest/v1`;
+  const res = await ingestFetch({
+    apiName: API_NAME,
+    url: "https://api.dexscreener.com/token-boosts/latest/v1",
+    timeoutMs: 15_000,
+    retries: 2,
+    retryDelayMs: 1_500,
+  });
+
+  if (!res) return [];
 
   try {
-    const res = await fetchWithTimeout(url, FETCH_TIMEOUT_MS);
-    if (!res.ok) {
-      console.warn(`[AlphaDesk] DexScreener boosts error: ${res.status}`);
-      return [];
-    }
     const data = await res.json();
     const tokens: DexScreenerToken[] = [];
-
     for (const item of data ?? []) {
       if (item.chainId !== chainId) continue;
       tokens.push({
@@ -41,8 +34,7 @@ export async function fetchTrendingTokens(chain: Chain, limit = 50): Promise<Dex
       if (tokens.length >= limit) break;
     }
     return tokens;
-  } catch (err) {
-    console.warn("[AlphaDesk] DexScreener boosts fetch failed:", (err as Error).message);
+  } catch {
     return [];
   }
 }
@@ -51,13 +43,27 @@ export async function fetchTokenProfiles(tokens: DexScreenerToken[]): Promise<De
   const enriched: DexScreenerToken[] = [];
 
   for (const token of tokens) {
-    const url = `https://api.dexscreener.com/latest/dex/tokens/${token.tokenAddress}`;
+    const res = await ingestFetch({
+      apiName: API_NAME,
+      url: `https://api.dexscreener.com/latest/dex/tokens/${token.tokenAddress}`,
+      timeoutMs: 10_000,
+      retries: 1,
+      retryDelayMs: 1_000,
+    });
+
+    if (!res) {
+      // Circuit breaker or failure — skip but keep original token
+      enriched.push(token);
+      continue;
+    }
+
     try {
-      const res = await fetchWithTimeout(url, FETCH_TIMEOUT_MS);
-      if (!res.ok) continue;
       const data = await res.json();
       const pair = data?.pairs?.[0];
-      if (!pair) continue;
+      if (!pair) {
+        enriched.push(token);
+        continue;
+      }
 
       enriched.push({
         ...token,
@@ -67,12 +73,12 @@ export async function fetchTokenProfiles(tokens: DexScreenerToken[]): Promise<De
         priceChange24h: pair.priceChange?.h24 ? parseFloat(pair.priceChange.h24) : undefined,
         pairAddress: pair.pairAddress,
       });
-
-      // Small delay to avoid rate limits
-      await new Promise((r) => setTimeout(r, 150));
     } catch {
-      // skip failed tokens
+      enriched.push(token);
     }
+
+    // Rate limit breathing room
+    await new Promise((r) => setTimeout(r, 200));
   }
 
   return enriched;
