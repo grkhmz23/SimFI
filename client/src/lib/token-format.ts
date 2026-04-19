@@ -111,37 +111,52 @@ export function parseTokenAmount(amount: string, decimals: number = 6): bigint {
 // USD Formatting
 // ============================================================================
 
+import { formatUsdText } from './format';
+
 /**
  * Format native amount to USD
  * Backward compatible: can be called with (nativeAmount, decimals) for Solana-only
  * or (nativeAmount, nativePriceUSD, chain, decimals) for multi-chain
+ *
+ * If nativePriceUSD is null/undefined/NaN, returns "—" instead of a dollar amount.
+ * Delegates final string rendering to formatUsdText from format.ts.
  */
 export function formatUSD(
   nativeAmount: bigint | number | string,
-  nativePriceUSDOrDecimals?: number | Chain,
+  nativePriceUSDOrDecimals?: number | Chain | null,
   chainOrDecimals?: Chain | number,
   decimals: number = 2
 ): string {
   // Handle backward compatible call: formatUSD(amount, decimals)
   if (typeof nativePriceUSDOrDecimals === 'number' && nativePriceUSDOrDecimals < 10 && !chainOrDecimals) {
     const decimalsCount = nativePriceUSDOrDecimals;
-    const nativeValue = typeof nativeAmount === 'bigint' 
+    const nativeValue = typeof nativeAmount === 'bigint'
       ? lamportsToSol(nativeAmount)
       : Number(nativeAmount);
     // Use a default SOL price of $0 (just format the raw value)
     return `$${nativeValue.toFixed(decimalsCount)}`;
   }
-  
+
   // New multi-chain signature: formatUSD(amount, price, chain, decimals)
-  const nativePriceUSD = typeof nativePriceUSDOrDecimals === 'number' ? nativePriceUSDOrDecimals : 0;
+  const nativePriceUSD = typeof nativePriceUSDOrDecimals === 'number' ? nativePriceUSDOrDecimals : null;
   const chain = typeof chainOrDecimals === 'string' ? chainOrDecimals : 'solana';
-  
-  const nativeValue = typeof nativeAmount === 'bigint' 
+
+  // Guard: if price is unavailable, render em-dash instead of $0.00 or NaN
+  if (nativePriceUSD === null || nativePriceUSD === undefined || Number.isNaN(nativePriceUSD)) {
+    return '—';
+  }
+
+  const nativeValue = typeof nativeAmount === 'bigint'
     ? (chain === 'solana' ? lamportsToSol(nativeAmount) : weiToEth(nativeAmount))
     : Number(nativeAmount);
-  
+
   const usdValue = nativeValue * nativePriceUSD;
-  return `$${usdValue.toFixed(decimals)}`;
+
+  if (!isFinite(usdValue) || Number.isNaN(usdValue)) {
+    return '—';
+  }
+
+  return formatUsdText(usdValue);
 }
 
 // ============================================================================
@@ -311,8 +326,8 @@ export function lamportsToUSD(lamports: bigint, solPriceUSD: number): string {
   return formatUSD(lamports, solPriceUSD, 'solana');
 }
 
-// Multi-chain native token formatting (SOL/ETH)
-export function formatNative(
+// Multi-chain native token formatting (SOL/ETH) — converts bigint to string
+export function formatNativeAmount(
   nativeAmount: bigint | number | string,
   chain: Chain,
   decimals: number = 4

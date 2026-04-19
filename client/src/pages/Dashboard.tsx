@@ -41,7 +41,7 @@ function BalanceCard({
   balance: bigint;
   profit: bigint;
   walletAddress: string | null;
-  price: number;
+  price: number | null;
 }) {
   const isSolana = chain === 'solana';
   const symbol = isSolana ? 'SOL' : 'ETH';

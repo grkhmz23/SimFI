@@ -16,7 +16,7 @@ import { heliusService } from "./helius-enhanced";
 import { insertUserSchema, solToLamports, WEI_PER_ETH, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest, type Chain } from "@shared/schema";
 
 
-import { getSolPrice, getCachedSolPrice, fetchEthPrice } from './solPrice';
+import { getSolPrice, getCachedSolPrice, fetchEthPrice, getAllNativePricesDetailed } from './nativePrice';
 import { registerMarketRoutes } from "./services/marketRoutes";
 import { registerRewardsRoutes } from "./services/rewardsRoutes";
 import { rewardsEngine } from "./services/rewardsEngine";
@@ -1154,21 +1154,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ✅ FIX #6: Return proper error when price unavailable (no hardcoded fallback!)
       if (price === null) {
-        return res.status(503).json({ 
+        return res.status(503).json({
           error: 'SOL price temporarily unavailable',
           available: false,
           retryAfter: 30, // Suggest retry in 30 seconds
         });
       }
 
-      res.json({ 
-        price, 
+      res.json({
+        price,
         available: true,
         timestamp: new Date().toISOString(),
       });
     } catch (error: any) {
       console.error('SOL price fetch error:', error);
-      res.status(503).json({ 
+      res.status(503).json({
         error: 'Could not fetch SOL price',
         available: false,
         retryAfter: 30,
@@ -1182,22 +1182,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const price = await fetchEthPrice();
 
       if (price === null) {
-        return res.status(503).json({ 
+        return res.status(503).json({
           error: 'ETH price temporarily unavailable',
           available: false,
           retryAfter: 30,
         });
       }
 
-      res.json({ 
-        price, 
+      res.json({
+        price,
         available: true,
         timestamp: new Date().toISOString(),
       });
     } catch (error: any) {
       console.error('ETH price fetch error:', error);
-      res.status(503).json({ 
+      res.status(503).json({
         error: 'Could not fetch ETH price',
+        available: false,
+        retryAfter: 30,
+      });
+    }
+  });
+
+  // Unified native prices endpoint (ETH + SOL)
+  app.get('/api/market/native-prices', async (req, res) => {
+    try {
+      const detailed = getAllNativePricesDetailed();
+
+      const eth = detailed.eth;
+      const sol = detailed.sol;
+
+      // If both are unavailable, return 503
+      if (eth.usd === null && sol.usd === null) {
+        return res.status(503).json({
+          error: 'Native prices temporarily unavailable',
+          available: false,
+          retryAfter: 30,
+        });
+      }
+
+      res.json({
+        eth: {
+          usd: eth.usd,
+          source: eth.source,
+          timestamp: eth.timestamp,
+        },
+        sol: {
+          usd: sol.usd,
+          source: sol.source,
+          timestamp: sol.timestamp,
+        },
+      });
+    } catch (error: any) {
+      console.error('Native prices fetch error:', error);
+      res.status(503).json({
+        error: 'Could not fetch native prices',
         available: false,
         retryAfter: 30,
       });

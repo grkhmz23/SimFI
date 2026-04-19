@@ -1,64 +1,66 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useMemo, ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useChain } from './chain-context';
 import type { Chain } from '@shared/schema';
 
+interface NativePricesResponse {
+  eth: { usd: number | null; source: string | null; timestamp: number | null };
+  sol: { usd: number | null; source: string | null; timestamp: number | null };
+}
+
 interface PriceContextType {
-  solPriceUSD: number;
-  ethPriceUSD: number;
-  activePriceUSD: number; // Price of currently active chain's native token
-  getPrice: (chain: Chain) => number;
+  solPriceUSD: number | null;
+  ethPriceUSD: number | null;
+  activePriceUSD: number | null;
+  getPrice: (chain: Chain) => number | null;
+  isLoading: boolean;
+  isError: boolean;
 }
 
 const PriceContext = createContext<PriceContextType | undefined>(undefined);
 
+function useNativePrices(): NativePricesResponse | null {
+  const { data } = useQuery<NativePricesResponse>({
+    queryKey: ['/api/market/native-prices'],
+    staleTime: 20_000,
+    refetchInterval: 30_000,
+    retry: (failureCount, error: any) => {
+      if (error?.message?.includes('503')) return false;
+      return failureCount < 2;
+    },
+  });
+  return data ?? null;
+}
+
 export function PriceProvider({ children }: { children: ReactNode }) {
   const { activeChain } = useChain();
-  const [solPriceUSD, setSolPriceUSD] = useState(140); // Default fallback
-  const [ethPriceUSD, setEthPriceUSD] = useState(3500); // Default fallback
+  const prices = useNativePrices();
 
-  // Fetch both prices on mount
-  useEffect(() => {
-    const fetchPrices = async () => {
-      try {
-        // Fetch SOL price
-        const solResponse = await fetch('/api/solana/price');
-        if (solResponse.ok) {
-          const data = await solResponse.json();
-          setSolPriceUSD(data.price || 140);
-        }
-      } catch (error) {
-        console.warn('Failed to fetch SOL price, using fallback');
-      }
+  const solPriceUSD = prices?.sol?.usd ?? null;
+  const ethPriceUSD = prices?.eth?.usd ?? null;
 
-      try {
-        // Fetch ETH price
-        const ethResponse = await fetch('/api/base/price');
-        if (ethResponse.ok) {
-          const data = await ethResponse.json();
-          setEthPriceUSD(data.price || 3500);
-        }
-      } catch (error) {
-        console.warn('Failed to fetch ETH price, using fallback');
-      }
-    };
-
-    fetchPrices();
-
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchPrices, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Get price for specific chain
-  const getPrice = (chain: Chain): number => {
+  const getPrice = (chain: Chain): number | null => {
     return chain === 'solana' ? solPriceUSD : ethPriceUSD;
   };
 
-  // Active price based on current chain
   const activePriceUSD = activeChain === 'solana' ? solPriceUSD : ethPriceUSD;
+  const isLoading = prices === null;
+  const isError = prices !== null && solPriceUSD === null && ethPriceUSD === null;
+
+  const value = useMemo(
+    () => ({
+      solPriceUSD,
+      ethPriceUSD,
+      activePriceUSD,
+      getPrice,
+      isLoading,
+      isError,
+    }),
+    [solPriceUSD, ethPriceUSD, activePriceUSD, isLoading, isError]
+  );
 
   return (
-    <PriceContext.Provider value={{ solPriceUSD, ethPriceUSD, activePriceUSD, getPrice }}>
+    <PriceContext.Provider value={value}>
       {children}
     </PriceContext.Provider>
   );
@@ -73,24 +75,24 @@ export function usePrice(): PriceContextType {
 }
 
 // Hook to get just the active chain's price
-export function useActivePrice(): number {
+export function useActivePrice(): number | null {
   const context = useContext(PriceContext);
   if (!context) {
-    return 140; // Fallback
+    return null;
   }
   return context.activePriceUSD;
 }
 
 // Hook to get price for a specific chain
-export function useChainPrice(chain: Chain): number {
+export function useChainPrice(chain: Chain): number | null {
   const context = useContext(PriceContext);
   if (!context) {
-    return chain === 'solana' ? 140 : 3500;
+    return null;
   }
   return context.getPrice(chain);
 }
 
 // Backward compatibility - old hook name
-export function useSolPrice(): number {
+export function useSolPrice(): number | null {
   return useChainPrice('solana');
 }

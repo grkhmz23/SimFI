@@ -20,8 +20,8 @@ import {
   formatPricePerTokenNative,
   computeTokenValueUSD,
   formatPricePerTokenUSD,
-  formatNative,
 } from "@/lib/token-format"
+import { formatUsdText, formatPct, formatNative } from "@/lib/format"
 import type { Token, Position } from "@shared/schema"
 import { cn } from "@/lib/utils"
 
@@ -192,14 +192,14 @@ export default function TokenPage() {
           <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
             <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Price</p>
             <DataCell
-              value={priceUsd < 0.000001 && priceUsd > 0 ? `$${priceUsd.toExponential(2)}` : priceUsd < 0.01 ? `$${priceUsd.toFixed(6)}` : `$${priceUsd.toFixed(4)}`}
+              value={formatUsdText(priceUsd)}
               variant={token.priceChange24h && token.priceChange24h >= 0 ? "gain" : token.priceChange24h && token.priceChange24h < 0 ? "loss" : "default"}
             />
           </div>
           <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
             <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider mb-1">24h Change</p>
             <DataCell
-              value={`${token.priceChange24h && token.priceChange24h >= 0 ? "+" : ""}${(token.priceChange24h || 0).toFixed(2)}%`}
+              value={formatPct(token.priceChange24h || 0)}
               variant={token.priceChange24h && token.priceChange24h >= 0 ? "gain" : "loss"}
             />
           </div>
@@ -274,13 +274,13 @@ export default function TokenPage() {
                           const decimals = userPosition.decimals || token.decimals || 6;
                           const valueUsd = computeTokenValueUSD(userPosition.amount, decimals, priceUsd);
                           const nativePrice = getPrice(activeChain);
-                          const valueNative = nativePrice > 0 ? valueUsd / nativePrice : 0;
+                          const valueNative = nativePrice && nativePrice > 0 ? valueUsd / nativePrice : 0;
                           if (valueUsd <= 0) return <span>$0.00</span>;
                           return (
                             <span className="flex flex-col items-end">
                               <span>{formatPricePerTokenUSD(valueUsd, 2)}</span>
                               <span className="text-xs text-[var(--text-tertiary)]">
-                                {valueNative.toFixed(6)} {nativeSymbol}
+                                {formatNative(valueNative, activeChain)}
                               </span>
                             </span>
                           );

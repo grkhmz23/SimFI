@@ -1,5 +1,6 @@
 // server/nativePrice.ts
 // Multi-chain native token price service (SOL, ETH, etc.)
+// Circuit-breaker protected, no hardcoded fallbacks.
 
 import type { Chain } from "@shared/schema";
 import { CHAIN_CONFIG } from "./lib/chain-utils";
@@ -10,13 +11,25 @@ interface PriceCache {
   source: string;
 }
 
+interface CircuitState {
+  failures: number;
+  lastFailure: number;
+  isOpen: boolean;
+}
+
 // Per-chain price caches
 const priceCaches: Map<Chain, PriceCache> = new Map();
+
+// Circuit breaker state per source name (e.g. "coingecko-solana")
+const circuits: Map<string, CircuitState> = new Map();
 
 // Config
 const PRICE_CACHE_TTL = 30_000;        // 30 seconds - fresh cache
 const PRICE_STALE_TTL = 5 * 60_000;    // 5 minutes - stale but usable
 const API_TIMEOUT = 5000;              // 5 second timeout per source
+const CIRCUIT_THRESHOLD = 3;           // 3 failures
+const CIRCUIT_WINDOW_MS = 60_000;      // within 60 seconds
+const CIRCUIT_RESET_MS = 90_000;       // skip for 90 seconds
 
 // Price sources per chain
 const PRICE_SOURCES: Record<Chain, Array<{
@@ -40,6 +53,14 @@ const PRICE_SOURCES: Record<Chain, Array<{
       url: 'https://price.jup.ag/v6/price?ids=SOL',
       extract: (data: any) => data?.data?.SOL?.price,
     },
+    {
+      name: 'dexscreener',
+      url: 'https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112',
+      extract: (data: any) => {
+        const p = data?.pairs?.[0]?.priceUsd;
+        return p ? parseFloat(p) : null;
+      },
+    },
   ],
   base: [
     {
@@ -52,13 +73,86 @@ const PRICE_SOURCES: Record<Chain, Array<{
       url: 'https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT',
       extract: (data: any) => parseFloat(data?.price),
     },
+    {
+      name: 'dexscreener',
+      url: 'https://api.dexscreener.com/latest/dex/tokens/0x4200000000000000000000000000000000000006',
+      extract: (data: any) => {
+        const p = data?.pairs?.[0]?.priceUsd;
+        return p ? parseFloat(p) : null;
+      },
+    },
   ],
 };
 
+// ============================================================================
+// Circuit breaker helpers
+// ============================================================================
+
+function getCircuitKey(sourceName: string, chain: Chain): string {
+  return `${sourceName}-${chain}`;
+}
+
+function isCircuitOpen(sourceName: string, chain: Chain): boolean {
+  const key = getCircuitKey(sourceName, chain);
+  const circuit = circuits.get(key);
+  if (!circuit || !circuit.isOpen) return false;
+
+  if (Date.now() - circuit.lastFailure > CIRCUIT_RESET_MS) {
+    circuit.isOpen = false;
+    circuit.failures = 0;
+    return false;
+  }
+  return true;
+}
+
+function recordSuccess(sourceName: string, chain: Chain): void {
+  const key = getCircuitKey(sourceName, chain);
+  const circuit = circuits.get(key);
+  if (circuit) {
+    circuit.failures = 0;
+    circuit.isOpen = false;
+  }
+}
+
+function recordFailure(sourceName: string, chain: Chain): void {
+  const key = getCircuitKey(sourceName, chain);
+  let circuit = circuits.get(key);
+  if (!circuit) {
+    circuit = { failures: 0, lastFailure: 0, isOpen: false };
+    circuits.set(key, circuit);
+  }
+
+  // Only count failures within the window
+  const now = Date.now();
+  if (now - circuit.lastFailure > CIRCUIT_WINDOW_MS) {
+    circuit.failures = 1;
+  } else {
+    circuit.failures++;
+  }
+  circuit.lastFailure = now;
+
+  if (circuit.failures >= CIRCUIT_THRESHOLD) {
+    circuit.isOpen = true;
+    console.warn(`⚠️ Circuit OPEN for ${key}`);
+  }
+}
+
+// ============================================================================
+// Fetch helpers
+// ============================================================================
+
 /**
- * Fetch price from a single source with timeout
+ * Fetch price from a single source with timeout and circuit-breaker protection
  */
-async function fetchFromSource(source: typeof PRICE_SOURCES[Chain][0]): Promise<number | null> {
+async function fetchFromSource(
+  source: typeof PRICE_SOURCES[Chain][0],
+  chain: Chain
+): Promise<number | null> {
+  if (isCircuitOpen(source.name, chain)) {
+    console.log(`⏸️ ${source.name} circuit open for ${chain}, skipping`);
+    return null;
+  }
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), API_TIMEOUT);
@@ -66,19 +160,29 @@ async function fetchFromSource(source: typeof PRICE_SOURCES[Chain][0]): Promise<
     const response = await fetch(source.url, { signal: controller.signal });
     clearTimeout(timeout);
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      recordFailure(source.name, chain);
+      return null;
+    }
 
     const data = await response.json();
     const price = source.extract(data);
 
     if (price && typeof price === 'number' && price > 0 && isFinite(price)) {
+      recordSuccess(source.name, chain);
       return price;
     }
+    recordFailure(source.name, chain);
     return null;
   } catch (error) {
+    recordFailure(source.name, chain);
     return null;
   }
 }
+
+// ============================================================================
+// Public API
+// ============================================================================
 
 /**
  * Get current native token price for a chain with caching
@@ -102,7 +206,7 @@ export async function getNativePrice(chain: Chain): Promise<number | null> {
 
   // Try each price source in order
   for (const source of sources) {
-    const price = await fetchFromSource(source);
+    const price = await fetchFromSource(source, chain);
 
     if (price !== null) {
       priceCaches.set(chain, { price, timestamp: now, source: source.name });
@@ -203,6 +307,25 @@ export async function getAllNativePrices(): Promise<Record<Chain, number | null>
   }, {} as Record<Chain, number | null>);
 }
 
+/**
+ * Get all supported chains' prices with full metadata (source, timestamp)
+ */
+export function getAllNativePricesDetailed(): Record<string, { usd: number | null; source: string | null; timestamp: number | null }> {
+  const chains = Object.keys(PRICE_SOURCES) as Chain[];
+  const result: Record<string, { usd: number | null; source: string | null; timestamp: number | null }> = {};
+
+  for (const chain of chains) {
+    const status = getNativePriceCacheStatus(chain);
+    result[chain === 'solana' ? 'sol' : 'eth'] = {
+      usd: status.price,
+      source: status.source,
+      timestamp: status.price ? Date.now() - status.ageMs : null,
+    };
+  }
+
+  return result;
+}
+
 // ============================================================================
 // Backward Compatibility - SOL price functions
 // ============================================================================
@@ -233,4 +356,18 @@ export function getSolPriceCacheStatus(): ReturnType<typeof getNativePriceCacheS
  */
 export async function refreshSolPrice(): Promise<boolean> {
   return refreshNativePrice('solana');
+}
+
+// ============================================================================
+// Backward Compatibility - ETH price functions (matching solPrice.ts exports)
+// ============================================================================
+
+/** @deprecated Use getNativePrice('base') instead */
+export async function getEthPrice(): Promise<number | null> {
+  return getNativePrice('base');
+}
+
+/** @deprecated Use getNativePrice('base') instead */
+export async function fetchEthPrice(): Promise<number | null> {
+  return getNativePrice('base');
 }
