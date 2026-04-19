@@ -28,7 +28,7 @@ export function Footer({ className }: { className?: string }) {
       <div className="mx-auto max-w-content px-4 sm:px-6 py-8">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <img src="/simfi-logo.png" alt="SimFi" className="h-6 w-auto opacity-70" />
+            <img src="/simfi-logo.png" alt="SimFi" className="h-8 w-auto opacity-70" />
             <span className="text-sm text-[var(--text-tertiary)]">
               © {new Date().getFullYear()} SimFi
             </span>

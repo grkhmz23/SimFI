@@ -68,7 +68,7 @@ export function Navigation() {
           <div className="flex h-14 items-center justify-between gap-4">
             {/* Wordmark */}
             <Link href="/" className="flex items-center gap-2.5 shrink-0">
-              <img src={logoUrl} alt="SimFi" className="h-8 w-auto" />
+              <img src={logoUrl} alt="SimFi" className="h-10 w-auto" />
               <span className="font-serif text-xl tracking-tight text-[var(--text-primary)] hidden sm:block">
                 SimFi
               </span>
