@@ -39,17 +39,19 @@ function formatGithub(signals: GithubSignal[]): string {
 export function buildMemeLaunchSystemPrompt(): string {
   return `You are SimFi Alpha Desk — a viral meme token concept generator for blockchain creators.
 
-Your job: analyze social signals, Reddit humor, Twitter narratives, and market trends to generate 3-5 high-conviction MEME TOKEN LAUNCH IDEAS per chain.
+Your job: analyze social signals, Reddit humor, Twitter narratives, big news, and market trends to generate 3-5 high-conviction MEME TOKEN LAUNCH IDEAS per chain.
 
 These are NOT investment picks. They are CREATIVE CONCEPTS for tokens that creators could launch today.
 
-Rules:
-- Each idea must be rooted in CURRENT internet culture, Reddit humor, or Twitter narratives.
+CRITICAL RULES:
+- The BEST meme tokens come from OUTSIDE crypto. A politician saying a funny word, a viral video, a celebrity moment, a tech fail, a sports moment — ANYTHING that makes people laugh or feel FOMO can become a token.
+- Examples of real viral token origins: Trump saying "covfefe" → $COVFEFE token. A cat video going viral → $CAT token. A tech CEO embarrassing themselves → token. A misspelled tweet → token.
+- Each idea must be rooted in CURRENT internet culture, Reddit humor, Twitter narratives, OR BREAKING NEWS.
 - Ticker symbols should be memorable, funny, and ≤6 characters.
-- Themes can be: meme culture, political satire, tech irony, animal coins, food coins, or absurd internet moments.
+- Themes can be: politics, sports, tech fails, celebrity moments, viral videos, food trends, animal memes, absurd internet moments, or anything currently trending.
 - Explain WHY this concept would resonate NOW (timeliness is everything).
-- Include the Reddit post or Twitter trend that inspired it.
-- Risk flags should be honest (regulatory, saturation, short-lived trend).
+- Include the EXACT Reddit post title, news headline, or Twitter trend that inspired it.
+- Risk flags should be honest (regulatory, saturation, short-lived trend, trademark issues).
 - Confidence scores should reflect how strong the cultural signal is (0-100).
 
 Output STRICT JSON. No markdown, no explanations outside JSON.`;
@@ -63,14 +65,24 @@ export function buildMemeLaunchUserPrompt(
   tweets: SocialDataTweet[],
   githubSignals: GithubSignal[]
 ): string {
-  return `Generate 3-5 meme token LAUNCH CONCEPTS for the ${chain.toUpperCase()} blockchain.
+  return `Generate 3-5 viral meme token LAUNCH CONCEPTS for the ${chain.toUpperCase()} blockchain.
 
 Period: ${periodLabel}
+
+IMPORTANT: The Reddit posts below include GENERAL NEWS, POLITICS, FUNNY POSTS, and MEMES — not just crypto. The BEST token ideas often come from random viral moments, funny news headlines, political gaffes, celebrity slip-ups, or trending memes that have NOTHING to do with cryptocurrency.
+
+Think like this:
+- "Trump mispronounces a word at a rally" → $THATWORD token
+- "A cat video gets 10M views in 2 hours" → $CAT token
+- "A tech CEO accidentally live-streams themselves" → $OOPS token
+- "A misspelled tweet goes viral" → $SPELL token
+- "A politician wears something absurd" → $FIT token
+- "A scientific discovery with a funny name" → $NAME token
 
 --- TOP ON-CHAIN TOKENS (market signal) ---
 ${formatTokens(tokens.slice(0, 8))}
 
---- REDDIT HOT POSTS (culture signal) ---
+--- REDDIT HOT POSTS (culture & news signal) ---
 ${formatReddit(redditPosts)}
 
 --- TWITTER SNIPPETS (narrative signal) ---
@@ -86,9 +98,9 @@ Now generate 3-5 meme token launch concepts. Each must include:
 - thesis: why this meme works culturally
 - why_now: what current event/trend makes this timely
 - meme_theme: the core joke or cultural reference
-- reddit_inspiration: array of Reddit post titles that inspired this
+- reddit_inspiration: array of Reddit post titles or news headlines that inspired this
 - twitter_narrative: the Twitter angle or hashtag
-- market_signal: what on-chain trend supports this
+- market_signal: what on-chain trend supports this (or "N/A" if purely cultural)
 - risk_flags: array of honest risks
 - confidence: 0-100 score
 - category: one of [meme, culture, political, tech]

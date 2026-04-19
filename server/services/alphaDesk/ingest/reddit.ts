@@ -7,12 +7,30 @@ const FETCH_TIMEOUT_MS = 15_000;
 const USER_AGENT = "SimFi-AlphaDesk/1.0 (by /u/simfi-app)";
 
 const SUBREDDITS = [
+  // Crypto & trading
   "memecoins",
   "CryptoCurrency",
   "wallstreetbets",
   "SatoshiStreetBets",
   "CryptoMemes",
   "memeconomy",
+  // General news & politics (big news → instant tokens)
+  "news",
+  "worldnews",
+  "politics",
+  "nottheonion",
+  // Funny & viral (meme fuel)
+  "funny",
+  "memes",
+  "dankmemes",
+  "shitposting",
+  "WhitePeopleTwitter",
+  "BlackPeopleTwitter",
+  // Tech & culture
+  "technology",
+  "gadgets",
+  "OutOfTheLoop",
+  "subredditdrama",
 ];
 
 async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
