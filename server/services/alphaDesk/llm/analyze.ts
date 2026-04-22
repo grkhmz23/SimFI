@@ -82,7 +82,7 @@ export async function generateMemeLaunchIdeas(
   });
 
   if (ideas.length < 3) {
-    throw new Error(`Expected at least 3 meme launch ideas, got ${ideas.length}`);
+    console.warn(`[AlphaDesk] Only ${ideas.length} meme launch ideas generated (expected 3+), returning what we have.`);
   }
 
   return ideas;
@@ -139,7 +139,7 @@ export async function generateDevBuildIdeas(
   });
 
   if (ideas.length < 3) {
-    throw new Error(`Expected at least 3 dev build ideas, got ${ideas.length}`);
+    console.warn(`[AlphaDesk] Only ${ideas.length} dev build ideas generated (expected 3+), returning what we have.`);
   }
 
   return ideas;
@@ -148,10 +148,20 @@ export async function generateDevBuildIdeas(
 export async function generateAlphaDeskIdeas(
   input: IngestData
 ): Promise<AlphaDeskIdeaGenerated[]> {
-  const [memeIdeas, devIdeas] = await Promise.all([
-    generateMemeLaunchIdeas(input),
-    generateDevBuildIdeas(input),
-  ]);
+  // Run independently so one failure doesn't kill the other
+  const memeIdeas = await generateMemeLaunchIdeas(input).catch((err) => {
+    console.error(`[AlphaDesk] Meme launch generation failed:`, err.message);
+    return [] as MemeLaunchIdeaGenerated[];
+  });
+
+  const devIdeas = await generateDevBuildIdeas(input).catch((err) => {
+    console.error(`[AlphaDesk] Dev build generation failed:`, err.message);
+    return [] as DevBuildIdeaGenerated[];
+  });
+
+  if (memeIdeas.length === 0 && devIdeas.length === 0) {
+    throw new Error("Both meme launch and dev build idea generation failed");
+  }
 
   return [...memeIdeas, ...devIdeas];
 }

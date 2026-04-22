@@ -5,6 +5,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { spawn } from "child_process";
 import { leaderboardService } from "./leaderboardService";
+import { startWorker as startAlphaDeskWorker } from "./services/alphaDesk/worker";
 
 const app = express();
 
@@ -201,6 +202,13 @@ app.use((err, req, res, next) => {
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
+  });
+
+  // ✅ Start Alpha Desk worker asynchronously (non-blocking)
+  // This ensures daily meme/dev ideas are generated even if GitHub Actions
+  // workflow is disabled or secrets are missing. Runs on server startup/wake.
+  startAlphaDeskWorker().catch((err) => {
+    console.error('[AlphaDesk] Worker failed to start:', err);
   });
 
   // ✅ HIGH FIX: Do NOT spawn Telegram bot from web server

@@ -67,13 +67,16 @@ export async function startWorker(): Promise<void> {
   // Ensure today's runs on startup
   await ensureTodayRuns();
 
+  // Re-check for today's runs every 2 hours (handles servers that stay up across midnight)
+  setInterval(ensureTodayRuns, 2 * 60 * 60 * 1000);
+
   // Schedule outcome measurement every 6 hours
   setInterval(measureOutcomes, 6 * 60 * 60 * 1000);
 
   // Also run outcomes immediately
   await measureOutcomes();
 
-  console.log("[AlphaDesk Worker] Running. Outcome measurement scheduled every 6h.");
+  console.log("[AlphaDesk Worker] Running. Run check every 2h, outcome measurement every 6h.");
 }
 
 // If this file is executed directly (e.g., via tsx server/services/alphaDesk/worker.ts)

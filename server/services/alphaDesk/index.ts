@@ -122,8 +122,10 @@ export async function runDailyPipeline(chain: Chain): Promise<{ runId: number; m
     const scored = scoreTokens(tokenSkeletons, twitterResult.tweets, githubSignals, weights, chain);
     const topTokens = scored.slice(0, 10);
 
-    if (topTokens.length < 3) {
-      throw new Error(`Insufficient candidates for ${chain}: ${topTokens.length}`);
+    if (topTokens.length === 0) {
+      console.warn(`[AlphaDesk] No trending tokens found for ${chain}. Will generate ideas from narrative data only.`);
+    } else if (topTokens.length < 3) {
+      console.warn(`[AlphaDesk] Only ${topTokens.length} trending tokens for ${chain} — proceeding with narrative-driven generation.`);
     }
 
     // === LLM Generation ===
