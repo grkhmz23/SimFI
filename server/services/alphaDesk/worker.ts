@@ -80,7 +80,8 @@ export async function startWorker(): Promise<void> {
 }
 
 // If this file is executed directly (e.g., via tsx server/services/alphaDesk/worker.ts)
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Use argv check instead of import.meta.url to avoid firing when bundled into dist/index.js
+if (process.argv[1]?.endsWith("worker.ts") || process.argv[1]?.endsWith("worker.js")) {
   startWorker().catch((err) => {
     console.error("[AlphaDesk Worker] Fatal error:", err);
     process.exit(1);

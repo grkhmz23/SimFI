@@ -34,10 +34,14 @@ export async function runDailyPipeline(chain: Chain): Promise<{ runId: number; m
   const runDate = formatDateIso(new Date());
   const { since, until, periodLabel } = getPeriodDates();
 
-  // Idempotency: check if today's run already succeeded
+  // Idempotency: check if today's run already exists (any status)
   const existing = await findTodayRun(runDate, chain);
-  if (existing && existing.status === "succeeded") {
-    console.log(`[AlphaDesk] Run already succeeded for ${runDate} / ${chain}, skipping`);
+  if (existing) {
+    if (existing.status === "succeeded") {
+      console.log(`[AlphaDesk] Run already succeeded for ${runDate} / ${chain}, skipping`);
+    } else {
+      console.log(`[AlphaDesk] Run already exists for ${runDate} / ${chain} (status=${existing.status}), skipping`);
+    }
     return { runId: existing.id, memeCount: 0, devCount: 0 };
   }
 
