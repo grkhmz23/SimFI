@@ -43,9 +43,14 @@ export function atomicToDecimal(
 /**
  * Convert a decimal price from the database back to atomic units (bigint).
  *
+ * BACKWARD COMPATIBILITY: Old positions stored raw atomic integers (e.g. "7435").
+ * New positions store decimal strings (e.g. "0.000007435").
+ * Since atomicToDecimal always outputs a ".", any value without "." is old format.
+ *
  * Example:
  *   decimalToAtomic("0.000000071", 9)  -> 71n
  *   decimalToAtomic("1.000000000000000000", 18) -> 1000000000000000000n
+ *   decimalToAtomic("7435", 9)         -> 7435n  (legacy raw atomic)
  */
 export function decimalToAtomic(
   decimalPrice: string,
@@ -56,6 +61,12 @@ export function decimalToAtomic(
 
   const isNegative = trimmed.startsWith("-");
   const absStr = isNegative ? trimmed.slice(1) : trimmed;
+
+  // ✅ BACKWARD COMPAT: Old DB rows store raw atomic integers without "."
+  // atomicToDecimal always produces a decimal point (e.g. 1n -> "0.000000001")
+  if (!absStr.includes(".")) {
+    return isNegative ? -BigInt(absStr) : BigInt(absStr);
+  }
 
   const [wholeStr, fracStr = ""] = absStr.split(".");
   const wholePart = wholeStr ? BigInt(wholeStr) : 0n;
