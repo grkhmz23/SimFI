@@ -16,7 +16,7 @@ import { heliusService } from "./helius-enhanced";
 import { insertUserSchema, solToLamports, WEI_PER_ETH, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest, type Chain } from "@shared/schema";
 
 
-import { getSolPrice, getCachedSolPrice, fetchEthPrice, getNativePrice, getAllNativePricesDetailed } from './nativePrice';
+import { getSolPrice, getCachedSolPrice, fetchEthPrice, getNativePrice, getCachedNativePrice, getAllNativePricesDetailed } from './nativePrice';
 import { registerMarketRoutes } from "./services/marketRoutes";
 import { achievementEngine } from "./services/achievementEngine";
 import { portfolioAnalytics } from "./services/portfolioAnalytics";
@@ -381,7 +381,7 @@ function parseDecimalToNativeUnits(decimalString: string, nativeDecimals: number
 async function fetchDexScreenerPriceForChain(
   tokenAddress: string, 
   chain: Chain
-): Promise<{ priceNative: bigint; decimals: number; liquidityUsd: number; volume24hUsd: number } | null> {
+): Promise<{ priceNative: bigint; decimals: number; liquidityUsd: number; volume24hUsd: number; fetchedAt: number } | null> {
   try {
     const dexResponse = await fetchWithTimeout(
       `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 
@@ -413,6 +413,7 @@ async function fetchDexScreenerPriceForChain(
         decimals: bestPair.baseToken?.decimals || (chain === 'base' ? 18 : 6),
         liquidityUsd: parseFloat(bestPair.liquidity?.usd || '0'),
         volume24hUsd: parseFloat(bestPair.volume?.h24 || '0'),
+        fetchedAt: Date.now(),
       };
     }
     return null;
@@ -456,6 +457,30 @@ function parseDecimalToNative(decimalString: string, nativeDecimals: number = 9)
   // Return at least 1n for any valid non-zero price (sub-atomic tokens)
   if (nativeUnits > 0n) return nativeUnits;
   return str !== '0' && parseFloat(str) > 0 ? 1n : 0n;
+}
+
+// ============================================================================
+// DYNAMIC SLIPPAGE: Realistic AMM price impact for memecoin volatility
+// ============================================================================
+
+/**
+ * Estimate realistic slippage (in basis points) based on trade size vs liquidity.
+ * For constant-product AMMs, impact ≈ (tradeSize / liquidity) * factor.
+ * Memecoins have thin liquidity, so even small trades cause large moves.
+ *
+ * Examples:
+ *   $10 trade / $2K liquidity  → ~75 bps  (0.75%)
+ *   $50 trade / $2K liquidity  → ~375 bps (3.75%)
+ *   $100 trade / $500 liquidity → ~3000 bps (30%)
+ *   $500 trade / $1K liquidity  → ~7500 bps (75%)
+ */
+function estimateSlippageBps(tradeSizeUsd: number, liquidityUsd: number): number {
+  if (liquidityUsd <= 0) return 9900; // 99% — essentially no liquidity
+  const ratio = tradeSizeUsd / liquidityUsd;
+  // AMM curve approximation: impact grows linearly with ratio for small trades,
+  // then accelerates. Multiply by 150 to get realistic memecoin behavior.
+  const slippageBps = Math.round(ratio * 150 * 100);
+  return Math.min(9900, Math.max(50, slippageBps)); // clamp 0.5% … 99%
 }
 
 // ============================================================================
@@ -827,12 +852,13 @@ async function fetchDexScreenerPriceInternal(tokenAddress: string): Promise<Pric
 }
 
 // ✅ FIX: Coalesced price fetch - one request per token per TTL
-async function fetchDexScreenerPrice(tokenAddress: string): Promise<{ 
-  priceLamports: number; 
+async function fetchDexScreenerPrice(tokenAddress: string): Promise<{
+  priceLamports: number;
   decimals?: number;
   liquidityUsd?: number;
   volume24hUsd?: number;
   isCached?: boolean;
+  fetchedAt?: number;
 } | null> {
   // Check cache first
   const cached = dexScreenerCache.get(tokenAddress);
@@ -860,7 +886,7 @@ async function fetchDexScreenerPrice(tokenAddress: string): Promise<{
       dexScreenerCache.set(tokenAddress, result);
     }
 
-    return result ? { ...result, isCached: false } : null;
+    return result ? { ...result, isCached: false, fetchedAt: result.fetchedAt } : null;
   } finally {
     // Clean up pending request
     pendingRequests.delete(tokenAddress);
@@ -1570,6 +1596,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const uniqueTokens = Array.from(new Set(uniqueTokenAddresses));
       const priceMap = new Map<string, bigint>();
 
+      let pricesFetchedAt: number | null = null;
+
       if (uniqueTokens.length > 0) {
         try {
           // Fetch prices from DexScreener in batches of 30
@@ -1580,12 +1608,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             const dexResponse = await fetchWithTimeout(
               `https://api.dexscreener.com/latest/dex/tokens/${addressesParam}`,
-              8000
+              4000  // ✅ REDUCED: 4s timeout (was 8s) for faster portfolio refresh
             );
 
             if (dexResponse.ok) {
               const dexData = await dexResponse.json();
               const pairs = dexData.pairs || [];
+              pricesFetchedAt = Date.now();
 
               // Build price map using best (highest liquidity) pair for each token
               // Group by chain to avoid cross-chain confusion
@@ -1620,6 +1649,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const enrichedPositions = positions.map(p => {
         const freshPrice = priceMap.get(p.tokenAddress);
         const priceToUse = freshPrice || p.entryPrice; // Use entry price as fallback only
+        const priceIsFresh = !!freshPrice;
+        const priceAgeMs = priceIsFresh && pricesFetchedAt ? Date.now() - pricesFetchedAt : -1;
 
         // ✅ Recalculate current value based on FRESH price, not stale DB value
         const decimals = p.decimals || 6;
@@ -1632,21 +1663,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ...p,
           currentPrice: priceToUse, // Fresh price (or entry as last resort)
           currentValue: recalculatedValue, // ✅ Recalculated with fresh price
+          priceIsFresh,
+          priceAgeMs,
+          priceWarning: priceAgeMs > 15000 ? 'stale' : null, // >15s old = stale
         };
       });
 
       // Debug logging for price freshness
       console.log(`📊 Position enrichment - ${enrichedPositions.length} positions updated with fresh prices`);
       enrichedPositions.forEach(p => {
-        const hasFreshPrice = priceMap.has(p.tokenAddress);
         const isBase = p.chain === 'base';
         const displayPrice = isBase
           ? Number(p.currentPrice) / Number(10n ** 18n)
           : Number(p.currentPrice) / 1_000_000_000;
-        console.log(`   ${p.tokenSymbol}: fresh=${hasFreshPrice}, price=${isBase ? displayPrice.toFixed(18) : displayPrice.toFixed(9)} ${isBase ? 'ETH' : 'SOL'}`);
+        const ageStr = p.priceAgeMs >= 0 ? `${p.priceAgeMs}ms` : 'fallback';
+        console.log(`   ${p.tokenSymbol}: fresh=${p.priceIsFresh}, age=${ageStr}, price=${isBase ? displayPrice.toFixed(18) : displayPrice.toFixed(9)} ${isBase ? 'ETH' : 'SOL'}`);
       });
 
-      res.json(serializeBigInts({ positions: enrichedPositions }));
+      res.json(serializeBigInts({ positions: enrichedPositions, pricesFetchedAt }));
     } catch (error: any) {
       console.error('Get positions error:', error);
       res.status(500).json({ error: 'Could not fetch positions' });
@@ -1704,31 +1738,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // ✅ ANTI-CHEAT: Fetch price BEFORE transaction (no external calls in tx)
-      const currentTokenData = await fetchDexScreenerPriceForChain(tokenAddress, chain);
-      if (!currentTokenData || !currentTokenData.priceNative) {
-        return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
-      }
-
-      // ✅ ANTI-MANIPULATION: Check minimum liquidity requirements
-      // Low-liquidity tokens can be easily manipulated
-      const liquidityUsd = currentTokenData.liquidityUsd || 0;
-      const volume24hUsd = currentTokenData.volume24hUsd || 0;
-
-      if (!meetsLiquidityRequirements(liquidityUsd, volume24hUsd)) {
-        console.log(`⚠️ Token ${tokenSymbol} rejected: liquidity=$${liquidityUsd}, volume=$${volume24hUsd}`);
-        return res.status(400).json({ 
-          error: `Token does not meet minimum liquidity requirements ($${MIN_LIQUIDITY_USD} liquidity, $${MIN_VOLUME_24H_USD} 24h volume)`,
-          liquidityUsd,
-          volume24hUsd,
-        });
-      }
-
+      // For Solana with Jupiter: try Jupiter quote FIRST, then validate with DexScreener
+      // For Base: fetch DexScreener directly (no Jupiter)
       let executionPriceNative: bigint = 0n;
       let tokenAmount: bigint = 0n;
-      const decimals = currentTokenData.decimals || (chain === 'base' ? 18 : 6);
-
-      // For Solana, try Jupiter Swap V2 quote first (more accurate)
+      let decimals = chain === 'base' ? 18 : 6;
+      let liquidityUsd = 0;
+      let volume24hUsd = 0;
+      let priceSource = 'unknown';
       let usedJupiter = false;
+
+      // ── SOLANA: Jupiter as PRIMARY ──
       if (chain === 'solana' && jupiterService.isConfigured()) {
         try {
           const jupQuote = await jupiterService.getOrderQuote(
@@ -1738,34 +1758,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
           );
           if (jupQuote && jupQuote.outAmount) {
             tokenAmount = BigInt(jupQuote.outAmount);
+            // Still need decimals for DB storage — fetch from DexScreener or Jupiter token API
+            const jupToken = await jupiterService.getToken(tokenAddress);
+            decimals = jupToken?.decimals ?? 6;
             const decimalMultiplier = BigInt(10 ** decimals);
             executionPriceNative = tokenAmount > 0n
               ? (nativeSpent * decimalMultiplier) / tokenAmount
               : 0n;
             usedJupiter = true;
-            console.log(`💰 Jupiter execution on ${chain}: outAmount=${jupQuote.outAmount}, derivedPrice=${executionPriceNative!.toString()}`);
+            priceSource = 'jupiter';
+            console.log(`💰 Jupiter execution on ${chain}: outAmount=${jupQuote.outAmount}, derivedPrice=${executionPriceNative.toString()}`);
           }
         } catch (e: any) {
-          console.warn('⚠️  Jupiter buy quote failed, falling back to DexScreener:', e.message);
+          console.warn('⚠️  Jupiter buy quote failed, will fall back to DexScreener:', e.message);
         }
       }
 
+      // ── FALLBACK: DexScreener for liquidity check + price (Base OR Jupiter failed) ──
       if (!usedJupiter) {
-        // Server-side price is the ONLY price used for execution
-        const serverPriceNative = currentTokenData.priceNative;
+        const currentTokenData = await fetchDexScreenerPriceForChain(tokenAddress, chain);
+        if (!currentTokenData || !currentTokenData.priceNative) {
+          return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
+        }
 
-        // Apply simulated slippage (0.5% for paper trading realism)
-        const SLIPPAGE_BPS = 50n; // 0.5% = 50 basis points
-        const slippageMultiplier = 10000n + SLIPPAGE_BPS;
-        executionPriceNative = (serverPriceNative * slippageMultiplier) / 10000n;
+        decimals = currentTokenData.decimals || decimals;
+        liquidityUsd = currentTokenData.liquidityUsd || 0;
+        volume24hUsd = currentTokenData.volume24hUsd || 0;
+
+        // ✅ ANTI-MANIPULATION: Check minimum liquidity requirements
+        if (!meetsLiquidityRequirements(liquidityUsd, volume24hUsd)) {
+          console.log(`⚠️ Token ${tokenSymbol} rejected: liquidity=$${liquidityUsd}, volume=$${volume24hUsd}`);
+          return res.status(400).json({
+            error: `Token does not meet minimum liquidity requirements ($${MIN_LIQUIDITY_USD} liquidity, $${MIN_VOLUME_24H_USD} 24h volume)`,
+            liquidityUsd,
+            volume24hUsd,
+          });
+        }
+
+        // ✅ DYNAMIC SLIPPAGE: Realistic AMM impact for memecoins
+        const nativePriceUsd = chain === 'solana'
+          ? (await getCachedSolPrice() ?? 0) / 1_000_000_000
+          : (await getCachedNativePrice('base') ?? 0) / 1e18;
+        const tradeSizeUsd = nativePriceUsd > 0
+          ? Number(nativeSpent) / (chain === 'solana' ? 1e9 : 1e18) * nativePriceUsd
+          : 0;
+        const slippageBps = estimateSlippageBps(tradeSizeUsd, liquidityUsd);
+        const slippageMultiplier = 10000n + BigInt(slippageBps);
+        executionPriceNative = (currentTokenData.priceNative * slippageMultiplier) / 10000n;
+        priceSource = 'dexscreener';
 
         console.log(`💰 Server-side execution (ANTI-CHEAT) on ${chain}:`);
-        console.log(`   DexScreener price: ${serverPriceNative.toString()} native units/token`);
-        console.log(`   Execution price (+0.5% slippage): ${executionPriceNative.toString()} native units/token`);
+        console.log(`   DexScreener price: ${currentTokenData.priceNative.toString()} native units/token`);
+        console.log(`   Liquidity: $${liquidityUsd.toFixed(0)} | Trade: ~$${tradeSizeUsd.toFixed(2)}`);
+        console.log(`   Dynamic slippage: ${(slippageBps / 100).toFixed(2)}%`);
+        console.log(`   Execution price: ${executionPriceNative.toString()} native units/token`);
 
-        // Calculate tokens received using SERVER price
         const decimalMultiplier = BigInt(10 ** decimals);
         tokenAmount = (nativeSpent * decimalMultiplier) / executionPriceNative;
+      } else {
+        // Jupiter succeeded — still validate token exists via DexScreener liquidity check
+        const dexCheck = await fetchDexScreenerPriceForChain(tokenAddress, chain);
+        if (dexCheck) {
+          liquidityUsd = dexCheck.liquidityUsd;
+          volume24hUsd = dexCheck.volume24hUsd;
+          if (!meetsLiquidityRequirements(liquidityUsd, volume24hUsd)) {
+            console.log(`⚠️ Token ${tokenSymbol} rejected post-Jupiter: liquidity=$${liquidityUsd}`);
+            return res.status(400).json({
+              error: `Token does not meet minimum liquidity requirements ($${MIN_LIQUIDITY_USD} liquidity, $${MIN_VOLUME_24H_USD} 24h volume)`,
+              liquidityUsd,
+              volume24hUsd,
+            });
+          }
+        }
       }
 
       if (tokenAmount! <= 0n) {
@@ -1796,13 +1860,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const newBalance = chain === 'solana' ? newUser!.balance : newUser!.baseBalance;
 
         // ✅ IDEMPOTENCY: Cache successful response
-        const successResponse = { 
+        const successResponse = {
           message: 'Position processed successfully',
           positionId: position.id,
           newBalance: newBalance.toString(),
           tokensReceived: tokenAmount.toString(),
           executionPrice: executionPriceNative.toString(),
           chain,
+          priceSource,
+          liquidityUsd,
+          volume24hUsd,
         };
 
         if (idempotencyKey) {
@@ -1880,20 +1947,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // ✅ ANTI-CHEAT: Fetch price BEFORE transaction (no external calls in tx)
-      const currentTokenData = await fetchDexScreenerPriceForChain(position.tokenAddress, positionChain as Chain);
-      if (!currentTokenData || !currentTokenData.priceNative) {
-        return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
-      }
-
-      // Use position's decimals
+      // For Solana with Jupiter: try Jupiter quote FIRST
       const decimals = position.decimals || (positionChain === 'base' ? 18 : 6);
       const decimalDivisor = BigInt(10 ** decimals);
-
       let executionPriceNative: bigint = 0n;
       let nativeReceived: bigint = 0n;
-
-      // For Solana, try Jupiter Swap V2 quote first (more accurate)
+      let priceSource = 'unknown';
       let usedJupiter = false;
+
+      // ── SOLANA: Jupiter as PRIMARY ──
       if (positionChain === 'solana' && jupiterService.isConfigured()) {
         try {
           const jupQuote = await jupiterService.getOrderQuote(
@@ -1907,21 +1969,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ? (nativeReceived * decimalDivisor) / sellAmount
               : 0n;
             usedJupiter = true;
+            priceSource = 'jupiter';
             console.log(`💰 Jupiter sell execution on ${positionChain}: outAmount=${jupQuote.outAmount}, derivedPrice=${executionPriceNative!.toString()}`);
           }
         } catch (e: any) {
-          console.warn('⚠️  Jupiter sell quote failed, falling back to DexScreener:', e.message);
+          console.warn('⚠️  Jupiter sell quote failed, will fall back to DexScreener:', e.message);
         }
       }
 
+      // ── FALLBACK: DexScreener (Base OR Jupiter failed) ──
       if (!usedJupiter) {
-        // Server-side price with negative slippage for sells
-        const serverPriceNative = currentTokenData.priceNative;
-        const SLIPPAGE_BPS = 50n;
-        const slippageMultiplier = 10000n - SLIPPAGE_BPS;
-        executionPriceNative = (serverPriceNative * slippageMultiplier) / 10000n;
+        const currentTokenData = await fetchDexScreenerPriceForChain(position.tokenAddress, positionChain as Chain);
+        if (!currentTokenData || !currentTokenData.priceNative) {
+          return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
+        }
 
-        // Calculate native received using SERVER price
+        // ✅ DYNAMIC SLIPPAGE: Realistic sell impact (sells push price DOWN)
+        const nativePriceUsd = positionChain === 'solana'
+          ? (await getCachedSolPrice() ?? 0) / 1_000_000_000
+          : (await getCachedNativePrice('base') ?? 0) / 1e18;
+        const positionValueUsd = nativePriceUsd > 0
+          ? Number(position.solSpent) / (positionChain === 'solana' ? 1e9 : 1e18) * nativePriceUsd
+          : 0;
+        // Use position value as proxy for liquidity if DexScreener liquidity is missing
+        const sellValueUsd = positionValueUsd * (Number(sellAmount) / Number(position.amount));
+        const liquidityUsd = currentTokenData.liquidityUsd || positionValueUsd || 1;
+        const slippageBps = estimateSlippageBps(sellValueUsd, liquidityUsd);
+        const slippageMultiplier = 10000n - BigInt(slippageBps);
+        executionPriceNative = (currentTokenData.priceNative * slippageMultiplier) / 10000n;
+        priceSource = 'dexscreener';
+
+        console.log(`💰 Server-side sell execution (ANTI-CHEAT) on ${positionChain}:`);
+        console.log(`   DexScreener price: ${currentTokenData.priceNative.toString()} native units/token`);
+        console.log(`   Liquidity: $${liquidityUsd.toFixed(0)} | Sell value: ~$${sellValueUsd.toFixed(2)}`);
+        console.log(`   Dynamic slippage: ${(slippageBps / 100).toFixed(2)}%`);
+        console.log(`   Execution price: ${executionPriceNative.toString()} native units/token`);
+
         nativeReceived = (sellAmount * executionPriceNative) / decimalDivisor;
       }
 
@@ -1967,6 +2050,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         nativeReceived: nativeReceived.toString(),
         executionPrice: executionPriceNative.toString(),
         chain: positionChain,
+        priceSource,
       };
 
       if (idempotencyKey) {
