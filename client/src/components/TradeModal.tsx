@@ -458,7 +458,11 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                   <div className="flex justify-between text-sm">
                     <span className="text-[var(--text-secondary)]">Balance</span>
                     <span className="font-mono">
-                      {formatNativeAmount(user?.balance || 0, activeChain, 4)} {nativeSymbol}
+                      {formatNativeAmount(
+                        activeChain === "solana" ? user?.balance : user?.baseBalance,
+                        activeChain,
+                        4
+                      )} {nativeSymbol}
                     </span>
                   </div>
                   <p className="text-xs text-[var(--text-tertiary)] text-right">
