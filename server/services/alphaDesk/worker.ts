@@ -8,7 +8,7 @@ import { runDailyPipeline } from "./index";
 import { getUnmeasuredIdeas, recordOutcome } from "./persist/outcomes";
 import { fetchTokenProfiles } from "./ingest/dexscreener";
 
-const CHAINS: Array<"base" | "solana"> = ["base", "solana"];
+const CHAINS: Array<"base" | "solana" | "any"> = ["any"];
 const OUTCOME_HORIZONS: Array<"1h" | "6h" | "24h" | "7d"> = ["1h", "6h", "24h", "7d"];
 
 async function ensureTodayRuns(): Promise<void> {
@@ -33,7 +33,7 @@ async function measureOutcomes(): Promise<void> {
         // Batch fetch current prices via DexScreener
         const tokens = ideas.map((i) => ({
           tokenAddress: i.tokenAddress,
-          chainId: chain === "solana" ? "solana" : "base",
+          chainId: chain === "solana" ? "solana" : chain === "base" ? "base" : "solana",
           symbol: "",
           name: "",
         }));

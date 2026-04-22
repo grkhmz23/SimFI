@@ -1,5 +1,8 @@
 import type { Chain } from "@shared/schema";
 
+// Alpha Desk supports a universal 'any' chain for chain-agnostic ideas
+export type AlphaDeskChain = Chain | "any";
+
 // =============================================================================
 // Ingestion types
 // =============================================================================
@@ -61,7 +64,7 @@ export interface ScoredToken {
   symbol: string;
   name: string;
   pairAddress?: string;
-  chain: Chain;
+  chain: AlphaDeskChain;
 
   // Raw signals
   mentionCount: number;
@@ -107,7 +110,7 @@ export interface MemeLaunchIdeaGenerated {
   marketSignal: string;
   riskFlags: string[];
   confidence: number;
-  chain: Chain;
+  chain: AlphaDeskChain;
   category: "meme" | "culture" | "political" | "tech";
   riskLevel: "low" | "medium" | "high";
 }
@@ -123,7 +126,7 @@ export interface DevBuildIdeaGenerated {
   suggestedStack: string[];
   complexity: "weekend" | "sprint" | "quarter";
   monetization: string;
-  chain: Chain;
+  chain: AlphaDeskChain;
   confidence: number;
   evidence: string[];
 }
@@ -146,14 +149,14 @@ export interface AlphaDeskIdeaInput {
 export interface AlphaDeskRunResult {
   runId: number;
   runDate: string;
-  chain: Chain;
+  chain: AlphaDeskChain;
   memeCount: number;
   devCount: number;
   status: "pending" | "succeeded" | "failed";
 }
 
 export interface PipelineContext {
-  chain: Chain;
+  chain: AlphaDeskChain;
   runDate: string;
   sourcesUsed: Record<string, boolean>;
   llmProvider?: string;

@@ -115,7 +115,7 @@ export default function AlphaDesk() {
                 No Launch Ideas Yet
               </h3>
               <p className="text-[var(--text-secondary)] mb-6">
-                The Alpha Desk pipeline hasn&apos;t run yet for today. Check back later or switch chains.
+                The Alpha Desk pipeline hasn&apos;t run yet for today. Check back later — fresh meme and build ideas are generated daily.
               </p>
               <Button onClick={() => setLocation("/trade")}>Go to Trade</Button>
             </div>

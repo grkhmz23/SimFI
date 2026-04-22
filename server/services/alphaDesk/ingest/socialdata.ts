@@ -1,17 +1,22 @@
-import type { Chain } from "@shared/schema";
+import type { AlphaDeskChain } from "../types";
 import type { SocialDataTweet } from "../types";
 import { ingestFetch } from "./client";
 
 const API_NAME = "socialdata";
 
-function buildQuery(chain: Chain, since: string, until: string): string {
-  const chainTerms = chain === "solana" ? "solana OR $SOL OR memecoin" : "base OR $BASE OR memecoin";
+function buildQuery(chain: AlphaDeskChain, since: string, until: string): string {
+  const chainTerms =
+    chain === "any"
+      ? "memecoin OR crypto OR viral OR trending"
+      : chain === "solana"
+      ? "solana OR $SOL OR memecoin"
+      : "base OR $BASE OR memecoin";
   const query = `${chainTerms} since:${since} until:${until}`;
   return encodeURIComponent(query);
 }
 
 export async function ingestTwitterSignals(
-  chain: Chain,
+  chain: AlphaDeskChain,
   since: string,
   until: string
 ): Promise<{ tweets: SocialDataTweet[]; totalMentions: number; uniqueAuthors: number }> {

@@ -1,7 +1,7 @@
 // server/services/alphaDesk/llm/prompts.ts
 // Prompts for dual-mode Alpha Desk: meme launch ideas + dev build ideas.
 
-import type { Chain } from "@shared/schema";
+import type { AlphaDeskChain } from "../types";
 import type { ScoredToken, RedditPost, SocialDataTweet, GithubSignal } from "../types";
 
 function formatTokens(tokens: ScoredToken[]): string {
@@ -59,13 +59,14 @@ Output STRICT JSON. No markdown, no explanations outside JSON.`;
 
 export function buildMemeLaunchUserPrompt(
   periodLabel: string,
-  chain: Chain,
+  chain: AlphaDeskChain,
   tokens: ScoredToken[],
   redditPosts: RedditPost[],
   tweets: SocialDataTweet[],
   githubSignals: GithubSignal[]
 ): string {
-  return `Generate 3-5 viral meme token LAUNCH CONCEPTS for the ${chain.toUpperCase()} blockchain.
+  const chainLabel = chain === "any" ? "ANY blockchain" : `the ${chain.toUpperCase()} blockchain`;
+  return `Generate 3-5 viral meme token LAUNCH CONCEPTS for ${chainLabel}.
 
 Period: ${periodLabel}
 
@@ -153,13 +154,14 @@ Output STRICT JSON. No markdown, no explanations outside JSON.`;
 
 export function buildDevBuildUserPrompt(
   periodLabel: string,
-  chain: Chain,
+  chain: AlphaDeskChain,
   tokens: ScoredToken[],
   redditPosts: RedditPost[],
   tweets: SocialDataTweet[],
   githubSignals: GithubSignal[]
 ): string {
-  return `Generate 3-5 developer BUILD IDEAS for the ${chain.toUpperCase()} ecosystem.
+  const chainLabel = chain === "any" ? "blockchain ecosystems" : `the ${chain.toUpperCase()} ecosystem`;
+  return `Generate 3-5 developer BUILD IDEAS for ${chainLabel}.
 
 Period: ${periodLabel}
 

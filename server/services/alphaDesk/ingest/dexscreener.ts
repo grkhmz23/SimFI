@@ -1,14 +1,15 @@
-import type { Chain } from "@shared/schema";
+import type { AlphaDeskChain } from "../types";
 import type { DexScreenerToken } from "../types";
 import { ingestFetch } from "./client";
 
 const API_NAME = "dexscreener";
 
-function chainToDexScreenerId(chain: Chain): string {
+function chainToDexScreenerId(chain: AlphaDeskChain): string | null {
+  if (chain === "any") return null;
   return chain === "solana" ? "solana" : "base";
 }
 
-export async function fetchTrendingTokens(chain: Chain, limit = 50): Promise<DexScreenerToken[]> {
+export async function fetchTrendingTokens(chain: AlphaDeskChain, limit = 50): Promise<DexScreenerToken[]> {
   const chainId = chainToDexScreenerId(chain);
   const res = await ingestFetch({
     apiName: API_NAME,
@@ -24,7 +25,7 @@ export async function fetchTrendingTokens(chain: Chain, limit = 50): Promise<Dex
     const data = await res.json();
     const tokens: DexScreenerToken[] = [];
     for (const item of data ?? []) {
-      if (item.chainId !== chainId) continue;
+      if (chainId && item.chainId !== chainId) continue;
       tokens.push({
         tokenAddress: item.tokenAddress,
         chainId: item.chainId,

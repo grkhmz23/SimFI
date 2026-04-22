@@ -3093,16 +3093,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Alpha Desk API
   // ============================================================================
 
-  // GET /api/alpha-desk/today?chain=base|solana
+  // GET /api/alpha-desk/today?chain=base|solana|any
   app.get('/api/alpha-desk/today', async (req, res) => {
     try {
-      const chain = (req.query.chain as string) || 'base';
-      if (chain !== 'base' && chain !== 'solana') {
-        return res.status(400).json({ error: 'Invalid chain. Use base or solana.' });
+      const requestedChain = (req.query.chain as string) || 'any';
+      const validChains = ['base', 'solana', 'any'];
+      if (!validChains.includes(requestedChain)) {
+        return res.status(400).json({ error: 'Invalid chain. Use base, solana, or any.' });
       }
 
       const runDate = new Date().toISOString().split('T')[0];
-      const run = await findTodayRun(runDate, chain);
+      // Prefer 'any' runs (universal chain-agnostic ideas). Fallback to requested chain for legacy.
+      let run = await findTodayRun(runDate, 'any');
+      if (!run || run.status !== 'succeeded') {
+        run = await findTodayRun(runDate, requestedChain as any);
+      }
       if (!run || run.status !== 'succeeded') {
         return res.status(404).json({ error: 'No Alpha Desk picks available for today' });
       }
@@ -3121,19 +3126,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const memeIdeas = ideasWithOutcomes.filter((i) => i.ideaType === 'meme_launch');
       const devIdeas = ideasWithOutcomes.filter((i) => i.ideaType === 'dev_build');
 
-      res.json({ runDate, chain, memeIdeas, devIdeas });
+      res.json({ runDate, chain: run ? requestedChain : requestedChain, memeIdeas, devIdeas });
     } catch (error: any) {
       console.error('[AlphaDesk] /today error:', error);
       res.status(500).json({ error: 'Could not fetch Alpha Desk picks' });
     }
   });
 
-  // GET /api/alpha-desk/history?chain=base|solana&days=30
+  // GET /api/alpha-desk/history?chain=base|solana|any&days=30
   app.get('/api/alpha-desk/history', async (req, res) => {
     try {
-      const chain = (req.query.chain as string) || 'base';
-      if (chain !== 'base' && chain !== 'solana') {
-        return res.status(400).json({ error: 'Invalid chain. Use base or solana.' });
+      const chain = (req.query.chain as string) || 'any';
+      const validChains = ['base', 'solana', 'any'];
+      if (!validChains.includes(chain)) {
+        return res.status(400).json({ error: 'Invalid chain. Use base, solana, or any.' });
       }
       const days = Math.min(30, Math.max(1, parseInt(req.query.days as string) || 7));
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -3167,12 +3173,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/alpha-desk/track-record?chain=base|solana&horizon=24h
+  // GET /api/alpha-desk/track-record?chain=base|solana|any&horizon=24h
   app.get('/api/alpha-desk/track-record', async (req, res) => {
     try {
-      const chain = (req.query.chain as string) || 'base';
-      if (chain !== 'base' && chain !== 'solana') {
-        return res.status(400).json({ error: 'Invalid chain. Use base or solana.' });
+      const chain = (req.query.chain as string) || 'any';
+      const validChains = ['base', 'solana', 'any'];
+      if (!validChains.includes(chain)) {
+        return res.status(400).json({ error: 'Invalid chain. Use base, solana, or any.' });
       }
       const horizon = (req.query.horizon as string) || '24h';
       if (!['1h', '6h', '24h', '7d'].includes(horizon)) {
@@ -3246,8 +3253,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const chain = req.body.chain;
-      if (chain !== 'base' && chain !== 'solana') {
-        return res.status(400).json({ error: 'Invalid chain. Use base or solana.' });
+      const validChains = ['base', 'solana', 'any'];
+      if (!validChains.includes(chain)) {
+        return res.status(400).json({ error: 'Invalid chain. Use base, solana, or any.' });
       }
 
       // Cost guard

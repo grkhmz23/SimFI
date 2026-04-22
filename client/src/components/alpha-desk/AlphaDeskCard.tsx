@@ -125,10 +125,12 @@ export function AlphaDeskCard({ idea }: AlphaDeskCardProps) {
             "text-[10px] uppercase tracking-wider",
             idea.chain === "base"
               ? "border-blue-500/30 text-blue-400"
-              : "border-purple-500/30 text-purple-400"
+              : idea.chain === "solana"
+              ? "border-purple-500/30 text-purple-400"
+              : "border-emerald-500/30 text-emerald-400"
           )}
         >
-          {idea.chain}
+          {idea.chain === "any" ? "Any Chain" : idea.chain}
         </Badge>
       </div>
 

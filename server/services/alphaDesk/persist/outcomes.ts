@@ -1,7 +1,7 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { db } from "../../../db";
 import { alphaDeskIdeaOutcomes, alphaDeskIdeas } from "@shared/schema";
-import type { Chain } from "@shared/schema";
+import type { AlphaDeskChain } from "../types";
 
 export async function recordOutcome(params: {
   ideaId: number;
@@ -24,7 +24,7 @@ export async function recordOutcome(params: {
 }
 
 export async function getUnmeasuredIdeas(
-  chain: Chain,
+  chain: AlphaDeskChain,
   since: Date,
   horizon: "1h" | "6h" | "24h" | "7d"
 ): Promise<{ id: number; tokenAddress: string; priceAtPublishUsd: string | null }[]> {

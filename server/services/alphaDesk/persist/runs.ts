@@ -1,11 +1,11 @@
 import { eq, and } from "drizzle-orm";
 import { db } from "../../../db";
 import { alphaDeskRuns } from "@shared/schema";
-import type { Chain } from "@shared/schema";
+import type { AlphaDeskChain } from "../types";
 
 export async function insertAlphaDeskRun(params: {
   runDate: string;
-  chain: Chain;
+  chain: AlphaDeskChain;
   status: "pending" | "succeeded" | "failed";
   sourcesUsed: Record<string, boolean>;
   llmProvider?: string;
@@ -50,7 +50,7 @@ export async function updateAlphaDeskRun(
 
 export async function findTodayRun(
   runDate: string,
-  chain: Chain
+  chain: AlphaDeskChain
 ): Promise<{ id: number; status: string } | undefined> {
   const rows = await db
     .select({ id: alphaDeskRuns.id, status: alphaDeskRuns.status })
@@ -61,7 +61,7 @@ export async function findTodayRun(
   return rows[0];
 }
 
-export async function countRunsToday(runDate: string, chain: Chain): Promise<number> {
+export async function countRunsToday(runDate: string, chain: AlphaDeskChain): Promise<number> {
   const rows = await db
     .select({ id: alphaDeskRuns.id })
     .from(alphaDeskRuns)

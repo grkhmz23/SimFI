@@ -16,7 +16,10 @@ export async function ingestGithubSignals(
 
   const signals: GithubSignal[] = [];
 
-  for (const repo of repos) {
+  // Deduplicate repos
+  const uniqueRepos = Array.from(new Set(repos));
+
+  for (const repo of uniqueRepos) {
     const [owner, name] = repo.split("/");
     if (!owner || !name) continue;
 

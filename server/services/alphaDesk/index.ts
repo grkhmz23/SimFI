@@ -1,7 +1,7 @@
 // server/services/alphaDesk/index.ts
 // Main entry: runDailyPipeline(chain) — generates meme launch ideas + dev build ideas.
 
-import type { Chain } from "@shared/schema";
+import type { AlphaDeskChain } from "./types";
 import type { ScoredToken, AlphaDeskIdeaGenerated, PipelineContext } from "./types";
 import { fetchTrendingTokens, fetchTokenProfiles } from "./ingest/dexscreener";
 import { ingestTwitterSignals } from "./ingest/socialdata";
@@ -30,7 +30,7 @@ function getPeriodDates(): { since: string; until: string; periodLabel: string }
   return { since, until, periodLabel: `${since} → ${until}` };
 }
 
-export async function runDailyPipeline(chain: Chain): Promise<{ runId: number; memeCount: number; devCount: number }> {
+export async function runDailyPipeline(chain: AlphaDeskChain): Promise<{ runId: number; memeCount: number; devCount: number }> {
   const runDate = formatDateIso(new Date());
   const { since, until, periodLabel } = getPeriodDates();
 
@@ -81,13 +81,18 @@ export async function runDailyPipeline(chain: Chain): Promise<{ runId: number; m
     const tokensWithProfiles = await fetchTokenProfiles(trendingRaw);
 
     // GitHub signals (optional)
-    const githubSignals = await ingestGithubSignals(
-      chain === "solana"
+    const githubRepos =
+      chain === "any"
+        ? [
+            "solana-labs/solana",
+            "metaplex-foundation/metaplex",
+            "base-org/node",
+            "coinbase/smart-wallet",
+          ]
+        : chain === "solana"
         ? ["solana-labs/solana", "metaplex-foundation/metaplex"]
-        : ["base-org/node", "coinbase/smart-wallet"],
-      since,
-      until
-    );
+        : ["base-org/node", "coinbase/smart-wallet"];
+    const githubSignals = await ingestGithubSignals(githubRepos, since, until);
     context.sourcesUsed["github"] = githubSignals.length > 0;
 
     // === Scoring ===
@@ -178,7 +183,7 @@ function scoreTokens(
   tweets: import("./types").SocialDataTweet[],
   githubSignals: import("./types").GithubSignal[],
   weights: import("./score/weights").Weights,
-  chain: Chain
+  chain: AlphaDeskChain
 ): ScoredToken[] {
   if (tokens.length === 0) return [];
 

@@ -6,7 +6,7 @@ import type {
   MemeLaunchIdeaGenerated,
   DevBuildIdeaGenerated,
   AlphaDeskIdeaGenerated,
-  Chain,
+  AlphaDeskChain,
 } from "../types";
 import { callLLM, parseJsonFromLlmWithRepair } from "./client";
 import {
@@ -19,7 +19,7 @@ import { MemeLaunchResponseSchema, DevBuildResponseSchema } from "./schemas";
 
 interface IngestData {
   periodLabel: string;
-  chain: Chain;
+  chain: AlphaDeskChain;
   tokens: ScoredToken[];
   redditPosts: RedditPost[];
   tweets: SocialDataTweet[];
