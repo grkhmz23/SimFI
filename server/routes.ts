@@ -404,10 +404,10 @@ async function fetchBirdeyeTokenData(
     if (priceUsd <= 0 || !isFinite(priceUsd)) return null;
 
     // Birdeye returns price in USD. Convert to native units (SOL/ETH per token).
-    const nativePrice = chain === 'solana'
+    // getCachedSolPrice / getCachedNativePrice return USD directly, NOT wei/lamports
+    const nativePriceUsd = chain === 'solana'
       ? (getCachedSolPrice() ?? 0)
       : (getCachedNativePrice('base') ?? 0);
-    const nativePriceUsd = Number(nativePrice) / (chain === 'solana' ? 1e9 : 1e18);
 
     if (nativePriceUsd <= 0) {
       // Native price not cached — can't convert
@@ -1897,8 +1897,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // ✅ DYNAMIC SLIPPAGE: Realistic AMM impact for memecoins
         const nativePriceUsd = chain === 'solana'
-          ? (await getCachedSolPrice() ?? 0) / 1_000_000_000
-          : (await getCachedNativePrice('base') ?? 0) / 1e18;
+          ? (await getCachedSolPrice() ?? 0)
+          : (await getCachedNativePrice('base') ?? 0);
         const tradeSizeUsd = nativePriceUsd > 0
           ? Number(nativeSpent) / (chain === 'solana' ? 1e9 : 1e18) * nativePriceUsd
           : 0;
@@ -2115,8 +2115,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // ✅ DYNAMIC SLIPPAGE: Realistic sell impact (sells push price DOWN)
         const nativePriceUsd = positionChain === 'solana'
-          ? (await getCachedSolPrice() ?? 0) / 1_000_000_000
-          : (await getCachedNativePrice('base') ?? 0) / 1e18;
+          ? (await getCachedSolPrice() ?? 0)
+          : (await getCachedNativePrice('base') ?? 0);
         const positionValueUsd = nativePriceUsd > 0
           ? Number(position.solSpent) / (positionChain === 'solana' ? 1e9 : 1e18) * nativePriceUsd
           : 0;
