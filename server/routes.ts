@@ -399,7 +399,7 @@ async function fetchBirdeyeTokenData(
     const priceUsd = parseFloat(d.price || '0');
     const liquidityUsd = parseFloat(d.liquidity || d.liquidityUsd || '0');
     const volume24hUsd = parseFloat(d.v24hUSD || d.volume24h || d.v24h || '0');
-    const decimals = parseInt(d.decimals || (chain === 'base' ? '18' : '6'));
+    const decimals = parseInt(d.decimals ?? (chain === 'base' ? '18' : '6'));
 
     if (priceUsd <= 0 || !isFinite(priceUsd)) return null;
 
@@ -470,7 +470,7 @@ async function fetchDexScreenerPriceForChain(
       
       return {
         priceNative,
-        decimals: bestPair.baseToken?.decimals || (chain === 'base' ? 18 : 6),
+        decimals: bestPair.baseToken?.decimals ?? (chain === 'base' ? 18 : 6),
         liquidityUsd: parseFloat(bestPair.liquidity?.usd || '0'),
         volume24hUsd: parseFloat(bestPair.volume?.h24 || '0'),
         fetchedAt: Date.now(),
@@ -893,7 +893,7 @@ async function fetchDexScreenerPriceInternal(tokenAddress: string): Promise<Pric
       if (solanaPair && solanaPair.priceNative) {
         // ✅ PRECISION FIX: Parse without float math
         const priceLamports = Number(parseDecimalToNative(solanaPair.priceNative, 9));
-        const decimals = solanaPair.baseToken?.decimals || 6;
+        const decimals = solanaPair.baseToken?.decimals ?? 6;
         const liquidityUsd = parseFloat(solanaPair.liquidity?.usd || '0');
         const volume24hUsd = parseFloat(solanaPair.volume?.h24 || '0');
 
@@ -1734,7 +1734,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const priceAgeMs = priceIsFresh && pricesFetchedAt ? Date.now() - pricesFetchedAt : -1;
 
         // ✅ Recalculate current value based on FRESH price, not stale DB value
-        const decimals = p.decimals || 6;
+        const decimals = p.decimals ?? 6;
         const divisor = BigInt(10) ** BigInt(decimals);
         const amountBigInt = BigInt(p.amount);
         const priceBigInt = BigInt(priceToUse);
@@ -1881,7 +1881,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
         }
 
-        decimals = currentTokenData.decimals || decimals;
+        decimals = currentTokenData.decimals ?? decimals;
         liquidityUsd = currentTokenData.liquidityUsd || 0;
         volume24hUsd = currentTokenData.volume24hUsd || 0;
 
@@ -1937,8 +1937,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      if (tokenAmount! <= 0n) {
-        return res.status(400).json({ error: `${chainConfig.nativeSymbol} amount too small to buy tokens` });
+      // ✅ GUARD: Reject dust trades that would give < 1 base unit of tokens
+      if (tokenAmount < 1n) {
+        return res.status(400).json({
+          error: `Trade amount too small for this token price. You would receive less than 1 base unit of tokens. Try a larger ${chainConfig.nativeSymbol} amount.`,
+          priceNative: executionPriceNative.toString(),
+          nativeSpent: nativeSpent.toString(),
+        });
       }
 
       const tokensDisplay = Number(tokenAmount) / (10 ** decimals);
@@ -2053,7 +2058,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ✅ ANTI-CHEAT: Fetch price BEFORE transaction (no external calls in tx)
       // For Solana with Jupiter: try Jupiter quote FIRST
-      const decimals = position.decimals || (positionChain === 'base' ? 18 : 6);
+      const decimals = position.decimals ?? (positionChain === 'base' ? 18 : 6);
       const decimalDivisor = BigInt(10 ** decimals);
       let executionPriceNative: bigint = 0n;
       let nativeReceived: bigint = 0n;
@@ -2136,6 +2141,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const profitLoss = nativeReceived! - proportionalCost;
 
       const chainConfig = CHAIN_CONFIG[positionChain as Chain];
+
+      // ✅ GUARD: Reject sell if output is less than 1 wei/lamport (would return 0)
+      if (nativeReceived < 1n) {
+        return res.status(400).json({
+          error: `Position too small to sell. Your ${Number(sellAmount) / (10 ** decimals)} tokens are worth less than 1 ${chainConfig.nativeSymbol} at current price.`,
+          positionAmount: sellAmount.toString(),
+          executionPrice: executionPriceNative.toString(),
+          estimatedValue: nativeReceived.toString(),
+        });
+      }
       console.log(`📊 Sell (${isFullSell ? 'FULL' : 'PARTIAL'}): ${Number(sellAmount) / (10 ** decimals)} tokens → ${Number(nativeReceived) / (10 ** chainConfig.nativeDecimals)} ${chainConfig.nativeSymbol} on ${positionChain}`);
 
       // Execute atomic trade with server-side price
