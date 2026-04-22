@@ -377,6 +377,66 @@ function parseDecimalToNativeUnits(decimalString: string, nativeDecimals: number
   return str !== '0' && parseFloat(str) > 0 ? 1n : 0n;
 }
 
+// ============================================================================
+// BIRDEYE PRICE FETCHER: Primary for Base chain (real-time + liquidity data)
+// ============================================================================
+
+async function fetchBirdeyeTokenData(
+  tokenAddress: string,
+  chain: Chain
+): Promise<{ priceNative: bigint; decimals: number; liquidityUsd: number; volume24hUsd: number; fetchedAt: number } | null> {
+  if (chain !== 'base' && chain !== 'solana') return null;
+
+  const birdeyeChain = chain === 'solana' ? 'solana' : 'base';
+  try {
+    const res = await fetchBirdeye(`/defi/token_overview?address=${tokenAddress}`, birdeyeChain);
+    if (!res?.ok) return null;
+
+    const json = await res.json();
+    const d = json?.data;
+    if (!d) return null;
+
+    const priceUsd = parseFloat(d.price || '0');
+    const liquidityUsd = parseFloat(d.liquidity || d.liquidityUsd || '0');
+    const volume24hUsd = parseFloat(d.v24hUSD || d.volume24h || d.v24h || '0');
+    const decimals = parseInt(d.decimals || (chain === 'base' ? '18' : '6'));
+
+    if (priceUsd <= 0 || !isFinite(priceUsd)) return null;
+
+    // Birdeye returns price in USD. Convert to native units (SOL/ETH per token).
+    const nativePrice = chain === 'solana'
+      ? (getCachedSolPrice() ?? 0)
+      : (getCachedNativePrice('base') ?? 0);
+    const nativePriceUsd = Number(nativePrice) / (chain === 'solana' ? 1e9 : 1e18);
+
+    if (nativePriceUsd <= 0) {
+      // Native price not cached — can't convert
+      console.warn(`[Birdeye] Native ${chain} price unavailable, skipping USD→native conversion`);
+      return null;
+    }
+
+    // priceNative = (priceUsd / nativePriceUsd) * 10^nativeDecimals
+    const nativeDecimals = chain === 'solana' ? 9 : 18;
+    const priceInNative = priceUsd / nativePriceUsd;
+    const priceNative = parseDecimalToNativeUnits(priceInNative.toFixed(nativeDecimals), nativeDecimals);
+
+    if (priceNative <= 0n) return null;
+
+    console.log(`[Birdeye] ${chain} price for ${tokenAddress.slice(0, 8)}: $${priceUsd.toFixed(8)}, liq=$${liquidityUsd.toFixed(0)}, vol24h=$${volume24hUsd.toFixed(0)}`);
+
+    return {
+      priceNative,
+      decimals,
+      liquidityUsd,
+      volume24hUsd,
+      fetchedAt: Date.now(),
+    };
+  } catch (err: any) {
+    console.warn(`[Birdeye] ${chain} fetch failed for ${tokenAddress.slice(0, 8)}:`, err.message);
+    return null;
+  }
+}
+
 // Fetch token price from DexScreener for a specific chain
 async function fetchDexScreenerPriceForChain(
   tokenAddress: string, 
@@ -632,17 +692,19 @@ async function fetchJupiter(endpoint: string): Promise<Response | null> {
   );
 }
 
-async function fetchBirdeye(endpoint: string): Promise<Response | null> {
+async function fetchBirdeye(endpoint: string, chain: string = 'solana'): Promise<Response | null> {
+  const headers: Record<string, string> = {
+    'accept': 'application/json',
+    'x-chain': chain,
+  };
+  if (process.env.BIRDEYE_API_KEY) {
+    headers['X-API-KEY'] = process.env.BIRDEYE_API_KEY;
+  }
   return fetchWithCircuitBreaker(
     'birdeye',
     `https://public-api.birdeye.so${endpoint}`,
     API_TIMEOUTS.birdeye,
-    {
-      headers: {
-        'accept': 'application/json',
-        'x-chain': 'solana',
-      },
-    }
+    { headers }
   );
 }
 
@@ -1639,6 +1701,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
           console.log(`📊 Fetched ${priceMap.size} token profiles from DexScreener`);
+
+          // ✅ BIRDEYE: Fetch real-time prices for Base tokens (prefer over DexScreener)
+          const basePositions = positions.filter(p => p.chain === 'base');
+          const baseTokenAddresses = Array.from(new Set(basePositions.map(p => p.tokenAddress)));
+          if (baseTokenAddresses.length > 0) {
+            console.log(`🔭 Fetching Birdeye prices for ${baseTokenAddresses.length} Base tokens...`);
+            for (const tokenAddr of baseTokenAddresses) {
+              try {
+                const birdeyeData = await fetchBirdeyeTokenData(tokenAddr, 'base');
+                if (birdeyeData && birdeyeData.priceNative > 0n) {
+                  priceMap.set(tokenAddr, birdeyeData.priceNative);
+                  pricesFetchedAt = Date.now();
+                  console.log(`   Birdeye override for ${tokenAddr.slice(0, 8)}: $${(Number(birdeyeData.priceNative) / 1e18).toExponential(4)} ETH`);
+                }
+              } catch (e: any) {
+                // Keep DexScreener price if Birdeye fails
+              }
+            }
+          }
         } catch (error) {
           console.warn('⚠️  Failed to fetch current prices for positions:', error);
         }
@@ -1774,9 +1855,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // ── FALLBACK: DexScreener for liquidity check + price (Base OR Jupiter failed) ──
+      // ── FALLBACK: Birdeye (Base) or DexScreener (Solana fallback) ──
       if (!usedJupiter) {
-        const currentTokenData = await fetchDexScreenerPriceForChain(tokenAddress, chain);
+        let currentTokenData = null;
+
+        // Base chain: try Birdeye FIRST for real-time price + liquidity
+        if (chain === 'base') {
+          currentTokenData = await fetchBirdeyeTokenData(tokenAddress, chain);
+          if (currentTokenData) {
+            priceSource = 'birdeye';
+            console.log(`[Buy] Birdeye primary for Base: ${tokenAddress.slice(0, 8)}`);
+          }
+        }
+
+        // Solana fallback OR Birdeye failed: use DexScreener
+        if (!currentTokenData) {
+          currentTokenData = await fetchDexScreenerPriceForChain(tokenAddress, chain);
+          if (currentTokenData) {
+            priceSource = 'dexscreener';
+            console.log(`[Buy] DexScreener fallback for ${chain}: ${tokenAddress.slice(0, 8)}`);
+          }
+        }
+
         if (!currentTokenData || !currentTokenData.priceNative) {
           return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
         }
@@ -1805,10 +1905,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const slippageBps = estimateSlippageBps(tradeSizeUsd, liquidityUsd);
         const slippageMultiplier = 10000n + BigInt(slippageBps);
         executionPriceNative = (currentTokenData.priceNative * slippageMultiplier) / 10000n;
-        priceSource = 'dexscreener';
 
         console.log(`💰 Server-side execution (ANTI-CHEAT) on ${chain}:`);
-        console.log(`   DexScreener price: ${currentTokenData.priceNative.toString()} native units/token`);
+        console.log(`   ${priceSource} price: ${currentTokenData.priceNative.toString()} native units/token`);
         console.log(`   Liquidity: $${liquidityUsd.toFixed(0)} | Trade: ~$${tradeSizeUsd.toFixed(2)}`);
         console.log(`   Dynamic slippage: ${(slippageBps / 100).toFixed(2)}%`);
         console.log(`   Execution price: ${executionPriceNative.toString()} native units/token`);
@@ -1816,11 +1915,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const decimalMultiplier = BigInt(10 ** decimals);
         tokenAmount = (nativeSpent * decimalMultiplier) / executionPriceNative;
       } else {
-        // Jupiter succeeded — still validate token exists via DexScreener liquidity check
-        const dexCheck = await fetchDexScreenerPriceForChain(tokenAddress, chain);
-        if (dexCheck) {
-          liquidityUsd = dexCheck.liquidityUsd;
-          volume24hUsd = dexCheck.volume24hUsd;
+        // Jupiter succeeded — still validate token exists via liquidity check
+        let check = null;
+        if (chain === 'base') {
+          check = await fetchBirdeyeTokenData(tokenAddress, chain);
+        }
+        if (!check) {
+          check = await fetchDexScreenerPriceForChain(tokenAddress, chain);
+        }
+        if (check) {
+          liquidityUsd = check.liquidityUsd;
+          volume24hUsd = check.volume24hUsd;
           if (!meetsLiquidityRequirements(liquidityUsd, volume24hUsd)) {
             console.log(`⚠️ Token ${tokenSymbol} rejected post-Jupiter: liquidity=$${liquidityUsd}`);
             return res.status(400).json({
@@ -1977,9 +2082,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // ── FALLBACK: DexScreener (Base OR Jupiter failed) ──
+      // ── FALLBACK: Birdeye (Base) or DexScreener (Solana fallback) ──
       if (!usedJupiter) {
-        const currentTokenData = await fetchDexScreenerPriceForChain(position.tokenAddress, positionChain as Chain);
+        let currentTokenData = null;
+
+        // Base chain: try Birdeye FIRST for real-time price
+        if (positionChain === 'base') {
+          currentTokenData = await fetchBirdeyeTokenData(position.tokenAddress, positionChain as Chain);
+          if (currentTokenData) {
+            priceSource = 'birdeye';
+            console.log(`[Sell] Birdeye primary for Base: ${position.tokenAddress.slice(0, 8)}`);
+          }
+        }
+
+        // Solana fallback OR Birdeye failed: use DexScreener
+        if (!currentTokenData) {
+          currentTokenData = await fetchDexScreenerPriceForChain(position.tokenAddress, positionChain as Chain);
+          if (currentTokenData) {
+            priceSource = 'dexscreener';
+            console.log(`[Sell] DexScreener fallback for ${positionChain}: ${position.tokenAddress.slice(0, 8)}`);
+          }
+        }
+
         if (!currentTokenData || !currentTokenData.priceNative) {
           return res.status(400).json({ error: 'Could not fetch token price. Try again.' });
         }
@@ -1991,16 +2115,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const positionValueUsd = nativePriceUsd > 0
           ? Number(position.solSpent) / (positionChain === 'solana' ? 1e9 : 1e18) * nativePriceUsd
           : 0;
-        // Use position value as proxy for liquidity if DexScreener liquidity is missing
+        // Use position value as proxy for liquidity if data liquidity is missing
         const sellValueUsd = positionValueUsd * (Number(sellAmount) / Number(position.amount));
         const liquidityUsd = currentTokenData.liquidityUsd || positionValueUsd || 1;
         const slippageBps = estimateSlippageBps(sellValueUsd, liquidityUsd);
         const slippageMultiplier = 10000n - BigInt(slippageBps);
         executionPriceNative = (currentTokenData.priceNative * slippageMultiplier) / 10000n;
-        priceSource = 'dexscreener';
 
         console.log(`💰 Server-side sell execution (ANTI-CHEAT) on ${positionChain}:`);
-        console.log(`   DexScreener price: ${currentTokenData.priceNative.toString()} native units/token`);
+        console.log(`   ${priceSource} price: ${currentTokenData.priceNative.toString()} native units/token`);
         console.log(`   Liquidity: $${liquidityUsd.toFixed(0)} | Sell value: ~$${sellValueUsd.toFixed(2)}`);
         console.log(`   Dynamic slippage: ${(slippageBps / 100).toFixed(2)}%`);
         console.log(`   Execution price: ${executionPriceNative.toString()} native units/token`);
