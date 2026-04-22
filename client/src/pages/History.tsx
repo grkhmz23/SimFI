@@ -28,8 +28,9 @@ import {
 } from '@/lib/format';
 import { useChain } from '@/lib/chain-context';
 import { usePrice } from '@/lib/price-context';
-import { History as HistoryIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { History as HistoryIcon, ChevronLeft, ChevronRight, Share2 } from 'lucide-react';
 import type { Trade } from '@shared/schema';
+import { TradeShareModal } from '@/components/TradeShareModal';
 
 /* ------------------------------------------------------------------ */
 //  Types
@@ -86,6 +87,7 @@ function calculateHoldTime(opened: string | Date, closed: string | Date): string
 
 export default function History() {
   const [page, setPage] = useState(1);
+  const [shareTrade, setShareTrade] = useState<Trade | null>(null);
   const { activeChain, nativeSymbol } = useChain();
   const { getPrice } = usePrice();
 
@@ -172,6 +174,7 @@ export default function History() {
                       </TableHead>
                       <TableHead className="text-[var(--text-secondary)]">Chain</TableHead>
                       <TableHead className="text-[var(--text-secondary)]">Closed</TableHead>
+                      <TableHead className="w-10" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -270,6 +273,17 @@ export default function History() {
                           <TableCell className="text-sm text-[var(--text-secondary)] whitespace-nowrap">
                             {formatDate(trade.closedAt)}
                           </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() => setShareTrade(trade)}
+                              title="Share trade card"
+                            >
+                              <Share2 className="h-4 w-4 text-[var(--text-secondary)]" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -311,6 +325,12 @@ export default function History() {
           )}
         </div>
       </Card>
+      <TradeShareModal
+        trade={shareTrade}
+        nativePrice={getPrice(shareTrade?.chain as 'base' | 'solana') ?? 0}
+        open={!!shareTrade}
+        onOpenChange={(open) => !open && setShareTrade(null)}
+      />
     </div>
   );
 }

@@ -1,8 +1,8 @@
 import { eq, desc, asc, and, sql, gt } from 'drizzle-orm';
 import { db } from './db';
 import { 
-  users, positions, tradeHistory, leaderboardPeriods, telegramSessions, userAchievements, referrals, follows,
-  type User, type Position, type Trade, type TelegramSession, type UserAchievement, type Referral, type Follow,
+  users, positions, tradeHistory, leaderboardPeriods, telegramSessions, userAchievements, referrals, follows, watchlist, communityPicks, communityVotes,
+  type User, type Position, type Trade, type TelegramSession, type UserAchievement, type Referral, type Follow, type WatchlistItem, type CommunityPick, type CommunityVote,
   type InsertUser, type InsertPosition, type InsertTrade, 
   LAMPORTS_PER_SOL, WEI_PER_ETH, type Chain, type BadgeId
 } from '@shared/schema';
@@ -15,6 +15,8 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   updateUserProfile(id: string, data: Partial<Omit<User, 'id' | 'createdAt'>>): Promise<User | undefined>;
+  incrementTokenVersion(id: string): Promise<User | undefined>;
+  updateLastLogin(id: string, ip: string): Promise<User | undefined>;
   
   // Balance operations - chain-specific
   updateUserBalance(id: string, balanceChange: bigint, chain: Chain): Promise<User | undefined>;
@@ -91,6 +93,20 @@ export interface IStorage {
   isFollowing(followerId: string, followingId: string): Promise<boolean>;
   getFollowerCount(userId: string): Promise<number>;
   getFollowingCount(userId: string): Promise<number>;
+
+  // Watchlist operations (Phase 9)
+  addToWatchlist(userId: string, data: { chain: Chain; tokenAddress: string; tokenName: string; tokenSymbol: string; decimals: number }): Promise<WatchlistItem>;
+  removeFromWatchlist(userId: string, watchlistId: string): Promise<void>;
+  getUserWatchlist(userId: string, chain?: Chain): Promise<WatchlistItem[]>;
+  isInWatchlist(userId: string, tokenAddress: string, chain: Chain): Promise<boolean>;
+
+  // Community Alpha / Voting (Phase 6)
+  createCommunityPick(userId: string, data: { chain: Chain; tokenAddress: string; tokenName: string; tokenSymbol: string; reason?: string }): Promise<CommunityPick>;
+  deleteCommunityPick(userId: string, pickId: string): Promise<void>;
+  getCommunityPicks(chain?: Chain, sortBy?: 'votes' | 'new', currentUserId?: string): Promise<(CommunityPick & { username: string; hasVoted?: boolean })[]>;
+  voteOnPick(userId: string, pickId: string): Promise<{ voteCount: number }>;
+  removeVoteFromPick(userId: string, pickId: string): Promise<{ voteCount: number }>;
+  hasVotedOnPick(userId: string, pickId: string): Promise<boolean>;
 
   // Public trader stats (Phase 5)
   getPublicTraderStats(username: string): Promise<any | undefined>;
@@ -185,6 +201,22 @@ class DbStorage implements IStorage {
     });
     
     const [user] = await db.update(users).set(updateData).where(eq(users.id, id)).returning();
+    return user;
+  }
+
+  async incrementTokenVersion(id: string): Promise<User | undefined> {
+    const [user] = await db.update(users)
+      .set({ tokenVersion: sql`${users.tokenVersion} + 1` })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
+  }
+
+  async updateLastLogin(id: string, ip: string): Promise<User | undefined> {
+    const [user] = await db.update(users)
+      .set({ lastLoginAt: new Date(), lastLoginIp: ip })
+      .where(eq(users.id, id))
+      .returning();
     return user;
   }
 
@@ -932,6 +964,141 @@ class DbStorage implements IStorage {
     await db.update(users)
       .set({ baseBalance: sql`${users.baseBalance} + ${bonusWei}` })
       .where(eq(users.id, userId));
+  }
+
+  // ============================================================================
+  // Watchlist (Phase 9)
+  // ============================================================================
+
+  async addToWatchlist(userId: string, data: { chain: Chain; tokenAddress: string; tokenName: string; tokenSymbol: string; decimals: number }): Promise<WatchlistItem> {
+    const [item] = await db.insert(watchlist)
+      .values({
+        userId,
+        chain: data.chain,
+        tokenAddress: data.tokenAddress,
+        tokenName: data.tokenName,
+        tokenSymbol: data.tokenSymbol,
+        decimals: data.decimals,
+      })
+      .onConflictDoNothing()
+      .returning();
+    return item as WatchlistItem;
+  }
+
+  async removeFromWatchlist(userId: string, watchlistId: string): Promise<void> {
+    await db.delete(watchlist)
+      .where(and(eq(watchlist.id, watchlistId), eq(watchlist.userId, userId)));
+  }
+
+  async getUserWatchlist(userId: string, chain?: Chain): Promise<WatchlistItem[]> {
+    let query = db.select().from(watchlist).where(eq(watchlist.userId, userId));
+    if (chain) {
+      query = db.select().from(watchlist).where(and(eq(watchlist.userId, userId), eq(watchlist.chain, chain))) as any;
+    }
+    const rows = await query.orderBy(desc(watchlist.createdAt));
+    return rows as WatchlistItem[];
+  }
+
+  async isInWatchlist(userId: string, tokenAddress: string, chain: Chain): Promise<boolean> {
+    const [row] = await db.select({ count: sql<number>`count(*)` })
+      .from(watchlist)
+      .where(and(eq(watchlist.userId, userId), eq(watchlist.tokenAddress, tokenAddress), eq(watchlist.chain, chain)));
+    return (row?.count || 0) > 0;
+  }
+
+  // ============================================================================
+  // Community Alpha / Voting (Phase 6)
+  // ============================================================================
+
+  async createCommunityPick(
+    userId: string,
+    data: { chain: Chain; tokenAddress: string; tokenName: string; tokenSymbol: string; reason?: string }
+  ): Promise<CommunityPick> {
+    const [pick] = await db.insert(communityPicks)
+      .values({
+        userId,
+        chain: data.chain,
+        tokenAddress: data.tokenAddress,
+        tokenName: data.tokenName,
+        tokenSymbol: data.tokenSymbol,
+        reason: data.reason ?? null,
+        voteCount: 0,
+      })
+      .returning();
+    return pick as CommunityPick;
+  }
+
+  async deleteCommunityPick(userId: string, pickId: string): Promise<void> {
+    await db.delete(communityPicks)
+      .where(and(eq(communityPicks.id, pickId), eq(communityPicks.userId, userId)));
+  }
+
+  async getCommunityPicks(
+    chain?: Chain,
+    sortBy: 'votes' | 'new' = 'votes',
+    currentUserId?: string
+  ): Promise<(CommunityPick & { username: string; hasVoted?: boolean })[]> {
+    const baseQuery = chain
+      ? db.select().from(communityPicks).where(eq(communityPicks.chain, chain))
+      : db.select().from(communityPicks);
+
+    const rows = await baseQuery.orderBy(
+      sortBy === 'votes' ? desc(communityPicks.voteCount) : desc(communityPicks.createdAt)
+    );
+
+    // Fetch usernames
+    const userIds = [...new Set(rows.map((r) => r.userId))];
+    const userRows = userIds.length > 0
+      ? await db.select({ id: users.id, username: users.username }).from(users).where(sql`${users.id} IN (${sql.join(userIds, sql`, `)})`)
+      : [];
+    const usernameMap = new Map(userRows.map((u) => [u.id, u.username]));
+
+    // Check votes if current user provided
+    let votedSet = new Set<string>();
+    if (currentUserId) {
+      const voteRows = await db.select({ pickId: communityVotes.pickId })
+        .from(communityVotes)
+        .where(and(eq(communityVotes.userId, currentUserId), sql`${communityVotes.pickId} IN (${sql.join(rows.map((r) => r.id), sql`, `)})`));
+      votedSet = new Set(voteRows.map((v) => v.pickId));
+    }
+
+    return rows.map((r) => ({
+      ...r,
+      username: usernameMap.get(r.userId) ?? 'Unknown',
+      hasVoted: currentUserId ? votedSet.has(r.id) : undefined,
+    })) as (CommunityPick & { username: string; hasVoted?: boolean })[];
+  }
+
+  async voteOnPick(userId: string, pickId: string): Promise<{ voteCount: number }> {
+    await db.insert(communityVotes)
+      .values({ pickId, userId })
+      .onConflictDoNothing();
+
+    const [updated] = await db.update(communityPicks)
+      .set({ voteCount: sql`${communityPicks.voteCount} + 1` })
+      .where(eq(communityPicks.id, pickId))
+      .returning({ voteCount: communityPicks.voteCount });
+
+    return { voteCount: updated?.voteCount ?? 0 };
+  }
+
+  async removeVoteFromPick(userId: string, pickId: string): Promise<{ voteCount: number }> {
+    await db.delete(communityVotes)
+      .where(and(eq(communityVotes.pickId, pickId), eq(communityVotes.userId, userId)));
+
+    const [updated] = await db.update(communityPicks)
+      .set({ voteCount: sql`${communityPicks.voteCount} - 1` })
+      .where(eq(communityPicks.id, pickId))
+      .returning({ voteCount: communityPicks.voteCount });
+
+    return { voteCount: updated?.voteCount ?? 0 };
+  }
+
+  async hasVotedOnPick(userId: string, pickId: string): Promise<boolean> {
+    const [row] = await db.select({ count: sql<number>`count(*)` })
+      .from(communityVotes)
+      .where(and(eq(communityVotes.userId, userId), eq(communityVotes.pickId, pickId)));
+    return (row?.count || 0) > 0;
   }
 }
 

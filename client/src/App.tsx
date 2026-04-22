@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth-context";
 import { PriceProvider } from "@/lib/price-context";
 import { ChainProvider } from "@/lib/chain-context";
+import { WatchlistProvider } from "@/lib/watchlist-context";
 import { Navigation } from "@/components/Navigation";
 import { MobileNav } from "@/components/MobileNav";
 import { Footer } from "@/components/ui/footer";
@@ -34,6 +35,9 @@ const Referrals = React.lazy(() => import("@/pages/Referrals"));
 const TraderProfile = React.lazy(() => import("@/pages/TraderProfile"));
 const WhaleWatch = React.lazy(() => import("@/pages/WhaleWatch"));
 const AlphaDesk = React.lazy(() => import("@/pages/AlphaDesk"));
+const Watchlist = React.lazy(() => import("@/pages/Watchlist"));
+const Analytics = React.lazy(() => import("@/pages/Analytics"));
+const Security = React.lazy(() => import("@/pages/Security"));
 const NotFound = React.lazy(() => import("@/pages/not-found"));
 
 const DesignSystem = import.meta.env.DEV
@@ -139,6 +143,21 @@ function Router() {
           <PageLayout component={AlphaDesk} />
         </Suspense>
       </Route>
+      <Route path="/watchlist">
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={Watchlist} />
+        </Suspense>
+      </Route>
+      <Route path="/analytics">
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={Analytics} />
+        </Suspense>
+      </Route>
+      <Route path="/security">
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={Security} />
+        </Suspense>
+      </Route>
       {import.meta.env.DEV && DesignSystem && (
         <Route path="/_design">
           <Suspense fallback={<PageSkeleton />}>
@@ -175,14 +194,16 @@ function App() {
       <TooltipProvider>
         <AuthProvider>
           <ChainProvider>
-            <PriceProvider>
-              <Toaster />
-              <WelcomePopup 
-                delay={800}
-                showOncePerSession={false}
-              />
-              <Router />
-            </PriceProvider>
+            <WatchlistProvider>
+              <PriceProvider>
+                <Toaster />
+                <WelcomePopup 
+                  delay={800}
+                  showOncePerSession={false}
+                />
+                <Router />
+              </PriceProvider>
+            </WatchlistProvider>
           </ChainProvider>
         </AuthProvider>
       </TooltipProvider>

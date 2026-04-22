@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter"
 import { useAuth } from "@/lib/auth-context"
 import { useChain } from "@/lib/chain-context"
 import { usePrice } from "@/lib/price-context"
+import { useSsePrices } from "@/hooks/useSsePrices"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -25,6 +26,9 @@ import {
   Users,
   ChevronDown,
   Sparkles,
+  Bookmark,
+  PieChart,
+  Shield,
 } from "lucide-react"
 import { formatBalance, formatUSD } from "@/lib/token-format"
 import { cn } from "@/lib/utils"
@@ -36,6 +40,7 @@ export function Navigation() {
   const { user, logout, isAuthenticated, getBalance } = useAuth()
   const { activeChain, setActiveChain, nativeSymbol } = useChain()
   const { getPrice } = usePrice()
+  const { isConnected, useFallback } = useSsePrices()
   const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
@@ -103,6 +108,20 @@ export function Navigation() {
 
             {/* Right: Chain + Auth */}
             <div className="flex items-center gap-3 shrink-0">
+              {/* Live indicator */}
+              <div className="hidden sm:flex items-center" title={isConnected ? "Live prices via SSE" : useFallback ? "Polling mode" : "Connecting..."}>
+                <div
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    isConnected
+                      ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+                      : useFallback
+                        ? "bg-amber-400"
+                        : "bg-[var(--text-tertiary)] animate-pulse"
+                  )}
+                />
+              </div>
+
               {/* Chain Toggle */}
               <div className="hidden sm:flex items-center rounded-md bg-[hsl(240_4%_12%)] border border-[var(--border-subtle)] p-0.5">
                 <button
@@ -172,9 +191,21 @@ export function Navigation() {
                       <History className="mr-2 h-4 w-4" strokeWidth={1.5} />
                       History
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setLocation("/watchlist")}>
+                      <Bookmark className="mr-2 h-4 w-4" strokeWidth={1.5} />
+                      Watchlist
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setLocation("/analytics")}>
+                      <PieChart className="mr-2 h-4 w-4" strokeWidth={1.5} />
+                      Analytics
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setLocation("/referrals")}>
                       <Users className="mr-2 h-4 w-4" strokeWidth={1.5} />
                       Referrals
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setLocation("/security")}>
+                      <Shield className="mr-2 h-4 w-4" strokeWidth={1.5} />
+                      Security
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={logout} className="text-[var(--accent-loss)] focus:text-[var(--accent-loss)]">

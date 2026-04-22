@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation, Link } from 'wouter';
 import { motion } from 'framer-motion';
+import { useSsePrices } from '@/hooks/useSsePrices';
 import {
   LineChart,
   Line,
@@ -198,6 +199,7 @@ export default function Portfolio() {
   const [, setLocation] = useLocation();
   const { activeChain } = useChain();
   const { getPrice } = usePrice();
+  const sse = useSsePrices();
 
   const [sort, setSort] = useState<SortState>({ key: 'currentValue', direction: 'desc' });
   const [tradeModal, setTradeModal] = useState<{
@@ -221,10 +223,23 @@ export default function Portfolio() {
       return res.json();
     },
     enabled: isAuthenticated,
-    refetchInterval: 2500,
+    refetchInterval: sse.useFallback ? 2500 : 15000,
     refetchIntervalInBackground: true,
     staleTime: 2000,
   });
+
+  // Subscribe to position token prices via SSE
+  useEffect(() => {
+    if (!positionsData?.positions?.length || !activeChain) return;
+    const tokens = positionsData.positions.map((p) => ({
+      address: p.tokenAddress,
+      chain: activeChain,
+    }));
+    sse.subscribe(tokens);
+    return () => {
+      sse.unsubscribe(tokens);
+    };
+  }, [positionsData, activeChain]);
 
   const { data: analyticsData } = useQuery<AnalyticsResponse>({
     queryKey: ['/api/portfolio/analytics', activeChain],

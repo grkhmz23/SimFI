@@ -7,6 +7,10 @@ async function throwIfResNotOk(res: Response) {
     try {
       const parsed = JSON.parse(text);
       if (parsed.error) {
+        // Detect session expiry and broadcast so auth context can force logout
+        if (res.status === 403 && parsed.code === 'SESSION_EXPIRED') {
+          window.dispatchEvent(new CustomEvent('session-expired', { detail: parsed.error }));
+        }
         throw new Error(parsed.error);
       }
       if (parsed.message) {

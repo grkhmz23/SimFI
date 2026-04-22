@@ -41,6 +41,10 @@ export const users = pgTable("users", {
   // Streak tracking (Phase 8)
   streakCount: integer("streak_count").notNull().default(0),
   lastStreakDate: timestamp("last_streak_date"),
+  // Session security (Phase 8)
+  tokenVersion: integer("token_version").notNull().default(0),
+  lastLoginAt: timestamp("last_login_at"),
+  lastLoginIp: text("last_login_ip"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -98,6 +102,23 @@ export const telegramSessions = pgTable("telegram_sessions", {
 });
 
 // =============================================================================
+// Watchlist (Phase 9)
+// =============================================================================
+
+export const watchlist = pgTable("watchlist", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  chain: text("chain").notNull().default('solana'),
+  tokenAddress: text("token_address").notNull(),
+  tokenName: text("token_name").notNull(),
+  tokenSymbol: text("token_symbol").notNull(),
+  decimals: integer("decimals").notNull().default(6),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  userTokenChainUnique: unique("watchlist_user_token_chain_unique").on(t.userId, t.tokenAddress, t.chain),
+}));
+
+// =============================================================================
 // Achievement Badges (Phase 2)
 // =============================================================================
 
@@ -153,6 +174,31 @@ export const follows = pgTable("follows", {
 }));
 
 // =============================================================================
+// Community Alpha / Voting (Phase 6)
+// =============================================================================
+
+export const communityPicks = pgTable("community_picks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  chain: text("chain").notNull().default('solana'),
+  tokenAddress: text("token_address").notNull(),
+  tokenName: text("token_name").notNull(),
+  tokenSymbol: text("token_symbol").notNull(),
+  reason: text("reason"),
+  voteCount: integer("vote_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const communityVotes = pgTable("community_votes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  pickId: varchar("pick_id").notNull().references(() => communityPicks.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  userPickUnique: unique("community_votes_user_pick_unique").on(t.pickId, t.userId),
+}));
+
+// =============================================================================
 // Insert Schemas
 // =============================================================================
 
@@ -171,6 +217,9 @@ export const insertUserSchema = createInsertSchema(users).omit({
   walletAddress: true, // Legacy field
   streakCount: true,
   lastStreakDate: true,
+  tokenVersion: true,
+  lastLoginAt: true,
+  lastLoginIp: true,
 }).extend({
   username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_-]+$/),
   email: z.string().email(),
@@ -214,6 +263,9 @@ export type Follow = typeof follows.$inferSelect;
 export type AlphaDeskRun = typeof alphaDeskRuns.$inferSelect;
 export type AlphaDeskIdea = typeof alphaDeskIdeas.$inferSelect;
 export type AlphaDeskIdeaOutcome = typeof alphaDeskIdeaOutcomes.$inferSelect;
+export type WatchlistItem = typeof watchlist.$inferSelect;
+export type CommunityPick = typeof communityPicks.$inferSelect;
+export type CommunityVote = typeof communityVotes.$inferSelect;
 
 // =============================================================================
 // Interfaces
@@ -228,7 +280,10 @@ export interface Token {
   priceUsd?: number;
   marketCap: number;
   volume24h?: number;
+  liquidity?: number;
+  liquidityUsd?: number;
   priceChange24h?: number;
+  pairCreatedAt?: number;
   creator?: string;
   timestamp?: string;
   icon?: string;

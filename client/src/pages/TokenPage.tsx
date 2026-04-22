@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useParams, useLocation, Link } from "wouter"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
@@ -8,10 +8,13 @@ import { AddressPill } from "@/components/ui/address-pill"
 import { ChainChip } from "@/components/ui/chain-chip"
 import { TradeModal } from "@/components/TradeModal"
 import TokenChart from "@/components/TokenChart"
+import { RiskPanel } from "@/components/RiskPanel"
 import { useAuth } from "@/lib/auth-context"
 import { useChain } from "@/lib/chain-context"
 import { usePrice } from "@/lib/price-context"
-import { ArrowLeft, ExternalLink } from "lucide-react"
+import { useWatchlist } from "@/lib/watchlist-context"
+import { useSsePrices } from "@/hooks/useSsePrices"
+import { ArrowLeft, ExternalLink, Bookmark, BookmarkCheck } from "lucide-react"
 import {
   formatTokenAmount,
   formatUSD,
@@ -20,8 +23,11 @@ import {
   formatPricePerTokenNative,
   computeTokenValueUSD,
   formatPricePerTokenUSD,
+  toBigInt,
+  lamportsToSol,
+  weiToEth,
 } from "@/lib/token-format"
-import { formatUsdText, formatPct, formatNative } from "@/lib/format"
+import { formatUsd, formatUsdText, formatPct, formatNative } from "@/lib/format"
 import type { Token, Position } from "@shared/schema"
 import { cn } from "@/lib/utils"
 
@@ -38,9 +44,27 @@ export default function TokenPage() {
   const { isAuthenticated } = useAuth()
   const { activeChain, nativeSymbol } = useChain()
   const { getPrice } = usePrice()
+  const { isInWatchlist, addToWatchlist, removeFromWatchlist, items: watchlistItems } = useWatchlist()
 
   const [showModal, setShowModal] = useState(false)
   const [tradeMode, setTradeMode] = useState<"buy" | "sell">("buy")
+
+  const sse = useSsePrices()
+
+  // Subscribe to this token's price updates via SSE
+  useEffect(() => {
+    if (!tokenAddress || !activeChain) return
+    sse.subscribe([{ address: tokenAddress, chain: activeChain }])
+    return () => {
+      sse.unsubscribe([{ address: tokenAddress, chain: activeChain }])
+    }
+  }, [tokenAddress, activeChain])
+
+  // Get live price from SSE if available
+  const sseTokenPrice = useMemo(() => {
+    if (!tokenAddress || !activeChain) return null
+    return sse.tokenPrices.get(`${activeChain}:${tokenAddress}`) ?? null
+  }, [sse.tokenPrices, tokenAddress, activeChain])
 
   const {
     data: tokenData,
@@ -56,7 +80,7 @@ export default function TokenPage() {
       return res.json()
     },
     enabled: !!tokenAddress,
-    refetchInterval: 5000,
+    refetchInterval: sse.useFallback ? 5000 : 30000,
     retry: 3,
   })
 
@@ -114,7 +138,17 @@ export default function TokenPage() {
     )
   }
 
-  const token = tokenData!
+  // Merge SSE price updates into token data
+  const token = useMemo(() => {
+    if (!tokenData) return null
+    const base = { ...tokenData }
+    if (sseTokenPrice) {
+      base.priceUsd = sseTokenPrice.priceUsd
+      base.priceChange24h = sseTokenPrice.priceChange24h
+    }
+    return base
+  }, [tokenData, sseTokenPrice])!
+
   const hasValidPrice = token.price && !isNaN(token.price) && isFinite(token.price) && token.price > 0
 
   if (!hasValidPrice) {
@@ -171,6 +205,36 @@ export default function TokenPage() {
                 <h1 className="text-h1">{token.name}</h1>
                 <Badge variant="outline">{token.symbol}</Badge>
                 <ChainChip chain={activeChain} />
+                {isAuthenticated && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => {
+                      const inList = isInWatchlist(tokenAddress || '', activeChain);
+                      if (inList) {
+                        const item = watchlistItems.find(
+                          (w) => w.tokenAddress === tokenAddress && w.chain === activeChain
+                        );
+                        if (item) removeFromWatchlist(item.id);
+                      } else {
+                        addToWatchlist({
+                          chain: activeChain,
+                          tokenAddress: tokenAddress || '',
+                          tokenName: token.name,
+                          tokenSymbol: token.symbol,
+                          decimals: token.decimals || 6,
+                        });
+                      }
+                    }}
+                  >
+                    {isInWatchlist(tokenAddress || '', activeChain) ? (
+                      <BookmarkCheck className="h-4 w-4 text-[var(--accent-premium)]" strokeWidth={2} />
+                    ) : (
+                      <Bookmark className="h-4 w-4 text-[var(--text-tertiary)]" strokeWidth={1.5} />
+                    )}
+                  </Button>
+                )}
               </div>
               <div className="flex items-center gap-3 flex-wrap">
                 <AddressPill address={tokenAddress || ""} />
@@ -211,6 +275,18 @@ export default function TokenPage() {
             <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Volume (24h)</p>
             <DataCell value={formatCompactNumber(token.volume24h || 0)} />
           </div>
+        </div>
+
+        {/* Risk Warnings */}
+        <div className="mb-6">
+          <RiskPanel
+            data={{
+              liquidity: token.liquidity || token.liquidityUsd,
+              volume24h: token.volume24h,
+              pairCreatedAt: token.pairCreatedAt,
+              marketCap: token.marketCap,
+            }}
+          />
         </div>
 
         {/* Main Grid */}
@@ -263,7 +339,16 @@ export default function TokenPage() {
                   <div className="flex justify-between text-sm">
                     <span className="text-[var(--text-secondary)]">Entry Price</span>
                     <span className="font-mono text-[var(--text-primary)]">
-                      {formatPricePerTokenNative(userPosition.entryPrice, activeChain)}
+                      {(() => {
+                        const entryPriceNative = activeChain === 'solana'
+                          ? lamportsToSol(toBigInt(userPosition.entryPrice))
+                          : weiToEth(toBigInt(userPosition.entryPrice));
+                        const nativePrice = getPrice(activeChain);
+                        const entryPriceUsd = nativePrice != null
+                          ? entryPriceNative * nativePrice
+                          : null;
+                        return formatUsd(entryPriceUsd);
+                      })()}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">

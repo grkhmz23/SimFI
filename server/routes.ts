@@ -25,6 +25,8 @@ import { jupiterService, SOL_MINT } from "./services/jupiterService";
 import { runDailyPipeline } from "./services/alphaDesk";
 import { getIdeasForRun } from "./services/alphaDesk/persist/ideas";
 import { findTodayRun, countRunsToday } from "./services/alphaDesk/persist/runs";
+import { getPerformanceSummary, getIdeaTrajectory } from "./services/alphaDesk/performance";
+import { ssePriceFeed } from "./services/ssePriceFeed";
 import { alphaDeskRuns, alphaDeskIdeas, alphaDeskIdeaOutcomes } from "@shared/schema";
 import { db } from "./db";
 
@@ -1138,8 +1140,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Generate token
-      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+      // Update last login and set initial token version
+      const clientIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+      await storage.updateLastLogin(user.id, String(clientIp));
+
+      // Generate token with tokenVersion
+      const token = jwt.sign(
+        { id: user.id, username: user.username, tokenVersion: user.tokenVersion },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
 
       // Set HttpOnly cookie
       res.cookie('token', token, {
@@ -1208,7 +1218,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Invalid credentials' });
       }
 
-      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+      // Increment token version and update last login
+      const clientIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+      const updatedUser = await storage.updateLastLogin(user.id, String(clientIp));
+      const userWithNewVersion = await storage.incrementTokenVersion(user.id);
+      const tokenVersion = userWithNewVersion?.tokenVersion ?? (updatedUser?.tokenVersion ?? 0) + 1;
+
+      const token = jwt.sign(
+        { id: user.id, username: user.username, tokenVersion },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
 
       // Set HttpOnly cookie
       res.cookie('token', token, {
@@ -1236,6 +1256,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     console.log('✅ User logged out, cookie cleared');
     res.json({ message: 'Logged out successfully' });
+  });
+
+  // POST /api/auth/logout-all — invalidate all existing sessions
+  app.post('/api/auth/logout-all', authenticateToken, async (req, res) => {
+    try {
+      await storage.incrementTokenVersion(req.userId!);
+      res.clearCookie('token', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax'
+      });
+      res.json({ message: 'All sessions logged out successfully' });
+    } catch (error: any) {
+      console.error('Logout-all error:', error);
+      res.status(500).json({ error: 'Failed to log out all sessions' });
+    }
+  });
+
+  // GET /api/auth/me/sessions — return current session info
+  app.get('/api/auth/me/sessions', authenticateToken, async (req, res) => {
+    try {
+      const user = await storage.getUserById(req.userId!);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const userAgent = req.headers['user-agent'] || 'Unknown';
+      const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'Unknown';
+
+      // Simple device detection from user agent
+      const device = userAgent.includes('Mobile')
+        ? 'Mobile'
+        : userAgent.includes('Mac')
+          ? 'Mac'
+          : userAgent.includes('Windows')
+            ? 'Windows'
+            : userAgent.includes('Linux')
+              ? 'Linux'
+              : 'Unknown';
+
+      res.json({
+        current: {
+          device,
+          browser: userAgent.split(' ')[0] || 'Unknown',
+          ip: String(ip).split(',')[0].trim(),
+          loginAt: user.lastLoginAt,
+        },
+        tokenVersion: user.tokenVersion,
+      });
+    } catch (error: any) {
+      console.error('Get sessions error:', error);
+      res.status(500).json({ error: 'Failed to fetch session info' });
+    }
   });
 
   // Get current SOL price (cached, refreshes every 30 seconds)
@@ -1520,8 +1593,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         solanaWalletAddress: walletAddress || 'So11111111111111111111111111111111111111112',
       });
 
-      // Generate token
-      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+      // Update last login and generate token with tokenVersion
+      const clientIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+      await storage.updateLastLogin(user.id, String(clientIp));
+
+      const token = jwt.sign(
+        { id: user.id, username: user.username, tokenVersion: user.tokenVersion },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
 
       console.log('✅ Telegram bot user registered:', user.username);
 
@@ -1574,8 +1654,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`✅ Password valid for user: ${user.username}`);
 
-      // Generate token
-      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+      // Increment token version and update last login
+      const clientIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+      const updatedUser = await storage.updateLastLogin(user.id, String(clientIp));
+      const userWithNewVersion = await storage.incrementTokenVersion(user.id);
+      const tokenVersion = userWithNewVersion?.tokenVersion ?? (updatedUser?.tokenVersion ?? 0) + 1;
+
+      const token = jwt.sign(
+        { id: user.id, username: user.username, tokenVersion },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
 
       console.log('✅ Telegram bot user logged in:', user.username);
 
@@ -2235,6 +2324,137 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Get history error:', error);
       res.status(500).json({ error: 'Could not fetch trade history' });
+    }
+  });
+
+  // ============================================================================
+  // Watchlist Routes (Phase 9)
+  // ============================================================================
+
+  app.get('/api/watchlist', authenticateToken, publicApiLimiter, async (req, res) => {
+    try {
+      const chainParam = req.query.chain as string | undefined;
+      const chain = chainParam && isValidChain(chainParam) ? chainParam as Chain : undefined;
+      const items = await storage.getUserWatchlist(req.userId!, chain);
+      res.json(serializeBigInts({ items }));
+    } catch (error: any) {
+      console.error('Get watchlist error:', error);
+      res.status(500).json({ error: 'Could not fetch watchlist' });
+    }
+  });
+
+  app.post('/api/watchlist', authenticateToken, userTradeLimiter, async (req, res) => {
+    try {
+      const { chain, tokenAddress, tokenName, tokenSymbol, decimals } = req.body;
+      if (!chain || !tokenAddress || !tokenName || !tokenSymbol) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+      if (!isValidChain(chain)) {
+        return res.status(400).json({ error: 'Invalid chain' });
+      }
+      const item = await storage.addToWatchlist(req.userId!, {
+        chain,
+        tokenAddress,
+        tokenName,
+        tokenSymbol,
+        decimals: decimals || 6,
+      });
+      res.status(201).json(serializeBigInts({ item }));
+    } catch (error: any) {
+      console.error('Add to watchlist error:', error);
+      res.status(500).json({ error: 'Could not add to watchlist' });
+    }
+  });
+
+  app.delete('/api/watchlist/:id', authenticateToken, userTradeLimiter, async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.removeFromWatchlist(req.userId!, id);
+      res.json({ message: 'Removed from watchlist' });
+    } catch (error: any) {
+      console.error('Remove from watchlist error:', error);
+      res.status(500).json({ error: 'Could not remove from watchlist' });
+    }
+  });
+
+  // ============================================================================
+  // Community Alpha / Voting (Phase 6)
+  // ============================================================================
+
+  // GET /api/community-picks?chain=&sort=
+  app.get('/api/community-picks', publicApiLimiter, async (req, res) => {
+    try {
+      const chainParam = req.query.chain as string | undefined;
+      const chain = chainParam && isValidChain(chainParam) ? chainParam as Chain : undefined;
+      const sortBy = (req.query.sort as string) === 'new' ? 'new' : 'votes';
+      const userId = (req as any).userId;
+
+      const picks = await storage.getCommunityPicks(chain, sortBy, userId);
+      res.json({ picks });
+    } catch (error: any) {
+      console.error('Get community picks error:', error);
+      res.status(500).json({ error: 'Could not fetch community picks' });
+    }
+  });
+
+  // POST /api/community-picks
+  app.post('/api/community-picks', authenticateToken, userTradeLimiter, async (req, res) => {
+    try {
+      const { chain, tokenAddress, tokenName, tokenSymbol, reason } = req.body;
+      if (!chain || !tokenAddress || !tokenName || !tokenSymbol) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+      if (!isValidChain(chain)) {
+        return res.status(400).json({ error: 'Invalid chain' });
+      }
+
+      const pick = await storage.createCommunityPick(req.userId!, {
+        chain,
+        tokenAddress,
+        tokenName,
+        tokenSymbol,
+        reason,
+      });
+      res.status(201).json({ pick });
+    } catch (error: any) {
+      console.error('Create community pick error:', error);
+      res.status(500).json({ error: 'Could not create community pick' });
+    }
+  });
+
+  // DELETE /api/community-picks/:id
+  app.delete('/api/community-picks/:id', authenticateToken, userTradeLimiter, async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteCommunityPick(req.userId!, id);
+      res.json({ message: 'Community pick deleted' });
+    } catch (error: any) {
+      console.error('Delete community pick error:', error);
+      res.status(500).json({ error: 'Could not delete community pick' });
+    }
+  });
+
+  // POST /api/community-picks/:id/vote
+  app.post('/api/community-picks/:id/vote', authenticateToken, userTradeLimiter, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const result = await storage.voteOnPick(req.userId!, id);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Vote error:', error);
+      res.status(500).json({ error: 'Could not vote on pick' });
+    }
+  });
+
+  // DELETE /api/community-picks/:id/vote
+  app.delete('/api/community-picks/:id/vote', authenticateToken, userTradeLimiter, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const result = await storage.removeVoteFromPick(req.userId!, id);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Remove vote error:', error);
+      res.status(500).json({ error: 'Could not remove vote' });
     }
   });
 
@@ -3126,6 +3346,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================================================
+  // Trade Analytics Dashboard (Phase 3)
+  // ============================================================================
+
+  app.get('/api/analytics', authenticateToken, async (req, res) => {
+    try {
+      const chainParam = req.query.chain as string | undefined;
+      const chain = chainParam && isValidChain(chainParam) ? chainParam as Chain : undefined;
+      const analytics = await portfolioAnalytics.getTradeAnalytics(req.userId!, chain);
+      res.json(serializeBigInts(analytics));
+    } catch (error: any) {
+      console.error('Trade analytics error:', error);
+      res.status(500).json({ error: 'Could not fetch trade analytics' });
+    }
+  });
+
+  // ============================================================================
   // Referrals (Phase 4)
   // ============================================================================
 
@@ -3462,6 +3698,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('[AlphaDesk] /track-record error:', error);
       res.status(500).json({ error: 'Could not fetch track record' });
+    }
+  });
+
+  // ============================================================================
+  // SSE Live Price Feeds (Phase 7)
+  // ============================================================================
+
+  // GET /api/sse/prices — Server-Sent Events endpoint
+  app.get('/api/sse/prices', (req, res) => {
+    const clientId = ssePriceFeed.addClient(res);
+
+    // Keep-alive ping every 15s to prevent proxy timeouts
+    const keepAlive = setInterval(() => {
+      try {
+        res.write(':ping\n\n');
+      } catch {
+        clearInterval(keepAlive);
+      }
+    }, 15000);
+
+    res.on('close', () => {
+      clearInterval(keepAlive);
+    });
+  });
+
+  // POST /api/sse/subscribe — Subscribe to token price updates
+  app.post('/api/sse/subscribe', (req, res) => {
+    try {
+      const { clientId, tokens } = req.body;
+      if (!clientId || !Array.isArray(tokens)) {
+        return res.status(400).json({ error: 'Missing clientId or tokens array' });
+      }
+
+      const validTokens = tokens.filter(
+        (t: any) => t.address && t.chain && ['solana', 'base'].includes(t.chain)
+      );
+
+      ssePriceFeed.subscribe(clientId, validTokens);
+      res.json({ subscribed: validTokens.length });
+    } catch (error: any) {
+      console.error('[SSE] Subscribe error:', error);
+      res.status(500).json({ error: 'Subscribe failed' });
+    }
+  });
+
+  // POST /api/sse/unsubscribe
+  app.post('/api/sse/unsubscribe', (req, res) => {
+    try {
+      const { clientId, tokens } = req.body;
+      if (!clientId || !Array.isArray(tokens)) {
+        return res.status(400).json({ error: 'Missing clientId or tokens array' });
+      }
+      ssePriceFeed.unsubscribe(clientId, tokens);
+      res.json({ unsubscribed: tokens.length });
+    } catch (error: any) {
+      console.error('[SSE] Unsubscribe error:', error);
+      res.status(500).json({ error: 'Unsubscribe failed' });
+    }
+  });
+
+  // GET /api/alpha-desk/performance?chain=base|solana|any
+  app.get('/api/alpha-desk/performance', async (req, res) => {
+    try {
+      const chain = (req.query.chain as string) || 'any';
+      const validChains = ['base', 'solana', 'any'];
+      if (!validChains.includes(chain)) {
+        return res.status(400).json({ error: 'Invalid chain. Use base, solana, or any.' });
+      }
+
+      const summary = await getPerformanceSummary(chain as any);
+      res.json(summary);
+    } catch (error: any) {
+      console.error('[AlphaDesk] /performance error:', error);
+      res.status(500).json({ error: 'Could not fetch performance data' });
+    }
+  });
+
+  // GET /api/alpha-desk/performance/:ideaId
+  app.get('/api/alpha-desk/performance/:ideaId', async (req, res) => {
+    try {
+      const ideaId = parseInt(req.params.ideaId, 10);
+      if (isNaN(ideaId)) {
+        return res.status(400).json({ error: 'Invalid idea ID' });
+      }
+
+      const trajectory = await getIdeaTrajectory(ideaId);
+      if (!trajectory) {
+        return res.status(404).json({ error: 'Idea not found' });
+      }
+
+      res.json(trajectory);
+    } catch (error: any) {
+      console.error('[AlphaDesk] /performance/:ideaId error:', error);
+      res.status(500).json({ error: 'Could not fetch idea trajectory' });
     }
   });
 

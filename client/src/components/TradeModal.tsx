@@ -36,6 +36,7 @@ import {
 } from "@/lib/token-format"
 import { formatUsd, formatTokenQty, formatPct } from "@/lib/format"
 import { useChain } from "@/lib/chain-context"
+import { usePrice } from "@/lib/price-context"
 import { cn } from "@/lib/utils"
 
 interface TradeModalProps {
@@ -62,6 +63,8 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const { toast } = useToast()
   const [, setLocation] = useLocation()
   const { activeChain, nativeSymbol, nativeDecimals } = useChain()
+  const { getPrice } = usePrice()
+  const nativePriceUSD = getPrice(activeChain) ?? 0
   const isBuying = mode === "buy" || !position
   const effectiveMode = mode || "buy"
   const [lastQuoteUpdate, setLastQuoteUpdate] = useState<Date>(new Date())
@@ -95,7 +98,11 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
           name: position.tokenName,
           symbol: position.tokenSymbol,
           price: position.currentPrice || 0,
-          priceUsd: undefined,
+          priceUsd: nativePriceUSD > 0
+            ? (Number(toBigInt(position.currentPrice || 0)) /
+                (activeChain === 'solana' ? 1e9 : 1e18)) *
+              nativePriceUSD
+            : undefined,
           decimals: position.decimals || 6,
         } as Partial<Token>)
       : undefined)
@@ -104,6 +111,13 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     (activeToken as any)?.priceLamports || activeToken?.price || 0
   )
   const currentPriceUsd = activeToken?.priceUsd
+
+  // Compute USD display price from native units when priceUsd is unavailable
+  const currentPriceNativeNum =
+    Number(currentPrice) / (activeChain === 'solana' ? 1e9 : 1e18)
+  const displayCurrentPriceUsd =
+    currentPriceUsd ??
+    (nativePriceUSD > 0 ? currentPriceNativeNum * nativePriceUSD : undefined)
   const symbol = position?.tokenSymbol || activeToken?.symbol || ""
   const name = position?.tokenName || activeToken?.name || ""
 
@@ -125,7 +139,9 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
               <p className="text-lg font-medium text-[var(--text-primary)] mb-1">{symbol}</p>
               <p className="text-sm text-[var(--text-secondary)] mb-4">{name}</p>
               <p className="text-2xl font-mono font-medium text-[var(--text-primary)]">
-                {formatPricePerTokenNative(currentPrice, activeChain)}
+                {displayCurrentPriceUsd !== undefined
+                  ? formatUsd(displayCurrentPriceUsd)
+                  : formatPricePerTokenNative(currentPrice, activeChain)}
               </p>
             </div>
             <div className="flex gap-3">
@@ -365,8 +381,8 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
               <p className="text-mono-lg text-[var(--text-secondary)]">Loading...</p>
             ) : (
               <p className="text-mono-lg">
-                {currentPriceUsd !== undefined
-                  ? formatUsd(currentPriceUsd)
+                {displayCurrentPriceUsd !== undefined
+                  ? formatUsd(displayCurrentPriceUsd)
                   : formatPricePerTokenNative(currentPrice, activeChain)}
               </p>
             )}

@@ -1,0 +1,6 @@
+-- Session Security (Phase 8)
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS last_login_ip TEXT;

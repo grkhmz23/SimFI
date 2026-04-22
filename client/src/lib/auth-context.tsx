@@ -66,6 +66,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  // Listen for session expiry events from API layer
+  useEffect(() => {
+    const handleSessionExpired = (e: CustomEvent) => {
+      console.warn('Session expired, forcing logout');
+      setUser(null);
+      // Show a toast or alert would require importing useToast, but we can use a simple alert
+      // or let the page redirect handle it
+      window.location.href = '/login?expired=1';
+    };
+    window.addEventListener('session-expired', handleSessionExpired as EventListener);
+    return () => {
+      window.removeEventListener('session-expired', handleSessionExpired as EventListener);
+    };
+  }, []);
+
   // Helper to get balance for specific chain
   const getBalance = (chain: Chain): bigint => {
     if (!user) return 0n;

@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useChain } from './chain-context';
+import { useSsePrices } from '@/hooks/useSsePrices';
 import type { Chain } from '@shared/schema';
 
 interface NativePricesResponse {
@@ -19,7 +20,7 @@ interface PriceContextType {
 
 const PriceContext = createContext<PriceContextType | undefined>(undefined);
 
-function useNativePrices(): NativePricesResponse | null {
+function useNativePricesFallback(): NativePricesResponse | null {
   const { data } = useQuery<NativePricesResponse>({
     queryKey: ['/api/market/native-prices'],
     staleTime: 20_000,
@@ -34,18 +35,25 @@ function useNativePrices(): NativePricesResponse | null {
 
 export function PriceProvider({ children }: { children: ReactNode }) {
   const { activeChain } = useChain();
-  const prices = useNativePrices();
+  const sse = useSsePrices();
+  const fallbackPrices = useNativePricesFallback();
 
-  const solPriceUSD = prices?.sol?.usd ?? null;
-  const ethPriceUSD = prices?.eth?.usd ?? null;
+  // Use SSE prices when connected, otherwise fall back to polling
+  const solPriceUSD = sse.useFallback
+    ? (fallbackPrices?.sol?.usd ?? null)
+    : (sse.nativePrices.sol ?? fallbackPrices?.sol?.usd ?? null);
+
+  const ethPriceUSD = sse.useFallback
+    ? (fallbackPrices?.eth?.usd ?? null)
+    : (sse.nativePrices.eth ?? fallbackPrices?.eth?.usd ?? null);
 
   const getPrice = (chain: Chain): number | null => {
     return chain === 'solana' ? solPriceUSD : ethPriceUSD;
   };
 
   const activePriceUSD = activeChain === 'solana' ? solPriceUSD : ethPriceUSD;
-  const isLoading = prices === null;
-  const isError = prices !== null && solPriceUSD === null && ethPriceUSD === null;
+  const isLoading = sse.useFallback && fallbackPrices === null;
+  const isError = solPriceUSD === null && ethPriceUSD === null;
 
   const value = useMemo(
     () => ({
