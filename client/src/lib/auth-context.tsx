@@ -68,12 +68,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Listen for session expiry events from API layer
   useEffect(() => {
+    let redirecting = false;
     const handleSessionExpired = (e: CustomEvent) => {
+      if (redirecting) return;
+      redirecting = true;
       console.warn('Session expired, forcing logout');
       setUser(null);
-      // Show a toast or alert would require importing useToast, but we can use a simple alert
-      // or let the page redirect handle it
-      window.location.href = '/login?expired=1';
+      // Call logout to clear the invalid cookie server-side
+      fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+        .catch(() => {})
+        .finally(() => {
+          window.location.href = '/login?expired=1';
+        });
     };
     window.addEventListener('session-expired', handleSessionExpired as EventListener);
     return () => {

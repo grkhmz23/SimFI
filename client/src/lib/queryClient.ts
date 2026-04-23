@@ -1,5 +1,15 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+class ApiError extends Error {
+  status: number;
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = await res.text();
@@ -11,15 +21,17 @@ async function throwIfResNotOk(res: Response) {
         if (res.status === 403 && parsed.code === 'SESSION_EXPIRED') {
           window.dispatchEvent(new CustomEvent('session-expired', { detail: parsed.error }));
         }
-        throw new Error(parsed.error);
+        throw new ApiError(parsed.error, res.status, parsed.code);
       }
       if (parsed.message) {
-        throw new Error(parsed.message);
+        throw new ApiError(parsed.message, res.status, parsed.code);
       }
-    } catch {
+    } catch (err) {
+      // If it's already an ApiError, rethrow it
+      if (err instanceof ApiError) throw err;
       // Not JSON or no expected fields
     }
-    throw new Error(text || `${res.status}: ${res.statusText}`);
+    throw new ApiError(text || `${res.status}: ${res.statusText}`, res.status);
   }
 }
 
@@ -73,8 +85,8 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       staleTime: 60000, // 1 minute stale time
       retry: (failureCount, error: any) => {
-        // Don't retry on 401/403 errors
-        if (error?.message?.includes('401') || error?.message?.includes('403')) {
+        // Don't retry on 401/403 auth errors
+        if (error?.status === 401 || error?.status === 403) {
           return false;
         }
         // Retry up to 3 times for other errors
@@ -85,9 +97,9 @@ export const queryClient = new QueryClient({
     mutations: {
       retry: (failureCount, error: any) => {
         // Don't retry auth errors or client errors (4xx)
-        if (error?.message?.includes('401') || 
-            error?.message?.includes('403') ||
-            error?.message?.includes('400')) {
+        if (error?.status === 401 || 
+            error?.status === 403 ||
+            error?.status === 400) {
           return false;
         }
         // Retry network errors up to 2 times
