@@ -2054,7 +2054,7 @@ async function startManualPolling() {
   }
 }
 
-(async () => {
+export async function initBot() {
   try {
     // Validate bot token
     const botInfo = await bot.telegram.getMe();
@@ -2070,11 +2070,9 @@ async function startManualPolling() {
     }
 
     // Wait for Telegram to fully process the webhook deletion
-    // (drop_pending_updates can take a few seconds to propagate)
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     // DRAIN: Fetch and acknowledge any leftover pending updates
-    // so the main polling loop starts clean (prevents duplicate-update floods)
     console.log('📡 Draining any remaining pending updates...');
     let drainedCount = 0;
     let drainIterations = 0;
@@ -2087,15 +2085,14 @@ async function startManualPolling() {
         const maxId = Math.max(...updates.map(u => u.update_id));
         pollOffset = maxId + 1;
         drainedCount += updates.length;
-        // Acknowledge immediately with a follow-up call
         await bot.telegram.getUpdates({ offset: pollOffset, limit: 1, timeout: 1 });
       } catch (err) {
         if (err.message && err.message.includes('409')) {
-          console.error('❌ 409 Conflict: Another bot instance is already polling with this token.');
-          console.error('   Shut down the other instance before starting this one.');
-        } else {
-          console.warn('⚠️ Drain error:', err.message);
+          console.error('❌ 409 Conflict during drain. Waiting for old connection to die...');
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          continue;
         }
+        console.warn('⚠️ Drain error:', err.message);
         break;
       }
     }
@@ -2123,7 +2120,12 @@ async function startManualPolling() {
     }
     process.exit(1);
   }
-})();
+}
+
+// Auto-start polling only when explicitly enabled (default for standalone use)
+if (process.env.BOT_MODE !== 'webhook') {
+  initBot();
+}
 
 // Graceful shutdown
 process.once('SIGINT', () => {

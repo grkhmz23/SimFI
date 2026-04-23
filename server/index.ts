@@ -211,23 +211,53 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     console.error('[AlphaDesk] Worker failed to start:', err);
   });
 
-  // ✅ HIGH FIX: Do NOT spawn Telegram bot from web server
-  // This prevents multiple bot instances when horizontally scaling
-  // Bot should be run separately: node bot.js
+  // ============================================================================
+  // TELEGRAM BOT — WEBHOOK MODE (no polling = no 409 conflicts on deploy)
+  // ============================================================================
   const botToken = app.get("env") === "development" 
     ? process.env.TELEGRAM_BOT_TOKEN_DEV 
     : process.env.TELEGRAM_BOT_TOKEN;
 
   if (botToken) {
-    // Auto-start bot if:
-    // - Development mode (unless AUTO_START_BOT=false)
-    // - Production mode with AUTO_START_BOT=true (for single-instance deployments like Replit)
-    const shouldAutoStart = 
+    const useWebhook = process.env.TELEGRAM_WEBHOOK_URL || process.env.API_BASE_URL;
+    
+    if (useWebhook) {
+      // Webhook mode: integrate bot into Express server
+      console.log('🤖 Initializing Telegram bot in webhook mode...');
+      try {
+        process.env.BOT_MODE = 'webhook';
+        // @ts-ignore — bot.js is plain JS, no type declarations
+        const { bot } = await import('../bot.js');
+        
+        // Webhook endpoint — Telegram POSTs updates here
+        app.post('/webhook', express.json(), async (req: Request, res: Response) => {
+          try {
+            await bot.handleUpdate(req.body);
+            res.sendStatus(200);
+          } catch (err: any) {
+            console.error('❌ Webhook handler error:', err.message);
+            res.sendStatus(500);
+          }
+        });
+        
+        // Set webhook URL on Telegram
+        const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL || `${process.env.API_BASE_URL}/webhook`;
+        await bot.telegram.setWebhook(webhookUrl, { drop_pending_updates: true });
+        console.log(`✅ Telegram webhook set: ${webhookUrl}`);
+        console.log(`📱 Bot active: @${(await bot.telegram.getMe()).username}`);
+        
+        // Graceful shutdown
+        process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+        process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+      } catch (err: any) {
+        console.error('❌ Failed to initialize Telegram bot:', err.message);
+      }
+    } else if (
       (app.get("env") === "development" && process.env.AUTO_START_BOT !== 'false') ||
-      (app.get("env") === "production" && process.env.AUTO_START_BOT === 'true');
-
-    if (shouldAutoStart) {
-      console.log(`🤖 Starting Telegram bot in ${app.get("env")} mode...`);
+      (app.get("env") === "production" && process.env.AUTO_START_BOT === 'true')
+    ) {
+      // Legacy polling mode (local dev or explicit opt-in)
+      console.log(`🤖 Starting Telegram bot in polling mode...`);
       const botProcess = spawn('node', ['bot.js'], {
         stdio: 'inherit',
         env: process.env
@@ -243,21 +273,15 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
         }
       });
 
-      // ✅ FIX: Use graceful shutdown with bot process
       process.on('SIGINT', () => gracefulShutdown('SIGINT', botProcess));
       process.on('SIGTERM', () => gracefulShutdown('SIGTERM', botProcess));
     } else {
-      console.log(`ℹ️  Telegram bot should be run separately: node bot.js`);
-      console.log(`   (Set AUTO_START_BOT=true to auto-start)`);
-
-      // ✅ FIX: Graceful shutdown without bot process
+      console.log(`ℹ️  Telegram bot not started. Set TELEGRAM_WEBHOOK_URL or AUTO_START_BOT=true.`);
       process.on('SIGINT', () => gracefulShutdown('SIGINT'));
       process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     }
   } else {
-    console.warn(`⚠️  No Telegram bot token found for ${app.get("env")} environment - bot will not start`);
-
-    // ✅ FIX: Graceful shutdown without bot
+    console.warn(`⚠️  No Telegram bot token found - bot will not start`);
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   }
