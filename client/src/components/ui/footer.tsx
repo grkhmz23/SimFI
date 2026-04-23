@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react"
 import { Link } from "wouter"
 import { cn } from "@/lib/utils"
+import { SiX } from "react-icons/si"
+import { FaTelegram } from "react-icons/fa"
 
 export function Footer({ className }: { className?: string }) {
   const [status, setStatus] = useState<"healthy" | "unhealthy" | "loading">("loading")
@@ -42,12 +44,24 @@ export function Footer({ className }: { className?: string }) {
               Leaderboard
             </Link>
             <a
-              href="https://x.com/i/communities/1981329893569835367"
+              href="https://x.com/sim_fi_"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+              className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors inline-flex items-center gap-1.5"
+              aria-label="SimFi on X"
             >
-              Community
+              <SiX className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">X</span>
+            </a>
+            <a
+              href="https://t.me/SimFinance_Bot"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors inline-flex items-center gap-1.5"
+              aria-label="SimFi Telegram Bot"
+            >
+              <FaTelegram className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Bot</span>
             </a>
           </div>
 
