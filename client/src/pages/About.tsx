@@ -221,7 +221,7 @@ export default function About() {
             </a>
 
             <a
-              href="https://t.me/SimFinance_Bot"
+              href="https://t.me/sim_fi_bot"
               target="_blank"
               rel="noopener noreferrer"
               className="block"
@@ -234,7 +234,7 @@ export default function About() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <FaTelegram className="h-3.5 w-3.5 text-[var(--text-primary)]" />
-                      <span className="text-sm font-medium text-[var(--text-primary)]">@SimFinance_Bot</span>
+                      <span className="text-sm font-medium text-[var(--text-primary)]">@sim_fi_bot</span>
                     </div>
                     <p className="text-xs text-[var(--text-tertiary)]">Trade directly from Telegram</p>
                   </div>

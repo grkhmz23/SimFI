@@ -54,7 +54,7 @@ export function Footer({ className }: { className?: string }) {
               <span className="hidden sm:inline">X</span>
             </a>
             <a
-              href="https://t.me/SimFinance_Bot"
+              href="https://t.me/sim_fi_bot"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors inline-flex items-center gap-1.5"
