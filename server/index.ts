@@ -3,7 +3,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { spawn } from "child_process";
+import { createBot, setupWebhook, getWebhookCallback } from "./telegram-bot";
 import { leaderboardService } from "./leaderboardService";
 import { startWorker as startAlphaDeskWorker } from "./services/alphaDesk/worker";
 
@@ -212,77 +212,43 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   });
 
   // ============================================================================
-  // TELEGRAM BOT — WEBHOOK MODE (no polling = no 409 conflicts on deploy)
+  // TELEGRAM BOT — WEBHOOK MODE (production) / POLLING MODE (dev)
   // ============================================================================
   const botToken = app.get("env") === "development" 
     ? process.env.TELEGRAM_BOT_TOKEN_DEV 
     : process.env.TELEGRAM_BOT_TOKEN;
 
   if (botToken) {
-    const useWebhook = process.env.TELEGRAM_WEBHOOK_URL || process.env.API_BASE_URL;
-    
-    if (useWebhook) {
-      // Webhook mode: integrate bot into Express server
+    const bot = createBot(botToken);
+
+    if (app.get("env") === "production") {
+      // Production: webhook only — no polling, no 409 conflicts on deploy
+      const publicUrl = process.env.PUBLIC_URL || process.env.API_BASE_URL;
+      const secretPath = process.env.TELEGRAM_WEBHOOK_SECRET_PATH || Math.random().toString(36).slice(2);
+      const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET_TOKEN || Math.random().toString(36).slice(2);
+      const webhookUrl = `${publicUrl}/telegram/webhook/${secretPath}`;
+
       console.log('🤖 Initializing Telegram bot in webhook mode...');
+
       try {
-        process.env.BOT_MODE = 'webhook';
-        // @ts-ignore — bot.js is plain JS, no type declarations
-        const { bot } = await import('../bot.js');
-        
-        // Webhook endpoint — Telegram POSTs updates here
-        app.post('/webhook', express.json(), async (req: Request, res: Response) => {
-          try {
-            await bot.handleUpdate(req.body);
-            res.sendStatus(200);
-          } catch (err: any) {
-            console.error('❌ Webhook handler error:', err.message);
-            res.sendStatus(500);
-          }
-        });
-        
-        // Set webhook URL on Telegram
-        const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL || `${process.env.API_BASE_URL}/webhook`;
-        await bot.telegram.setWebhook(webhookUrl, { drop_pending_updates: true });
+        if (!publicUrl) {
+          throw new Error('PUBLIC_URL or API_BASE_URL must be set for webhook mode');
+        }
+        await setupWebhook(bot, webhookUrl, secretToken);
+        app.post(`/telegram/webhook/${secretPath}`, getWebhookCallback(bot, secretToken));
         console.log(`✅ Telegram webhook set: ${webhookUrl}`);
         console.log(`📱 Bot active: @${(await bot.telegram.getMe()).username}`);
-        
-        // Graceful shutdown
-        process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-        process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
       } catch (err: any) {
-        console.error('❌ Failed to initialize Telegram bot:', err.message);
+        console.error('❌ Failed to set Telegram webhook:', err.message);
       }
-    } else if (
-      (app.get("env") === "development" && process.env.AUTO_START_BOT !== 'false') ||
-      (app.get("env") === "production" && process.env.AUTO_START_BOT === 'true')
-    ) {
-      // Legacy polling mode (local dev or explicit opt-in)
-      console.log(`🤖 Starting Telegram bot in polling mode...`);
-      const botProcess = spawn('node', ['bot.js'], {
-        stdio: 'inherit',
-        env: process.env
-      });
-
-      botProcess.on('error', (err) => {
-        console.error('❌ Failed to start Telegram bot:', err);
-      });
-
-      botProcess.on('exit', (code, signal) => {
-        if (code !== 0 && code !== null) {
-          console.error(`❌ Telegram bot exited with code ${code}`);
-        }
-      });
-
-      process.on('SIGINT', () => gracefulShutdown('SIGINT', botProcess));
-      process.on('SIGTERM', () => gracefulShutdown('SIGTERM', botProcess));
     } else {
-      console.log(`ℹ️  Telegram bot not started. Set TELEGRAM_WEBHOOK_URL or AUTO_START_BOT=true.`);
-      process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-      process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+      // Development: polling mode via bot.launch()
+      console.log('🤖 Starting Telegram bot in polling mode (dev)...');
+      bot.launch().catch((err: any) => {
+        console.error('❌ Failed to start Telegram bot:', err.message);
+      });
     }
   } else {
     console.warn(`⚠️  No Telegram bot token found - bot will not start`);
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   }
 })();
