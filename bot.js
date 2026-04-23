@@ -2059,6 +2059,33 @@ async function startManualPolling() {
     // Wait a moment for Telegram to process the webhook deletion
     await new Promise(resolve => setTimeout(resolve, 1000));
 
+    // DRAIN: Aggressively fetch and acknowledge any leftover pending updates
+    // so the main polling loop starts clean (prevents duplicate-update floods)
+    console.log('📡 Draining any remaining pending updates...');
+    let drainedCount = 0;
+    let drainIterations = 0;
+    const MAX_DRAIN_ITERATIONS = 10;
+    while (drainIterations < MAX_DRAIN_ITERATIONS) {
+      drainIterations++;
+      try {
+        const updates = await bot.telegram.getUpdates({ limit: 100, timeout: 1 });
+        if (!updates || updates.length === 0) break;
+        const maxId = Math.max(...updates.map(u => u.update_id));
+        pollOffset = maxId + 1;
+        drainedCount += updates.length;
+        // Acknowledge immediately with a follow-up call
+        await bot.telegram.getUpdates({ offset: pollOffset, limit: 1, timeout: 1 });
+      } catch (err) {
+        console.warn('⚠️ Drain error:', err.message);
+        break;
+      }
+    }
+    if (drainedCount > 0) {
+      console.log(`✅ Drained ${drainedCount} pending update(s), pollOffset now ${pollOffset}`);
+    } else {
+      console.log('✅ No pending updates to drain');
+    }
+
     // Start manual polling
     console.log('📡 Starting polling...');
     startManualPolling();
