@@ -459,7 +459,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                     <span className="text-[var(--text-secondary)]">Balance</span>
                     <span className="font-mono">
                       {formatNativeAmount(
-                        activeChain === "solana" ? user?.balance : user?.baseBalance,
+                        (activeChain === "solana" ? user?.balance : user?.baseBalance) ?? 0n,
                         activeChain,
                         4
                       )} {nativeSymbol}

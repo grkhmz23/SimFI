@@ -113,6 +113,10 @@ export interface MemeLaunchIdeaGenerated {
   chain: AlphaDeskChain;
   category: "meme" | "culture" | "political" | "tech";
   riskLevel: "low" | "medium" | "high";
+  /** Optional: token address of the trending token that inspired this idea */
+  tokenAddress?: string;
+  /** Optional: USD price of the inspiration token at publish time */
+  priceAtPublishUsd?: number;
 }
 
 export interface DevBuildIdeaGenerated {

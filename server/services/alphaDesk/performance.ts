@@ -206,21 +206,27 @@ export async function getPerformanceSummary(chain: AlphaDeskChain): Promise<Perf
     const stat = horizonStats.find((s) => s.horizon === h);
     if (!stat || stat.totalTracked === 0) continue;
     if (stat.bestReturn > (bestPick?.return ?? -Infinity)) {
-      // Find the actual pick for this best return
+      // Find the actual pick for this best return (compare rounded values)
       for (const pick of picks) {
         const o = pick.outcomes.find((o) => o.horizon === h);
-        if (o && o.pctChange && parseFloat(o.pctChange) === stat.bestReturn) {
-          bestPick = { symbol: pick.symbol, name: pick.name, return: stat.bestReturn, horizon: h };
-          break;
+        if (o && o.pctChange != null) {
+          const roundedPct = Math.round(parseFloat(o.pctChange) * 100) / 100;
+          if (roundedPct === stat.bestReturn) {
+            bestPick = { symbol: pick.symbol, name: pick.name, return: stat.bestReturn, horizon: h };
+            break;
+          }
         }
       }
     }
     if (stat.worstReturn < (worstPick?.return ?? Infinity)) {
       for (const pick of picks) {
         const o = pick.outcomes.find((o) => o.horizon === h);
-        if (o && o.pctChange && parseFloat(o.pctChange) === stat.worstReturn) {
-          worstPick = { symbol: pick.symbol, name: pick.name, return: stat.worstReturn, horizon: h };
-          break;
+        if (o && o.pctChange != null) {
+          const roundedPct = Math.round(parseFloat(o.pctChange) * 100) / 100;
+          if (roundedPct === stat.worstReturn) {
+            worstPick = { symbol: pick.symbol, name: pick.name, return: stat.worstReturn, horizon: h };
+            break;
+          }
         }
       }
     }

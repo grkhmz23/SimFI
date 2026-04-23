@@ -11,6 +11,15 @@ import { fetchTokenProfiles } from "./ingest/dexscreener";
 const CHAINS: Array<"base" | "solana" | "any"> = ["any"];
 const OUTCOME_HORIZONS: Array<"1h" | "6h" | "24h" | "7d"> = ["1h", "6h", "24h", "7d"];
 
+function detectChainFromAddress(address: string): "solana" | "base" {
+  // EVM addresses start with 0x followed by 40 hex chars
+  if (/^0x[a-fA-F0-9]{40}$/.test(address)) return "base";
+  // Solana addresses are base58 encoded, 32-44 chars
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return "solana";
+  // Default to solana for ambiguous cases
+  return "solana";
+}
+
 async function ensureTodayRuns(): Promise<void> {
   for (const chain of CHAINS) {
     try {
@@ -33,13 +42,14 @@ async function measureOutcomes(): Promise<void> {
         // Batch fetch current prices via DexScreener
         const tokens = ideas.map((i) => ({
           tokenAddress: i.tokenAddress,
-          chainId: chain === "solana" ? "solana" : chain === "base" ? "base" : "solana",
+          chainId: detectChainFromAddress(i.tokenAddress),
           symbol: "",
           name: "",
         }));
         const profiles = await fetchTokenProfiles(tokens);
         const priceMap = new Map(profiles.map((p) => [p.tokenAddress, p.priceUsd]));
 
+        let recorded = 0;
         for (const idea of ideas) {
           const currentPrice = priceMap.get(idea.tokenAddress);
           const publishPrice = idea.priceAtPublishUsd ? parseFloat(idea.priceAtPublishUsd) : undefined;
@@ -52,7 +62,11 @@ async function measureOutcomes(): Promise<void> {
               priceUsd: currentPrice,
               pctChange,
             });
+            recorded++;
           }
+        }
+        if (recorded > 0) {
+          console.log(`[AlphaDesk Worker] Recorded ${recorded} outcomes for ${chain}/${horizon}`);
         }
       } catch (err) {
         console.error(`[AlphaDesk Worker] Outcome measurement failed for ${chain}/${horizon}:`, (err as Error).message);

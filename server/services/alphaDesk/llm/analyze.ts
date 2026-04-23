@@ -52,13 +52,22 @@ export async function generateMemeLaunchIdeas(
     "meme-launch-ideas"
   )) as { ideas: Array<Record<string, unknown>> };
 
+  // Build a lookup map from token symbol → token data for inspiration matching
+  const tokenBySymbol = new Map<string, ScoredToken>();
+  for (const t of input.tokens) {
+    tokenBySymbol.set(t.symbol.toUpperCase(), t);
+  }
+
   const ideas = parsed.ideas.slice(0, 5).map((idea, idx): MemeLaunchIdeaGenerated => {
+    const ticker = String(idea.ticker ?? "").toUpperCase().slice(0, 10);
+    const inspirationToken = tokenBySymbol.get(ticker) ?? input.tokens[0];
+
     return {
       ideaType: "meme_launch",
       rank: idx + 1,
       title: String(idea.title ?? ""),
       tokenName: String(idea.token_name ?? ""),
-      ticker: String(idea.ticker ?? "").toUpperCase().slice(0, 10),
+      ticker,
       thesis: String(idea.thesis ?? ""),
       whyNow: String(idea.why_now ?? ""),
       memeTheme: String(idea.meme_theme ?? ""),
@@ -78,6 +87,8 @@ export async function generateMemeLaunchIdeas(
       riskLevel: ["low", "medium", "high"].includes(String(idea.risk_level))
         ? (String(idea.risk_level) as "low" | "medium" | "high")
         : "medium",
+      tokenAddress: inspirationToken?.tokenAddress,
+      priceAtPublishUsd: inspirationToken?.priceUsd,
     };
   });
 

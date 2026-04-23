@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db } from "../../../db";
 import { alphaDeskIdeas } from "@shared/schema";
 import type { AlphaDeskIdeaGenerated } from "../types";
@@ -29,6 +29,8 @@ export async function insertAlphaDeskIdeas(
           symbol: idea.ticker,
           narrativeThesis: idea.thesis,
           whyNow: idea.whyNow,
+          tokenAddress: idea.tokenAddress ?? null,
+          priceAtPublishUsd: idea.priceAtPublishUsd != null ? String(idea.priceAtPublishUsd) : null,
           evidence: {
             memeTheme: idea.memeTheme,
             redditInspiration: idea.redditInspiration,
@@ -71,6 +73,6 @@ export async function getIdeasByType(runId: number, ideaType: "meme_launch" | "d
   return db
     .select()
     .from(alphaDeskIdeas)
-    .where(eq(alphaDeskIdeas.runId, runId))
+    .where(and(eq(alphaDeskIdeas.runId, runId), eq(alphaDeskIdeas.ideaType, ideaType)))
     .orderBy(alphaDeskIdeas.rank);
 }

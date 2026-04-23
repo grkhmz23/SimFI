@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "../../../db";
 import { alphaDeskRuns } from "@shared/schema";
 import type { AlphaDeskChain } from "../types";
@@ -43,7 +43,7 @@ export async function updateAlphaDeskRun(
     .update(alphaDeskRuns)
     .set({
       ...updates,
-      errorMessage: updates.errorMessage === null ? undefined : updates.errorMessage,
+      errorMessage: updates.errorMessage === null ? sql`NULL` : updates.errorMessage,
     })
     .where(eq(alphaDeskRuns.id, runId));
 }

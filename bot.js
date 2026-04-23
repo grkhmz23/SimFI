@@ -163,49 +163,88 @@ const isAuthState = (state) => {
          state === 'register_password';
 };
 
-const formatSol = (lamports) => {
-  const sol = Number(lamports) / 1_000_000_000;
-  return sol.toFixed(4);
+// ============================================================================
+// CHAIN-AWARE FORMATTING & UTILITIES
+// ============================================================================
+
+const CHAIN_CONFIG = {
+  solana: { decimals: 9, symbol: 'SOL', nativeName: 'Solana', name: 'Solana' },
+  base: { decimals: 18, symbol: 'ETH', nativeName: 'Base', name: 'Base' },
 };
 
-const formatTokenAmount = (lamports, decimals = 6) => {
-  const tokens = Number(lamports) / (10 ** decimals);
+let cachedNativePrices = { sol: 0, eth: 0 };
+let nativePricesLastUpdated = 0;
+
+const formatNative = (atomic, chain = 'solana') => {
+  const cfg = CHAIN_CONFIG[chain] || CHAIN_CONFIG.solana;
+  const val = Number(atomic) / (10 ** cfg.decimals);
+  return val.toFixed(4);
+};
+
+const formatTokenAmount = (atomic, decimals = 6) => {
+  const tokens = Number(atomic) / (10 ** decimals);
   return tokens.toFixed(2);
 };
 
-// Convert lamports (SOL) to USD
-const formatSolToUsd = (lamports, solPrice = cachedSolPrice) => {
+const formatNativeToUsd = (atomic, chain = 'solana') => {
+  const price = chain === 'solana' ? cachedNativePrices.sol : cachedNativePrices.eth;
+  if (!price || !Number.isFinite(price)) return 'N/A';
+  const cfg = CHAIN_CONFIG[chain] || CHAIN_CONFIG.solana;
+  const native = Number(atomic) / (10 ** cfg.decimals);
+  const usd = native * price;
+  if (!Number.isFinite(usd)) return 'N/A';
+  return `$${usd.toFixed(2)}`;
+};
+
+// Fetch both SOL and ETH prices — cached for 5 seconds
+const getNativePrices = async (token) => {
+  const now = Date.now();
+  if (cachedNativePrices.sol > 0 && cachedNativePrices.eth > 0 && (now - nativePricesLastUpdated) < 5000) {
+    return cachedNativePrices;
+  }
+
+  const result = await apiRequest('/api/market/native-prices', 'GET', null, token);
+  if (result.success && result.data) {
+    cachedNativePrices = {
+      sol: result.data.sol?.usd || cachedNativePrices.sol,
+      eth: result.data.eth?.usd || cachedNativePrices.eth,
+    };
+    nativePricesLastUpdated = now;
+    return cachedNativePrices;
+  }
+
+  console.warn('Failed to fetch native prices:', result.error || 'unavailable');
+  return cachedNativePrices;
+};
+
+// Legacy compat wrappers
+const formatSol = (lamports) => formatNative(lamports, 'solana');
+const formatSolToUsd = (lamports, solPrice = cachedNativePrices.sol) => {
   if (!solPrice || !Number.isFinite(solPrice)) return 'N/A';
   const sol = Number(lamports) / 1_000_000_000;
   const usd = sol * solPrice;
   if (!Number.isFinite(usd)) return 'N/A';
   return `$${usd.toFixed(2)}`;
 };
-
-// Get current SOL price - cached for 5 seconds to avoid repeated API calls
 const getSolPrice = async (token) => {
-  const now = Date.now();
-  if (cachedSolPrice > 0 && (now - solPriceLastUpdated) < 5000) {
-    return cachedSolPrice;
-  }
-
-  const result = await apiRequest('/api/solana/price', 'GET', null, token);
-  if (result.success && result.data?.price) {
-    cachedSolPrice = result.data.price;
-    solPriceLastUpdated = now;
-    return cachedSolPrice;
-  }
-
-  console.warn('Failed to fetch SOL price:', result.error || 'unavailable');
-  return cachedSolPrice || null; // No magic fallback
+  const prices = await getNativePrices(token);
+  return prices.sol || null;
 };
 
-// Helper function to detect Solana token addresses
+// Address validators
 const isSolanaAddress = (text) => {
-  // Solana addresses are base58 encoded, typically 32-44 characters
-  // They only contain: 1-9, A-H, J-N, P-Z, a-k, m-z (no 0, O, I, l)
   const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
   return base58Regex.test(text.trim());
+};
+
+const isEvmAddress = (text) => {
+  return /^0x[a-fA-F0-9]{40}$/.test(text.trim());
+};
+
+const detectChainFromAddress = (text) => {
+  if (isEvmAddress(text)) return 'base';
+  if (isSolanaAddress(text)) return 'solana';
+  return null;
 };
 
 // ✅ IMPROVED: Deterministic idempotency key using Telegram update_id
@@ -358,9 +397,13 @@ setInterval(() => {
 // UI HELPERS
 // ============================================================================
 
-const getMainMenuKeyboard = (balance) => {
+const getMainMenuKeyboard = (balance, baseBalance, chain) => {
+  const solStr = formatNative(balance, 'solana');
+  const ethStr = formatNative(baseBalance, 'base');
+  const chainEmoji = chain === 'solana' ? '☀️' : '🔷';
+
   return Markup.inlineKeyboard([
-    [Markup.button.callback(`💰 Balance: ${formatSol(balance)} SOL`, 'noop')],
+    [Markup.button.callback(`💰 SOL: ${solStr} | ETH: ${ethStr}`, 'noop')],
     [
       Markup.button.callback('📈 Buy', 'buy'),
       Markup.button.callback('📊 Portfolio', 'portfolio')
@@ -371,8 +414,9 @@ const getMainMenuKeyboard = (balance) => {
     ],
     [
       Markup.button.callback('🏆 Leaderboard', 'leaderboard'),
-      Markup.button.callback('❌ Logout', 'logout')
-    ]
+      Markup.button.callback(`${chainEmoji} Chain: ${chain.toUpperCase()}`, 'chain_menu')
+    ],
+    [Markup.button.callback('❌ Logout', 'logout')]
   ]);
 };
 
@@ -391,13 +435,18 @@ const showMainMenu = async (ctx) => {
   }
 
   const balance = result.data.balance;
+  const baseBalance = result.data.baseBalance;
+  const preferredChain = result.data.preferredChain || 'base';
+
   session.balance = BigInt(balance);
+  session.baseBalance = BigInt(baseBalance);
+  session.chain = preferredChain;
 
   return ctx.reply(
     `🎮 *SimFi Trading Bot*\n\nWelcome back, *${escapeMarkdown(result.data.username)}*!`,
     {
       parse_mode: 'Markdown',
-      ...getMainMenuKeyboard(balance)
+      ...getMainMenuKeyboard(balance, baseBalance, preferredChain)
     }
   );
 };
@@ -406,20 +455,29 @@ const showMainMenu = async (ctx) => {
 const showBuyMenu = async (ctx, tokenAddress, session) => {
   const userId = ctx.from.id;
 
-  // Validate address format first
-  if (!isSolanaAddress(tokenAddress)) {
-    return ctx.reply('❌ Invalid Solana token address. Please paste a valid token mint address (base58, 32–44 chars).');
+  // Detect chain from address format
+  const detectedChain = detectChainFromAddress(tokenAddress);
+  if (!detectedChain) {
+    return ctx.reply(
+      '❌ Invalid token address.\n\n' +
+      'Please paste a valid address:\n' +
+      '• Solana: base58 format (e.g. So1111...1112)\n' +
+      '• Base: 0x + 40 hex chars (e.g. 0x4200...0006)'
+    );
   }
+
+  const chain = detectedChain;
+  const cfg = CHAIN_CONFIG[chain];
 
   let loadingMsg;
   try {
-    loadingMsg = await ctx.reply('🔍 Fetching token info...');
+    loadingMsg = await ctx.reply(`🔍 Fetching ${cfg.nativeName} token info...`);
   } catch (e) {
     console.error('Failed to send loading message:', e);
   }
 
   // Fetch token price and metadata from server
-  const result = await apiRequest(`/api/tokens/${tokenAddress}`, 'GET', null, session.token);
+  const result = await apiRequest(`/api/tokens/${tokenAddress}?chain=${chain}`, 'GET', null, session.token);
 
   try {
     if (loadingMsg?.message_id) {
@@ -443,47 +501,54 @@ const showBuyMenu = async (ctx, tokenAddress, session) => {
 
     return ctx.reply(
       '❌ Could not fetch token info.\n\n' +
-      'This token may not be listed on DexScreener or may not have a Solana trading pair.\n\n' +
+      `This token may not be listed on DexScreener or may not have a ${cfg.nativeName} trading pair.\n\n` +
       'Please try another token or use /start to return to the main menu.'
     );
   }
 
   const token = result.data.token;
-  const priceLamports = BigInt(token.price);
-  const priceInSol = Number(priceLamports) / 1_000_000_000;
-  const solPrice = await getSolPrice(session.token);
-  const priceInUsd = solPrice ? (priceInSol * solPrice) : null;
+  const priceNative = BigInt(token.price);
+  const priceDisplay = Number(priceNative) / (10 ** cfg.decimals);
+  const prices = await getNativePrices(session.token);
+  const nativePriceUsd = chain === 'solana' ? prices.sol : prices.eth;
+  const priceInUsd = nativePriceUsd ? (priceDisplay * nativePriceUsd) : null;
 
   // Store token data in user state
   userStates.set(userId, {
     state: 'awaiting_buy_amount',
     tokenAddress,
+    chain,
     token: {
       name: token.name,
       symbol: token.symbol,
-      price: priceLamports.toString()
+      price: priceNative.toString()
     },
     lastActivity: Date.now()
   });
 
   const priceUsdStr = priceInUsd ? `($${priceInUsd.toFixed(6)})` : '';
 
+  // Quick amounts based on chain
+  const quickAmounts = chain === 'solana'
+    ? [['0.1 SOL', '0.1'], ['0.5 SOL', '0.5'], ['1 SOL', '1'], ['5 SOL', '5']]
+    : [['0.05 ETH', '0.05'], ['0.1 ETH', '0.1'], ['0.5 ETH', '0.5'], ['1 ETH', '1']];
+
   await ctx.reply(
-    `📊 *${escapeMarkdown(token.symbol)}*\n` +
+    `📊 *${escapeMarkdown(token.symbol)}* \(${cfg.nativeName}\)\n` +
     `${escapeMarkdown(token.name)}\n\n` +
-    `💰 Price: ${priceInSol.toFixed(9)} SOL ${priceUsdStr}\n` +
+    `💰 Price: ${priceDisplay.toFixed(9)} ${cfg.symbol} ${priceUsdStr}\n` +
     `⚠️ Note: ~0.5% slippage will be applied\n\n` +
-    `How much SOL do you want to spend?`,
+    `How much ${cfg.symbol} do you want to spend?`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         [
-          Markup.button.callback('0.1 SOL', 'buy_amt:0.1'),
-          Markup.button.callback('0.5 SOL', 'buy_amt:0.5'),
+          Markup.button.callback(quickAmounts[0][0], `buy_amt:${quickAmounts[0][1]}`),
+          Markup.button.callback(quickAmounts[1][0], `buy_amt:${quickAmounts[1][1]}`),
         ],
         [
-          Markup.button.callback('1 SOL', 'buy_amt:1'),
-          Markup.button.callback('5 SOL', 'buy_amt:5'),
+          Markup.button.callback(quickAmounts[2][0], `buy_amt:${quickAmounts[2][1]}`),
+          Markup.button.callback(quickAmounts[3][0], `buy_amt:${quickAmounts[3][1]}`),
         ],
         [Markup.button.callback('✏️ Custom Amount', 'buy_custom')],
         [Markup.button.callback('« Back to Menu', 'main_menu')]
@@ -521,19 +586,35 @@ bot.command('start', async (ctx) => {
     const profileTest = await apiRequest('/api/auth/profile', 'GET', null, dbSession.token);
 
     if (profileTest.success) {
+      const profile = profileTest.data;
+      const balanceSol = profile.balance || dbSession.balance || 0;
+      const balanceEth = profile.baseBalance || 0;
+      const preferredChain = profile.preferredChain || 'base';
+
       let balanceValue;
-      if (typeof dbSession.balance === 'bigint') {
-        balanceValue = dbSession.balance;
-      } else if (typeof dbSession.balance === 'string' || typeof dbSession.balance === 'number') {
-        balanceValue = BigInt(dbSession.balance);
+      if (typeof balanceSol === 'bigint') {
+        balanceValue = balanceSol;
+      } else if (typeof balanceSol === 'string' || typeof balanceSol === 'number') {
+        balanceValue = BigInt(balanceSol);
       } else {
         balanceValue = BigInt(0);
       }
 
+      let baseBalanceValue;
+      if (typeof balanceEth === 'bigint') {
+        baseBalanceValue = balanceEth;
+      } else if (typeof balanceEth === 'string' || typeof balanceEth === 'number') {
+        baseBalanceValue = BigInt(balanceEth);
+      } else {
+        baseBalanceValue = BigInt(0);
+      }
+
       userSessions.set(userId, {
-        username: dbSession.username || profileTest.data.username,
+        username: dbSession.username || profile.username,
         token: dbSession.token,
-        balance: balanceValue
+        balance: balanceValue,
+        baseBalance: baseBalanceValue,
+        chain: preferredChain
       });
 
       await ctx.reply('👋 Welcome back! Your session has been restored.');
@@ -547,7 +628,7 @@ bot.command('start', async (ctx) => {
   // No session - prompt for login
   await ctx.reply(
     `👋 Welcome to *SimFi Trading Bot*!\n\n` +
-    `Paper trade Solana tokens with ease.\n\n` +
+    `Paper trade tokens on Solana and Base with ease.\n\n` +
     `Please choose an option:`,
     {
       parse_mode: 'Markdown',
@@ -577,7 +658,7 @@ bot.command('help', async (ctx) => {
     message += `/sell - Sell your open positions\n\n`;
     message += `*Portfolio:*\n`;
     message += `/portfolio - View your holdings\n`;
-    message += `/balance - Check your SOL balance\n`;
+    message += `/balance - Check your balance\n`;
     message += `/history - View trade history\n\n`;
     message += `*Social:*\n`;
     message += `/leaderboard - View top traders\n\n`;
@@ -605,7 +686,7 @@ bot.command('buy', async (ctx) => {
   // Check if token address was provided with command
   const args = ctx.message.text.split(/\s+/).slice(1);
 
-  if (args.length > 0 && isSolanaAddress(args[0])) {
+  if (args.length > 0 && detectChainFromAddress(args[0])) {
     // Token address provided, go directly to buy menu
     await showBuyMenu(ctx, args[0], session);
   } else {
@@ -617,8 +698,9 @@ bot.command('buy', async (ctx) => {
 
     await ctx.reply(
       '📈 *Buy Token*\n\n' +
-      'Please send the Solana token address you want to buy.\n\n' +
-      '💡 Tip: You can also use `/buy <address>` directly.',
+      'Please send the token address you want to buy.\n\n' +
+      '💡 Tip: You can also use `/buy <address>` directly.\n' +
+      'Supports both Solana (base58) and Base (0x...) addresses.',
       { parse_mode: 'Markdown' }
     );
   }
@@ -653,13 +735,16 @@ bot.command('sell', async (ctx) => {
   }
 
   const buttons = positions.map(pos => {
+    const chain = pos.chain || 'solana';
+    const cfg = CHAIN_CONFIG[chain];
     const currentValue = BigInt(pos.currentValue || 0);
     const costBasis = BigInt(pos.solSpent || 0);
     const profitLoss = currentValue - costBasis;
     const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
+    const chainEmoji = chain === 'solana' ? '☀️' : '🔷';
 
     return [Markup.button.callback(
-      `${profitEmoji} ${pos.tokenSymbol} (${formatSol(currentValue)} SOL)`,
+      `${profitEmoji} ${chainEmoji} ${pos.tokenSymbol} (${formatNative(currentValue, chain)} ${cfg.symbol})`,
       `sell_pos:${pos.id}`
     )];
   });
@@ -702,9 +787,12 @@ bot.command('portfolio', async (ctx) => {
   }
 
   let message = '📊 *Your Portfolio*\n\n';
-  let totalValue = BigInt(0);
+  let totalSolValue = BigInt(0);
+  let totalEthValue = BigInt(0);
 
   for (const pos of positions) {
+    const chain = pos.chain || 'solana';
+    const cfg = CHAIN_CONFIG[chain];
     const currentValue = BigInt(pos.currentValue || 0);
     const costBasis = BigInt(pos.solSpent || 0);
     const profitLoss = currentValue - costBasis;
@@ -714,16 +802,23 @@ bot.command('portfolio', async (ctx) => {
 
     const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
     const profitSign = profitLoss > 0n ? '+' : '';
+    const chainEmoji = chain === 'solana' ? '☀️' : '🔷';
 
-    message += `${profitEmoji} *${escapeMarkdown(pos.tokenSymbol)}*\n`;
+    message += `${profitEmoji} *${escapeMarkdown(pos.tokenSymbol)}* ${chainEmoji}\n`;
     message += `Amount: ${formatTokenAmount(pos.amount, pos.decimals || 6)} ${escapeMarkdown(pos.tokenSymbol)}\n`;
-    message += `Value: ${formatSol(currentValue)} SOL\n`;
-    message += `P/L: ${profitSign}${formatSol(profitLoss)} SOL (${profitSign}${profitPercent.toFixed(2)}%)\n\n`;
+    message += `Value: ${formatNative(currentValue, chain)} ${cfg.symbol}\n`;
+    message += `P/L: ${profitSign}${formatNative(profitLoss, chain)} ${cfg.symbol} (${profitSign}${profitPercent.toFixed(2)}%)\n\n`;
 
-    totalValue += currentValue;
+    if (chain === 'solana') {
+      totalSolValue += currentValue;
+    } else {
+      totalEthValue += currentValue;
+    }
   }
 
-  message += `💰 *Total Value:* ${formatSol(totalValue)} SOL`;
+  message += `💰 *Total Value:*\n`;
+  if (totalSolValue > 0n) message += `  ☀️ ${formatNative(totalSolValue, 'solana')} SOL\n`;
+  if (totalEthValue > 0n) message += `  🔷 ${formatNative(totalEthValue, 'base')} ETH\n`;
 
   await ctx.reply(message, { parse_mode: 'Markdown' });
 });
@@ -742,15 +837,18 @@ bot.command('balance', async (ctx) => {
     return ctx.reply('❌ Error fetching balance. Please /start to login again.');
   }
 
-  const balance = result.data.balance;
-  const solPrice = await getSolPrice(session.token);
-  const balanceInSol = Number(balance) / 1_000_000_000;
-  const balanceUsd = solPrice ? (balanceInSol * solPrice) : null;
-  const usdStr = balanceUsd ? ` (~$${balanceUsd.toFixed(2)})` : '';
+  const prices = await getNativePrices(session.token);
+  const balanceSol = result.data.balance;
+  const balanceEth = result.data.baseBalance;
+  const solUsd = prices.sol ? (Number(balanceSol) / 1e9 * prices.sol) : null;
+  const ethUsd = prices.eth ? (Number(balanceEth) / 1e18 * prices.eth) : null;
+  const totalUsd = (solUsd || 0) + (ethUsd || 0);
 
   await ctx.reply(
     `💰 *Your Balance*\n\n` +
-    `Available: *${formatSol(balance)} SOL*${usdStr}\n\n` +
+    `☀️ Solana: *${formatNative(balanceSol, 'solana')} SOL*${solUsd ? ` (~$${solUsd.toFixed(2)})` : ''}\n` +
+    `🔷 Base: *${formatNative(balanceEth, 'base')} ETH*${ethUsd ? ` (~$${ethUsd.toFixed(2)})` : ''}\n\n` +
+    `💵 Total: ~$${totalUsd.toFixed(2)}\n\n` +
     `Use /buy to trade or /portfolio to see holdings.`,
     { parse_mode: 'Markdown' }
   );
@@ -783,13 +881,16 @@ bot.command('history', async (ctx) => {
   let message = '📜 *Recent Trades*\n\n';
 
   for (const trade of trades.slice(0, 10)) {
+    const chain = trade.chain || 'solana';
+    const cfg = CHAIN_CONFIG[chain];
     const profitLoss = BigInt(trade.profitLoss || 0);
     const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
     const profitSign = profitLoss > 0n ? '+' : '';
+    const chainEmoji = chain === 'solana' ? '☀️' : '🔷';
 
-    message += `${profitEmoji} *${escapeMarkdown(trade.tokenSymbol)}*\n`;
+    message += `${profitEmoji} *${escapeMarkdown(trade.tokenSymbol)}* ${chainEmoji}\n`;
     message += `Amount: ${formatTokenAmount(trade.amount, trade.decimals || 6)}\n`;
-    message += `P/L: ${profitSign}${formatSol(profitLoss)} SOL\n`;
+    message += `P/L: ${profitSign}${formatNative(profitLoss, chain)} ${cfg.symbol}\n`;
     message += `Date: ${new Date(trade.closedAt).toLocaleDateString()}\n\n`;
   }
 
@@ -868,8 +969,12 @@ bot.action('register', async (ctx) => {
   await ctx.reply(
     '📝 *Registration*\n\n' +
     'Please send your details in this format:\n' +
-    '`email username password`\n\n' +
-    'Example: `user@example.com myusername mypassword`',
+    '`email username password solana_wallet base_wallet`\n\n' +
+    'At least one wallet address is required.\n' +
+    '• Solana: base58 (e.g. `So1111...1112`)\n' +
+    '• Base: 0x + 40 hex chars (e.g. `0x4200...0006`)\n\n' +
+    'Example:\n' +
+    '`user@example.com myusername mypassword 0x1234567890123456789012345678901234567890`',
     { parse_mode: 'Markdown' }
   );
 });
@@ -915,7 +1020,8 @@ bot.action('buy', async (ctx) => {
 
   await ctx.reply(
     '📈 *Buy Token*\n\n' +
-    'Please send the Solana token address you want to buy.',
+    'Please send the token address you want to buy.\n' +
+    'Supports both Solana (base58) and Base (0x...) addresses.',
     { parse_mode: 'Markdown' }
   );
 });
@@ -929,6 +1035,9 @@ bot.action('buy_custom', async (ctx) => {
     return ctx.reply('❌ Session expired. Please try again.');
   }
 
+  const chain = state.chain || 'solana';
+  const cfg = CHAIN_CONFIG[chain];
+
   userStates.set(userId, {
     ...state,
     state: 'awaiting_buy_amount_custom',
@@ -936,8 +1045,8 @@ bot.action('buy_custom', async (ctx) => {
   });
 
   await ctx.reply(
-    '✏️ Enter the amount of SOL you want to spend:\n\n' +
-    'Example: 0.25',
+    `✏️ Enter the amount of ${cfg.symbol} you want to spend:\n\n` +
+    `Example: ${chain === 'solana' ? '0.25' : '0.05'}`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -974,12 +1083,14 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
     const idempotencyKey = generateIdempotencyKey(ctx, 'buy', `${state.tokenAddress}_${amount}`);
 
     // ✅ Only send what server needs (server fetches price itself)
+    const chain = state.chain || 'solana';
+    const cfg = CHAIN_CONFIG[chain];
     const result = await apiRequest('/api/trades/buy', 'POST', {
       tokenAddress: state.tokenAddress,
       tokenName: state.token.name,
       tokenSymbol: state.token.symbol,
-      solAmount: amount,
-      chain: 'solana',
+      amount,
+      chain,
     }, session.token, false, {
       'x-idempotency-key': idempotencyKey
     });
@@ -1014,7 +1125,7 @@ bot.action(/^buy_amt:(.+)$/, async (ctx) => {
     await ctx.reply(
       `✅ Successfully bought *${escapeMarkdown(state.token.symbol)}*!\n\n` +
       `Amount: *${formatTokenAmount(tokenAmount, decimals)} ${escapeMarkdown(state.token.symbol)}*\n` +
-      `Spent: *${amount} SOL*`,
+      `Spent: *${amount} ${cfg.symbol}*`,
       { parse_mode: 'Markdown' }
     );
 
@@ -1055,13 +1166,16 @@ bot.action('sell', async (ctx) => {
   }
 
   const buttons = positions.map(pos => {
+    const chain = pos.chain || 'solana';
+    const cfg = CHAIN_CONFIG[chain];
     const currentValue = BigInt(pos.currentValue || 0);
     const costBasis = BigInt(pos.solSpent || 0);
     const profitLoss = currentValue - costBasis;
     const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
+    const chainEmoji = chain === 'solana' ? '☀️' : '🔷';
 
     return [Markup.button.callback(
-      `${profitEmoji} ${pos.tokenSymbol} (${formatSol(currentValue)} SOL)`,
+      `${profitEmoji} ${chainEmoji} ${pos.tokenSymbol} (${formatNative(currentValue, chain)} ${cfg.symbol})`,
       `sell_pos:${pos.id}`
     )];
   });
@@ -1088,6 +1202,60 @@ bot.action(/^sell_pos:(.+)$/, async (ctx) => {
     return ctx.reply('❌ Session expired. Please /start to login again.');
   }
 
+  // Fetch position details to show sell percentage options
+  const result = await apiRequest('/api/trades/positions', 'GET', null, session.token);
+  if (!result.success) {
+    return ctx.reply('❌ Error: ' + result.error);
+  }
+
+  const positions = result.data.positions || [];
+  const position = positions.find(p => p.id === positionId);
+
+  if (!position) {
+    return ctx.reply('❌ Position not found. It may have been already closed.');
+  }
+
+  const chain = position.chain || 'solana';
+  const cfg = CHAIN_CONFIG[chain];
+  const currentValue = BigInt(position.currentValue || 0);
+  const costBasis = BigInt(position.solSpent || 0);
+  const profitLoss = currentValue - costBasis;
+  const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
+
+  await ctx.reply(
+    `📉 *Sell ${escapeMarkdown(position.tokenSymbol)}*\n\n` +
+    `${profitEmoji} Current Value: ${formatNative(currentValue, chain)} ${cfg.symbol}\n` +
+    `💰 Cost Basis: ${formatNative(costBasis, chain)} ${cfg.symbol}\n` +
+    `P/L: ${profitLoss > 0n ? '+' : ''}${formatNative(profitLoss, chain)} ${cfg.symbol}\n\n` +
+    `Select how much to sell:`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [
+          Markup.button.callback('25%', `sell_pct:${positionId}:25`),
+          Markup.button.callback('50%', `sell_pct:${positionId}:50`),
+        ],
+        [
+          Markup.button.callback('75%', `sell_pct:${positionId}:75`),
+          Markup.button.callback('100% (All)', `sell_pct:${positionId}:100`),
+        ],
+        [Markup.button.callback('« Back to Menu', 'main_menu')]
+      ])
+    }
+  );
+});
+
+bot.action(/^sell_pct:(.+):(.+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const positionId = ctx.match[1];
+  const percentage = parseInt(ctx.match[2], 10);
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+
+  if (!session) {
+    return ctx.reply('❌ Session expired. Please /start to login again.');
+  }
+
   if (pendingOperations.get(userId)) {
     return ctx.reply('⏳ You already have a trade in progress. Please wait for it to complete.');
   }
@@ -1095,12 +1263,31 @@ bot.action(/^sell_pos:(.+)$/, async (ctx) => {
   pendingOperations.set(userId, true);
 
   try {
-    const loadingMsg = await ctx.reply('⏳ Processing sell order...');
+    // Fetch position to compute sell amount
+    const posResult = await apiRequest('/api/trades/positions', 'GET', null, session.token);
+    if (!posResult.success) {
+      return ctx.reply('❌ Error: ' + posResult.error);
+    }
 
-    const idempotencyKey = generateIdempotencyKey(ctx, 'sell', positionId);
+    const positions = posResult.data.positions || [];
+    const position = positions.find(p => p.id === positionId);
+    if (!position) {
+      return ctx.reply('❌ Position not found. It may have been already closed.');
+    }
+
+    const isFullSell = percentage >= 100;
+    const positionAmount = BigInt(position.amount || 0);
+    const sellAmount = isFullSell
+      ? positionAmount
+      : (positionAmount * BigInt(percentage)) / 100n;
+
+    const loadingMsg = await ctx.reply('⏳ Processing sell order...');
+    const idempotencyKey = generateIdempotencyKey(ctx, 'sell', `${positionId}_${percentage}`);
 
     const result = await apiRequest('/api/trades/sell', 'POST', {
       positionId,
+      amountLamports: sellAmount.toString(),
+      chain: position.chain || 'solana',
     }, session.token, false, {
       'x-idempotency-key': idempotencyKey
     });
@@ -1117,15 +1304,17 @@ bot.action(/^sell_pos:(.+)$/, async (ctx) => {
       return ctx.reply('❌ Error: ' + result.error);
     }
 
+    const chain = position.chain || 'solana';
+    const cfg = CHAIN_CONFIG[chain];
     const profitLoss = BigInt(result.data.profitLoss || 0);
-    const solReceived = BigInt(result.data.solReceived || 0);
+    const nativeReceived = BigInt(result.data.nativeReceived || 0);
     const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
     const profitSign = profitLoss > 0n ? '+' : '';
 
     await ctx.reply(
-      `✅ *Position sold successfully!*\n\n` +
-      `${profitEmoji} P/L: ${profitSign}${formatSol(profitLoss)} SOL\n` +
-      `💰 Received: ${formatSol(solReceived)} SOL`,
+      `✅ *Sold ${percentage}% of ${escapeMarkdown(position.tokenSymbol)}!*\n\n` +
+      `${profitEmoji} P/L: ${profitSign}${formatNative(profitLoss, chain)} ${cfg.symbol}\n` +
+      `💰 Received: ${formatNative(nativeReceived, chain)} ${cfg.symbol}`,
       { parse_mode: 'Markdown' }
     );
 
@@ -1166,9 +1355,12 @@ bot.action('portfolio', async (ctx) => {
   }
 
   let message = '📊 *Your Portfolio*\n\n';
-  let totalValue = BigInt(0);
+  let totalSolValue = BigInt(0);
+  let totalEthValue = BigInt(0);
 
   for (const pos of positions) {
+    const chain = pos.chain || 'solana';
+    const cfg = CHAIN_CONFIG[chain];
     const currentValue = BigInt(pos.currentValue || 0);
     const costBasis = BigInt(pos.solSpent || 0);
     const profitLoss = currentValue - costBasis;
@@ -1178,16 +1370,23 @@ bot.action('portfolio', async (ctx) => {
 
     const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
     const profitSign = profitLoss > 0n ? '+' : '';
+    const chainEmoji = chain === 'solana' ? '☀️' : '🔷';
 
-    message += `${profitEmoji} *${escapeMarkdown(pos.tokenSymbol)}*\n`;
+    message += `${profitEmoji} *${escapeMarkdown(pos.tokenSymbol)}* ${chainEmoji}\n`;
     message += `Amount: ${formatTokenAmount(pos.amount, pos.decimals || 6)} ${escapeMarkdown(pos.tokenSymbol)}\n`;
-    message += `Value: ${formatSol(currentValue)} SOL\n`;
-    message += `P/L: ${profitSign}${formatSol(profitLoss)} SOL (${profitSign}${profitPercent.toFixed(2)}%)\n\n`;
+    message += `Value: ${formatNative(currentValue, chain)} ${cfg.symbol}\n`;
+    message += `P/L: ${profitSign}${formatNative(profitLoss, chain)} ${cfg.symbol} (${profitSign}${profitPercent.toFixed(2)}%)\n\n`;
 
-    totalValue += currentValue;
+    if (chain === 'solana') {
+      totalSolValue += currentValue;
+    } else {
+      totalEthValue += currentValue;
+    }
   }
 
-  message += `💰 *Total Value:* ${formatSol(totalValue)} SOL`;
+  message += `💰 *Total Value:*\n`;
+  if (totalSolValue > 0n) message += `  ☀️ ${formatNative(totalSolValue, 'solana')} SOL\n`;
+  if (totalEthValue > 0n) message += `  🔷 ${formatNative(totalEthValue, 'base')} ETH\n`;
 
   await ctx.reply(message, { parse_mode: 'Markdown' });
   await showMainMenu(ctx);
@@ -1221,13 +1420,16 @@ bot.action('history', async (ctx) => {
   let message = '📜 *Recent Trades*\n\n';
 
   for (const trade of trades.slice(0, 10)) {
+    const chain = trade.chain || 'solana';
+    const cfg = CHAIN_CONFIG[chain];
     const profitLoss = BigInt(trade.profitLoss || 0);
     const profitEmoji = profitLoss > 0n ? '📈' : profitLoss < 0n ? '📉' : '➡️';
     const profitSign = profitLoss > 0n ? '+' : '';
+    const chainEmoji = chain === 'solana' ? '☀️' : '🔷';
 
-    message += `${profitEmoji} *${escapeMarkdown(trade.tokenSymbol)}*\n`;
+    message += `${profitEmoji} *${escapeMarkdown(trade.tokenSymbol)}* ${chainEmoji}\n`;
     message += `Amount: ${formatTokenAmount(trade.amount, trade.decimals || 6)}\n`;
-    message += `P/L: ${profitSign}${formatSol(profitLoss)} SOL\n`;
+    message += `P/L: ${profitSign}${formatNative(profitLoss, chain)} ${cfg.symbol}\n`;
     message += `Date: ${new Date(trade.closedAt).toLocaleDateString()}\n\n`;
   }
 
@@ -1258,9 +1460,12 @@ bot.action('leaderboard', async (ctx) => {
 
 bot.action('lb_overall', async (ctx) => {
   await ctx.answerCbQuery();
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+  const chain = session?.chain || 'base';
 
-  // ✅ FIXED: Correct endpoint
-  const result = await apiRequest('/api/leaderboard/overall', 'GET');
+  // ✅ FIXED: Correct endpoint with chain
+  const result = await apiRequest(`/api/leaderboard/overall?chain=${chain}`, 'GET');
 
   if (!result.success) {
     return ctx.reply('❌ Error: ' + result.error);
@@ -1272,7 +1477,8 @@ bot.action('lb_overall', async (ctx) => {
     return ctx.reply('🏆 No leaderboard data yet.');
   }
 
-  let message = '🏆 *Overall Leaderboard*\n\n';
+  const cfg = CHAIN_CONFIG[chain];
+  let message = `🏆 *Overall Leaderboard (${cfg.name})*\n\n`;
   const medals = ['🥇', '🥈', '🥉'];
 
   for (let i = 0; i < Math.min(leaders.length, 10); i++) {
@@ -1282,7 +1488,7 @@ bot.action('lb_overall', async (ctx) => {
     const medal = medals[i] || `${i + 1}.`;
 
     message += `${medal} *${escapeMarkdown(leader.username)}*\n`;
-    message += `   Profit: ${profitSign}${formatSol(profit)} SOL\n\n`;
+    message += `   Profit: ${profitSign}${formatNative(profit, chain)} ${cfg.symbol}\n\n`;
   }
 
   await ctx.reply(message, { parse_mode: 'Markdown' });
@@ -1290,9 +1496,12 @@ bot.action('lb_overall', async (ctx) => {
 
 bot.action('lb_period', async (ctx) => {
   await ctx.answerCbQuery();
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+  const chain = session?.chain || 'base';
 
-  // ✅ FIXED: Correct endpoint
-  const result = await apiRequest('/api/leaderboard/current-period', 'GET');
+  // ✅ FIXED: Correct endpoint with chain
+  const result = await apiRequest(`/api/leaderboard/current-period?chain=${chain}`, 'GET');
 
   if (!result.success) {
     return ctx.reply('❌ Error: ' + result.error);
@@ -1304,7 +1513,8 @@ bot.action('lb_period', async (ctx) => {
     return ctx.reply('📅 No period leaderboard data yet.');
   }
 
-  let message = '📅 *Current Period Leaderboard*\n\n';
+  const cfg = CHAIN_CONFIG[chain];
+  let message = `📅 *Current Period Leaderboard (${cfg.name})*\n\n`;
   const medals = ['🥇', '🥈', '🥉'];
 
   for (let i = 0; i < Math.min(leaders.length, 10); i++) {
@@ -1314,7 +1524,7 @@ bot.action('lb_period', async (ctx) => {
     const medal = medals[i] || `${i + 1}.`;
 
     message += `${medal} *${escapeMarkdown(leader.username)}*\n`;
-    message += `   Profit: ${profitSign}${formatSol(profit)} SOL\n\n`;
+    message += `   Profit: ${profitSign}${formatNative(profit, chain)} ${cfg.symbol}\n\n`;
   }
 
   await ctx.reply(message, { parse_mode: 'Markdown' });
@@ -1334,6 +1544,93 @@ bot.action('noop', async (ctx) => {
 });
 
 // ============================================================================
+// CHAIN SWITCHING
+// ============================================================================
+
+bot.command('chain', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+
+  if (!session) {
+    return ctx.reply('❌ Please /start to login first.');
+  }
+
+  const currentChain = session.chain || 'base';
+
+  await ctx.reply(
+    `⛓️ *Select Chain*\n\n` +
+    `Currently trading on: *${currentChain.toUpperCase()}*\n\n` +
+    `Choose which chain to trade on:`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [
+          Markup.button.callback('☀️ Solana', 'chain_solana'),
+          Markup.button.callback('🔷 Base', 'chain_base'),
+        ],
+        [Markup.button.callback('« Back to Menu', 'main_menu')]
+      ])
+    }
+  );
+});
+
+bot.action('chain_menu', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+
+  if (!session) {
+    return ctx.reply('❌ Session expired. Please /start to login again.');
+  }
+
+  const currentChain = session.chain || 'base';
+
+  await ctx.reply(
+    `⛓️ *Select Chain*\n\n` +
+    `Currently trading on: *${currentChain.toUpperCase()}*\n\n` +
+    `Choose which chain to trade on:`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [
+          Markup.button.callback('☀️ Solana', 'chain_solana'),
+          Markup.button.callback('🔷 Base', 'chain_base'),
+        ],
+        [Markup.button.callback('« Back to Menu', 'main_menu')]
+      ])
+    }
+  );
+});
+
+bot.action('chain_solana', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+
+  if (!session) {
+    return ctx.reply('❌ Session expired. Please /start to login again.');
+  }
+
+  session.chain = 'solana';
+  await ctx.reply('☀️ Switched to *Solana* chain.', { parse_mode: 'Markdown' });
+  await showMainMenu(ctx);
+});
+
+bot.action('chain_base', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id;
+  const session = userSessions.get(userId);
+
+  if (!session) {
+    return ctx.reply('❌ Session expired. Please /start to login again.');
+  }
+
+  session.chain = 'base';
+  await ctx.reply('🔷 Switched to *Base* chain.', { parse_mode: 'Markdown' });
+  await showMainMenu(ctx);
+});
+
+// ============================================================================
 // TEXT MESSAGE HANDLER
 // ============================================================================
 
@@ -1350,24 +1647,40 @@ bot.on('text', async (ctx) => {
   if (state.state === 'awaiting_registration') {
     const parts = text.split(/\s+/);
 
-    if (parts.length !== 3) {
+    if (parts.length < 3) {
       return ctx.reply(
         '❌ Invalid format. Please use:\n' +
-        '`email username password`\n\n' +
-        'Example: `user@example.com myusername mypassword`',
+        '`email username password [solana_wallet] [base_wallet]`\n\n' +
+        'At least one wallet address is required.\n' +
+        'Example: `user@example.com myusername mypassword 0x1234...5678`',
         { parse_mode: 'Markdown' }
       );
     }
 
-    const [email, username, password] = parts;
+    const [email, username, password, solanaWallet, baseWallet] = parts;
+
+    // Validate at least one wallet address
+    const hasSolana = solanaWallet && isSolanaAddress(solanaWallet);
+    const hasBase = baseWallet && isEvmAddress(baseWallet);
+    if (!hasSolana && !hasBase) {
+      return ctx.reply(
+        '❌ At least one valid wallet address is required.\n\n' +
+        'Please provide either:\n' +
+        '• Solana address (base58, 32-44 chars)\n' +
+        '• Base address (0x + 40 hex chars)\n\n' +
+        'Example: `user@example.com myusername mypassword 0x1234567890123456789012345678901234567890`',
+        { parse_mode: 'Markdown' }
+      );
+    }
 
     const loadingMsg = await ctx.reply('⏳ Creating account...');
 
-    const result = await apiRequest('/api/telegram/auth/register', 'POST', {
-      email,
-      username,
-      password
-    }, null, true);
+    const preferredChain = hasBase ? 'base' : (hasSolana ? 'solana' : 'base');
+    const payload = { email, username, password, preferredChain };
+    if (hasSolana) payload.solanaWalletAddress = solanaWallet;
+    if (hasBase) payload.baseWalletAddress = baseWallet;
+
+    const result = await apiRequest('/api/telegram/auth/register', 'POST', payload, null, true);
 
     try {
       if (loadingMsg?.message_id) {
@@ -1402,19 +1715,16 @@ bot.on('text', async (ctx) => {
 
     console.log(`✅ Bot user ${user.username} registered successfully`);
 
-    let balanceValue;
-    if (typeof user.balance === 'bigint') {
-      balanceValue = user.balance;
-    } else if (typeof user.balance === 'string' || typeof user.balance === 'number') {
-      balanceValue = BigInt(user.balance);
-    } else {
-      balanceValue = BigInt(0);
-    }
+    const balanceSol = user.balance || 0;
+    const balanceEth = user.baseBalance || 0;
+    const userPreferredChain = user.preferredChain || 'base';
 
     userSessions.set(userId, {
       username: user.username,
       token,
-      balance: balanceValue
+      balance: BigInt(balanceSol),
+      baseBalance: BigInt(balanceEth),
+      chain: userPreferredChain
     });
 
     const telegramUserId = userId.toString();
@@ -1422,15 +1732,21 @@ bot.on('text', async (ctx) => {
       telegramUserId,
       userId: user.id,
       token,
-      balance: user.balance.toString()
+      balance: String(balanceSol)
     }, null, true);
 
     userStates.delete(userId);
 
+    const hasSolBalance = balanceSol > 0;
+    const hasBaseBalance = balanceEth > 0;
+    let balanceMsg = '';
+    if (hasSolBalance) balanceMsg += `☀️ Solana: ${formatNative(balanceSol, 'solana')} SOL\n`;
+    if (hasBaseBalance) balanceMsg += `🔷 Base: ${formatNative(balanceEth, 'base')} ETH\n`;
+
     await ctx.reply(
       `✅ *Registration successful!*\n\n` +
-      `Welcome, *${escapeMarkdown(user.username)}*!\n` +
-      `💰 Starting balance: ${formatSol(user.balance)} SOL`,
+      `Welcome, *${escapeMarkdown(user.username)}*!\n\n` +
+      `💰 Starting balances:\n${balanceMsg}`,
       { parse_mode: 'Markdown' }
     );
 
@@ -1502,19 +1818,16 @@ bot.on('text', async (ctx) => {
 
       console.log(`✅ Bot user ${user.username} logged in successfully`);
 
-      let balanceValue;
-      if (typeof user.balance === 'bigint') {
-        balanceValue = user.balance;
-      } else if (typeof user.balance === 'string' || typeof user.balance === 'number') {
-        balanceValue = BigInt(user.balance);
-      } else {
-        balanceValue = BigInt(0);
-      }
+      const balanceSol = user.balance || 0;
+      const balanceEth = user.baseBalance || 0;
+      const preferredChain = user.preferredChain || 'base';
 
       userSessions.set(userId, {
         username: user.username,
         token,
-        balance: balanceValue
+        balance: BigInt(balanceSol),
+        baseBalance: BigInt(balanceEth),
+        chain: preferredChain
       });
 
       const telegramUserId = userId.toString();
@@ -1522,14 +1835,20 @@ bot.on('text', async (ctx) => {
         telegramUserId,
         userId: user.id,
         token,
-        balance: user.balance.toString()
+        balance: String(balanceSol)
       }, null, true);
 
       userStates.delete(userId);
 
+      const hasSolBalance = balanceSol > 0;
+      const hasBaseBalance = balanceEth > 0;
+      let balanceMsg = '';
+      if (hasSolBalance) balanceMsg += `☀️ Solana: ${formatNative(balanceSol, 'solana')} SOL\n`;
+      if (hasBaseBalance) balanceMsg += `🔷 Base: ${formatNative(balanceEth, 'base')} ETH\n`;
+
       await ctx.reply(
         `✅ *Welcome back, ${escapeMarkdown(user.username)}!*\n\n` +
-        `💰 Balance: ${formatSol(user.balance)} SOL`,
+        `💰 Balances:\n${balanceMsg}`,
         { parse_mode: 'Markdown' }
       );
       await showMainMenu(ctx);
@@ -1583,12 +1902,15 @@ bot.on('text', async (ctx) => {
 
       const idempotencyKey = generateIdempotencyKey(ctx, 'buy', `${state.tokenAddress}_${amount}`);
 
+      const chain = state.chain || 'solana';
+      const cfg = CHAIN_CONFIG[chain];
+
       const result = await apiRequest('/api/trades/buy', 'POST', {
         tokenAddress: state.tokenAddress,
         tokenName: state.token.name,
         tokenSymbol: state.token.symbol,
-        solAmount: amount,
-        chain: 'solana',
+        amount,
+        chain,
       }, session.token, false, {
         'x-idempotency-key': idempotencyKey
       });
@@ -1622,7 +1944,7 @@ bot.on('text', async (ctx) => {
       await ctx.reply(
         `✅ Successfully bought *${escapeMarkdown(state.token.symbol)}*!\n\n` +
         `Amount: *${formatTokenAmount(tokenAmount, decimals)} ${escapeMarkdown(state.token.symbol)}*\n` +
-        `Spent: *${amount} SOL*`,
+        `Spent: *${amount} ${cfg.symbol}*`,
         { parse_mode: 'Markdown' }
       );
 

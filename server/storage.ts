@@ -58,6 +58,7 @@ export interface IStorage {
     nativeReceived: bigint; // lamports for Solana, wei for Base
     profitLoss: bigint;
     proportionalCost: bigint;
+    isFullSell?: boolean;
   }): Promise<void>;
 
   // Leaderboard operations - chain-aware
@@ -442,7 +443,7 @@ class DbStorage implements IStorage {
       id: users.id,
       username: users.username,
       walletAddress: walletField,
-      periodProfit: sql<number>`COALESCE(SUM(${tradeHistory.profitLoss}), 0)`,
+      periodProfit: sql<string>`COALESCE(SUM(${tradeHistory.profitLoss}), 0)`,
     })
     .from(users)
     .leftJoin(tradeHistory, and(
@@ -516,7 +517,7 @@ class DbStorage implements IStorage {
           id: trader.id,
           username: trader.username,
           walletAddress: trader.walletAddress,
-          periodProfit: trader.periodProfit,
+          periodProfit: BigInt(trader.periodProfit || '0'),
           periodStart: period.startTime,
           periodEnd: period.endTime,
           chain: period.chain,
@@ -672,6 +673,7 @@ class DbStorage implements IStorage {
     nativeReceived: bigint;
     profitLoss: bigint;
     proportionalCost: bigint;
+    isFullSell?: boolean;
   }): Promise<void> {
     await db.transaction(async (tx) => {
       // Lock the position row to prevent concurrent/double-sell
@@ -690,15 +692,18 @@ class DbStorage implements IStorage {
       const positionAmount = BigInt(position.amount);
       const positionSolSpent = BigInt(position.solSpent);
 
-      if (params.sellAmount <= 0n) throw new Error("Sell amount must be positive");
-      if (params.sellAmount > positionAmount) throw new Error("Sell amount exceeds position size");
+      // For full sells, use the exact locked position amount (prevents race conditions)
+      const sellAmount = params.isFullSell ? positionAmount : params.sellAmount;
+
+      if (sellAmount <= 0n) throw new Error("Sell amount must be positive");
+      if (sellAmount > positionAmount) throw new Error("Sell amount exceeds position size");
 
       const decimals = position.decimals || 6;
       const decimalDivisor = BigInt(10 ** decimals);
 
       // Recompute server-side to avoid trusting caller-provided math
-      const nativeReceived = (params.sellAmount * params.exitPrice) / decimalDivisor;
-      const proportionalCost = (positionSolSpent * params.sellAmount) / positionAmount;
+      const nativeReceived = (sellAmount * params.exitPrice) / decimalDivisor;
+      const proportionalCost = (positionSolSpent * sellAmount) / positionAmount;
       const profitLoss = nativeReceived - proportionalCost;
 
       // Update user balance and profit based on chain
@@ -739,7 +744,7 @@ class DbStorage implements IStorage {
         decimals,
         entryPrice: String(position.entryPrice),
         exitPrice: atomicToDecimal(params.exitPrice, nativeDecimals),
-        amount: params.sellAmount.toString(),
+        amount: sellAmount.toString(),
         solSpent: proportionalCost.toString(),
         solReceived: nativeReceived.toString(),
         profitLoss: profitLoss.toString(),
@@ -747,16 +752,16 @@ class DbStorage implements IStorage {
       } as any);
 
       // Use UPDATE for partial sells, DELETE only for full sells
-      if (params.sellAmount < positionAmount) {
+      if (sellAmount < positionAmount) {
         // PARTIAL SELL: Update position with remaining amount
-        const remainingAmount = positionAmount - params.sellAmount;
+        const remainingAmount = positionAmount - sellAmount;
         const remainingCost = positionSolSpent - proportionalCost;
 
         const [updated] = await tx
           .update(positions)
           .set({
-            amount: remainingAmount,
-            solSpent: remainingCost,
+            amount: remainingAmount.toString(),
+            solSpent: remainingCost.toString(),
           })
           .where(and(eq(positions.id, params.positionId), eq(positions.userId, params.userId)))
           .returning({ id: positions.id });
@@ -925,7 +930,7 @@ class DbStorage implements IStorage {
       whereClause = and(whereClause, eq(tradeHistory.chain, chain)) as any;
     }
     const [totalRow] = await db.select({ count: sql<number>`count(*)` }).from(tradeHistory).where(whereClause);
-    const [winRow] = await db.select({ count: sql<number>`count(*)` }).from(tradeHistory).where(and(whereClause, gt(tradeHistory.profitLoss, 0n)));
+    const [winRow] = await db.select({ count: sql<number>`count(*)` }).from(tradeHistory).where(and(whereClause, sql`${tradeHistory.profitLoss} > 0`));
     const [lossRow] = await db.select({ count: sql<number>`count(*)` }).from(tradeHistory).where(and(whereClause, sql`${tradeHistory.profitLoss} < 0`));
     return {
       totalCount: totalRow?.count || 0,

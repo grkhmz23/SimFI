@@ -28,7 +28,6 @@ import { findTodayRun, countRunsToday } from "./services/alphaDesk/persist/runs"
 import { getPerformanceSummary, getIdeaTrajectory } from "./services/alphaDesk/performance";
 import { ssePriceFeed } from "./services/ssePriceFeed";
 import { alphaDeskRuns, alphaDeskIdeas, alphaDeskIdeaOutcomes } from "@shared/schema";
-import { db } from "./db";
 
 // ============================================================================
 // RATE LIMITING WITH REDIS STORE (for multi-instance deployments)
@@ -1544,30 +1543,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Telegram registration endpoint
   app.post('/api/telegram/auth/register', botLimiter, verifyBotSecret, async (req, res) => {
     try {
-      const { email, username, password, walletAddress } = req.body;
+      const { email, username, password, solanaWalletAddress, baseWalletAddress } = req.body;
 
       // Validate inputs
       if (!email || !username || !password) {
         return res.status(400).json({ error: 'Email, username, and password are required' });
       }
 
-      // Validation for Telegram bot registration (Solana only for bot)
-      const validationSchema = z.object({
-        email: z.string().email('Invalid email'),
-        username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_-]+$/, 'Invalid username format'),
-        password: z.string().min(6, 'Password must be at least 6 characters'),
-        solanaWalletAddress: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, 'Invalid Solana wallet'),
-      });
+      // At least one wallet address is required (same as web app)
+      const hasSolana = solanaWalletAddress && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(solanaWalletAddress);
+      const hasBase = baseWalletAddress && /^0x[a-fA-F0-9]{40}$/.test(baseWalletAddress);
 
-      const validationResult = validationSchema.safeParse({
-        email,
-        username,
-        password,
-        solanaWalletAddress: walletAddress || 'So11111111111111111111111111111111111111112',
-      });
-
-      if (!validationResult.success) {
-        return res.status(400).json({ error: validationResult.error.errors[0]?.message || 'Validation failed' });
+      if (!hasSolana && !hasBase) {
+        return res.status(400).json({ error: 'At least one valid wallet address (Solana or Base) is required' });
       }
 
       // Check if email or username already exists
@@ -1584,13 +1572,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Hash password
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      // Create user
+      // Create user with optional wallets
       const user = await storage.createUser({
         email,
         username,
         password: hashedPassword,
-        preferredChain: 'solana',
-        solanaWalletAddress: walletAddress || 'So11111111111111111111111111111111111111112',
+        preferredChain: 'base',
+        ...(hasSolana ? { solanaWalletAddress } : {}),
+        ...(hasBase ? { baseWalletAddress } : {}),
       });
 
       // Update last login and generate token with tokenVersion
@@ -2111,6 +2100,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Position not found' });
       }
 
+      // Hydrated positions store amount/solSpent as bigint at runtime, but schema types them as string.
+      // Cast to bigint for correct arithmetic.
+      const positionAmount = position.amount as unknown as bigint;
+      const positionSolSpent = position.solSpent as unknown as bigint;
+
       // Use position's chain if not provided in request
       const positionChain = chain || position.chain || 'solana';
       if (!isValidChain(positionChain)) {
@@ -2125,7 +2119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (isFullSell) {
         // Full sell: use exact position amount (client cannot influence)
-        sellAmount = position.amount;
+        sellAmount = positionAmount;
       } else {
         // Partial sell: validate client-provided amount
         try {
@@ -2138,9 +2132,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: 'Sell amount must be positive' });
         }
 
-        if (sellAmount >= position.amount) {
+        if (sellAmount >= positionAmount) {
           // If trying to sell full amount via partial endpoint, convert to full sell
-          sellAmount = position.amount;
+          sellAmount = positionAmount;
           isFullSell = true; // ✅ FIX: Update flag so storage layer uses exact equality
         }
       }
@@ -2207,10 +2201,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? (await getCachedSolPrice() ?? 0)
           : (await getCachedNativePrice('base') ?? 0);
         const positionValueUsd = nativePriceUsd > 0
-          ? Number(position.solSpent) / (positionChain === 'solana' ? 1e9 : 1e18) * nativePriceUsd
+          ? Number(positionSolSpent) / (positionChain === 'solana' ? 1e9 : 1e18) * nativePriceUsd
           : 0;
         // Use position value as proxy for liquidity if data liquidity is missing
-        const sellValueUsd = positionValueUsd * (Number(sellAmount) / Number(position.amount));
+        const sellValueUsd = positionValueUsd * (Number(sellAmount) / Number(positionAmount));
         const liquidityUsd = currentTokenData.liquidityUsd || positionValueUsd || 1;
         const slippageBps = estimateSlippageBps(sellValueUsd, liquidityUsd);
         const slippageMultiplier = 10000n - BigInt(slippageBps);
@@ -2226,7 +2220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Calculate profit/loss
-      const proportionalCost = (position.solSpent * sellAmount) / position.amount;
+      const proportionalCost = (positionSolSpent * sellAmount) / positionAmount;
       const profitLoss = nativeReceived! - proportionalCost;
 
       const chainConfig = CHAIN_CONFIG[positionChain as Chain];
@@ -2251,6 +2245,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         nativeReceived,
         profitLoss,
         proportionalCost,
+        isFullSell,
       });
 
       // Check achievements and referrals asynchronously (don't block response)
@@ -3658,23 +3653,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const run of runs) {
         const ideas = await getIdeasForRun(run.id);
         for (const idea of ideas) {
-          const outcomes = await db
+          const [outcome] = await db
             .select()
             .from(alphaDeskIdeaOutcomes)
-            .where(and(eq(alphaDeskIdeaOutcomes.ideaId, idea.id), eq(alphaDeskIdeaOutcomes.horizon, horizon)));
+            .where(and(eq(alphaDeskIdeaOutcomes.ideaId, idea.id), eq(alphaDeskIdeaOutcomes.horizon, horizon)))
+            .limit(1);
 
-          for (const outcome of outcomes) {
-            totalIdeas++;
-            const pct = outcome.pctChange ? parseFloat(outcome.pctChange) : 0;
-            if (pct > 0) profitableCount++;
-            returns.push(pct);
+          if (!outcome) continue;
 
-            if (!bestCall || pct > bestCall.return) {
-              bestCall = { token: idea.symbol, return: pct };
-            }
-            if (!worstCall || pct < worstCall.return) {
-              worstCall = { token: idea.symbol, return: pct };
-            }
+          totalIdeas++;
+          const pct = outcome.pctChange ? parseFloat(outcome.pctChange) : 0;
+          if (pct > 0) profitableCount++;
+          returns.push(pct);
+
+          if (!bestCall || pct > bestCall.return) {
+            bestCall = { token: idea.symbol ?? '-', return: pct };
+          }
+          if (!worstCall || pct < worstCall.return) {
+            worstCall = { token: idea.symbol ?? '-', return: pct };
           }
         }
       }

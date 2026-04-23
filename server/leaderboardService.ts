@@ -137,7 +137,8 @@ class LeaderboardService {
 
       if (leaders.length > 0) {
         const winner = leaders[0];
-        await storage.updateLeaderboardPeriodWinner(periodId, winner.id, winner.periodProfit || 0n);
+        const winnerProfit = BigInt(winner.periodProfit || '0');
+        await storage.updateLeaderboardPeriodWinner(periodId, winner.id, winnerProfit);
         console.log(`🏅 ${chain} Winner: ${winner.username}`);
       }
     } catch (error) {

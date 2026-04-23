@@ -146,7 +146,7 @@ app.use('/api', (req, res) => {
 });
 
 // API error handler (keeps API responses JSON even in dev)
-app.use((err, req, res, next) => {
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   if (req.originalUrl && req.originalUrl.startsWith('/api/')) {
     console.error('API error:', err);
     return res.status(err?.status || 500).json({ error: err?.message || 'Internal server error' });

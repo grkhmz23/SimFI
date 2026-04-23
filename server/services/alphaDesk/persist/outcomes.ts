@@ -1,4 +1,4 @@
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { db } from "../../../db";
 import { alphaDeskIdeaOutcomes, alphaDeskIdeas } from "@shared/schema";
 import type { AlphaDeskChain } from "../types";
@@ -35,15 +35,18 @@ export async function getUnmeasuredIdeas(
       priceAtPublishUsd: alphaDeskIdeas.priceAtPublishUsd,
     })
     .from(alphaDeskIdeas)
-    .where(eq(alphaDeskIdeas.chain, chain));
+    .where(and(
+      eq(alphaDeskIdeas.chain, chain),
+      sql`${alphaDeskIdeas.publishedAt} >= ${since}`
+    ));
 
   // Only track outcomes for ideas that have an associated token address
   // (launch ideas that reference existing tokens, not pure concepts)
   const ideasWithTokens = ideas.filter((i) => i.tokenAddress != null);
 
-  if (ideas.length === 0) return [];
+  if (ideasWithTokens.length === 0) return [];
 
-  const ideaIds = ideas.map((i) => i.id);
+  const ideaIds = ideasWithTokens.map((i) => i.id);
   const measured = await db
     .select({ ideaId: alphaDeskIdeaOutcomes.ideaId })
     .from(alphaDeskIdeaOutcomes)
@@ -55,5 +58,11 @@ export async function getUnmeasuredIdeas(
     );
 
   const measuredSet = new Set(measured.map((m) => m.ideaId));
-  return ideasWithTokens.filter((i) => !measuredSet.has(i.id));
+  return ideasWithTokens
+    .filter((i) => !measuredSet.has(i.id))
+    .map((i) => ({
+      id: i.id,
+      tokenAddress: i.tokenAddress!, // Non-null because we filtered above
+      priceAtPublishUsd: i.priceAtPublishUsd,
+    }));
 }
