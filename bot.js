@@ -2025,8 +2025,15 @@ async function startManualPolling() {
       }
     } catch (error) {
       consecutiveErrors++;
-      console.error(`[POLL] ❌ Polling error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error.message);
-      
+      const errMsg = error.message || '';
+
+      if (errMsg.includes('409')) {
+        console.error(`[POLL] ❌ 409 Conflict (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): Another instance is polling with this token.`);
+        console.error('[POLL]    Find and stop the other bot instance, then restart this one.');
+      } else {
+        console.error(`[POLL] ❌ Polling error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, errMsg);
+      }
+
       if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
         console.error('[POLL] ❌ Too many consecutive errors, stopping polling');
         isPolling = false;
@@ -2059,7 +2066,7 @@ async function startManualPolling() {
     // Wait a moment for Telegram to process the webhook deletion
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // DRAIN: Aggressively fetch and acknowledge any leftover pending updates
+    // DRAIN: Fetch and acknowledge any leftover pending updates
     // so the main polling loop starts clean (prevents duplicate-update floods)
     console.log('📡 Draining any remaining pending updates...');
     let drainedCount = 0;
@@ -2076,7 +2083,12 @@ async function startManualPolling() {
         // Acknowledge immediately with a follow-up call
         await bot.telegram.getUpdates({ offset: pollOffset, limit: 1, timeout: 1 });
       } catch (err) {
-        console.warn('⚠️ Drain error:', err.message);
+        if (err.message && err.message.includes('409')) {
+          console.error('❌ 409 Conflict: Another bot instance is already polling with this token.');
+          console.error('   Shut down the other instance before starting this one.');
+        } else {
+          console.warn('⚠️ Drain error:', err.message);
+        }
         break;
       }
     }
