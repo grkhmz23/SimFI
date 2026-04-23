@@ -2024,15 +2024,20 @@ async function startManualPolling() {
         consecutiveErrors = 0; // Reset error counter on success
       }
     } catch (error) {
-      consecutiveErrors++;
       const errMsg = error.message || '';
 
       if (errMsg.includes('409')) {
-        console.error(`[POLL] ❌ 409 Conflict (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): Another instance is polling with this token.`);
-        console.error('[POLL]    Find and stop the other bot instance, then restart this one.');
-      } else {
-        console.error(`[POLL] ❌ Polling error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, errMsg);
+        // 409 = another instance is long-polling. Telegram keeps old connections
+        // open for up to 30s even after the process dies. Wait 35s and retry.
+        console.error('[POLL] ❌ 409 Conflict: Another instance is long-polling. Waiting 35s for its connection to die...');
+        await new Promise(resolve => setTimeout(resolve, 35000));
+        // Reset error counter — 409s are expected during deploy overlaps, not real failures
+        consecutiveErrors = 0;
+        continue;
       }
+
+      consecutiveErrors++;
+      console.error(`[POLL] ❌ Polling error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, errMsg);
 
       if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
         console.error('[POLL] ❌ Too many consecutive errors, stopping polling');
