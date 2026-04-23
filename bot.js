@@ -60,7 +60,7 @@ if (!BOT_TOKEN) {
 }
 
 console.log(`🤖 Starting bot in ${process.env.NODE_ENV} mode`);
-console.log(`🔑 Using ${process.env.NODE_ENV === 'development' ? 'DEVELOPMENT' : 'PRODUCTION'} bot token`);
+console.log(`🔑 Using ${process.env.NODE_ENV === 'development' ? 'DEVELOPMENT' : 'PRODUCTION'} bot token (${BOT_TOKEN.slice(0, 10)}...)`);
 
 console.log('[BOT] ✅ Creating Telegraf instance...');
 let bot;
@@ -2030,6 +2030,7 @@ async function startManualPolling() {
         // 409 = another instance is long-polling. Telegram keeps old connections
         // open for up to 30s even after the process dies. Wait 35s and retry.
         console.error('[POLL] ❌ 409 Conflict: Another instance is long-polling. Waiting 35s for its connection to die...');
+        console.error('[POLL]    Full error:', error);
         await new Promise(resolve => setTimeout(resolve, 35000));
         // Reset error counter — 409s are expected during deploy overlaps, not real failures
         consecutiveErrors = 0;
@@ -2068,8 +2069,9 @@ async function startManualPolling() {
       console.warn('⚠️ Could not delete webhook:', err.message);
     }
 
-    // Wait a moment for Telegram to process the webhook deletion
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Wait for Telegram to fully process the webhook deletion
+    // (drop_pending_updates can take a few seconds to propagate)
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
     // DRAIN: Fetch and acknowledge any leftover pending updates
     // so the main polling loop starts clean (prevents duplicate-update floods)
