@@ -1991,6 +1991,9 @@ async function startManualPolling() {
       if (updates && updates.length > 0) {
         console.log(`[POLL] Received ${updates.length} update(s)`);
         
+        // Always advance offset past the highest update in this batch
+        const maxUpdateId = Math.max(...updates.map(u => u.update_id));
+        
         for (const update of updates) {
           // Deduplication: Skip if we've already processed this update
           if (PROCESSED_UPDATES.has(update.update_id)) {
@@ -2014,11 +2017,10 @@ async function startManualPolling() {
           } catch (handlerError) {
             console.error(`[POLL] ❌ Error handling update ${update.update_id}:`, handlerError.message);
           }
-          
-          // Update offset to acknowledge this update
-          pollOffset = update.update_id + 1;
         }
         
+        // Acknowledge all updates in this batch to Telegram
+        pollOffset = maxUpdateId + 1;
         consecutiveErrors = 0; // Reset error counter on success
       }
     } catch (error) {
