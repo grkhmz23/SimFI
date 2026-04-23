@@ -59,31 +59,22 @@ BOT_API_SECRET=<generate strong secret>
 2. Run: `npm run db:push`
 3. This creates all database tables
 
-### Step 4: (Optional) Deploy Telegram Bot Worker
+### Step 4: (Optional) Enable Telegram Bot
 
-If you want the Telegram bot:
+The bot runs inside the web service via **webhook** (no separate worker needed):
 
-1. Go to Render Dashboard → **New** → **Background Worker**
-2. Connect same repository
-3. Configure:
-
-| Setting | Value |
-|---------|-------|
-| Name | `simfi-bot` |
-| Runtime | **Node** |
-| Build Command | `npm install` |
-| Start Command | `node bot.js` |
-| Plan | **Starter** |
-
-4. Add Environment Variables:
+1. Add these environment variables to your **web service**:
 
 ```bash
-NODE_ENV=production
-API_BASE_URL=https://<your-web-service>.onrender.com
-DATABASE_URL=<same as web service>
 TELEGRAM_BOT_TOKEN=<from @BotFather>
-BOT_API_SECRET=<same as web service>
+TELEGRAM_WEBHOOK_SECRET_PATH=<random-secret-path>
+TELEGRAM_WEBHOOK_SECRET_TOKEN=<random-secret-token>
+PUBLIC_URL=https://<your-web-service>.onrender.com
 ```
+
+2. Redeploy the web service — the bot will automatically register its webhook on startup.
+
+> **Why webhook?** Render uses rolling deploys (old container stays alive briefly). With polling, two containers fight over the same `getUpdates` connection causing 409 conflicts and duplicate messages. Webhook bypasses this entirely.
 
 ## ⚙️ Environment Variables Reference
 
@@ -93,6 +84,9 @@ BOT_API_SECRET=<same as web service>
 | `JWT_SECRET` | ✅ | Secret for JWT tokens (min 32 chars) |
 | `BOT_API_SECRET` | ✅ | Secret for bot API auth (min 20 chars in prod) |
 | `TELEGRAM_BOT_TOKEN` | ❌ | For Telegram bot functionality |
+| `TELEGRAM_WEBHOOK_SECRET_PATH` | ❌ | Webhook URL path secret (e.g. `wh_abc123`) |
+| `TELEGRAM_WEBHOOK_SECRET_TOKEN` | ❌ | Telegram API secret token (min 20 chars) |
+| `PUBLIC_URL` | ❌ | Public domain for webhook (falls back to `API_BASE_URL`) |
 | `AUTO_START_BOT` | ❌ | Auto-start bot with web server (default: false) |
 | `REDIS_URL` | ❌ | For shared rate limiting |
 
