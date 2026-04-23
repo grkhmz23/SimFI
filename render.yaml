@@ -2,7 +2,7 @@
 # This file configures the SimFi deployment on Render
 
 services:
-  # Main Web Service - Full-stack application
+  # Main Web Service - Full-stack application (includes Telegram bot via webhook)
   - type: web
     name: simfi-web
     runtime: node
@@ -24,37 +24,17 @@ services:
         generateValue: true
       - key: BOT_API_SECRET
         generateValue: true
-      # Optional: Auto-start Telegram bot with web server
-      # Set to 'true' only for single-instance deployments
-      - key: AUTO_START_BOT
-        value: "false"
-    autoDeploy: true
-
-  # Background Worker - Telegram Bot (separate service)
-  - type: worker
-    name: simfi-bot
-    runtime: node
-    plan: starter
-    region: oregon
-    buildCommand: npm install
-    startCommand: node bot.js
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: API_BASE_URL
-        fromService:
-          type: web
-          name: simfi-web
-          property: host
-      - key: DATABASE_URL
-        fromDatabase:
-          name: simfi-db
-          property: connectionString
-      - key: BOT_API_SECRET
-        fromService:
-          type: web
-          name: simfi-web
-          envVarKey: BOT_API_SECRET
+      # Telegram Bot (optional — runs integrated inside the web service via webhook)
+      # 1. Get a token from @BotFather and set TELEGRAM_BOT_TOKEN after deploy
+      # 2. Set PUBLIC_URL to your Render domain, e.g. https://simfi-web.onrender.com
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET_PATH
+        generateValue: true
+      - key: TELEGRAM_WEBHOOK_SECRET_TOKEN
+        generateValue: true
     autoDeploy: true
 
 databases:

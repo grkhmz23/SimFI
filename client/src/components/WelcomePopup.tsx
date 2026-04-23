@@ -74,9 +74,11 @@ export function WelcomePopup({
 
                 <div className="px-8 pt-8 pb-6 border-b border-border/50">
                   <div className="flex items-center justify-center gap-3 mb-4">
-                    <div className="relative w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
-                      <span className="text-primary-foreground font-bold text-xl">S</span>
-                    </div>
+                    <img
+                      src="/simfi-logo.png"
+                      alt="SimFi Logo"
+                      className="w-12 h-12 rounded-xl object-cover"
+                    />
                     <div>
                       <h2 className="text-xl font-semibold text-foreground tracking-tight">SimFi</h2>
                       <p className="text-xs text-muted-foreground uppercase tracking-wider">Paper Trading</p>

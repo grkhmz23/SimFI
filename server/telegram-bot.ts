@@ -1819,10 +1819,10 @@ export async function setupWebhook(bot: Telegraf, webhookUrl: string, secretToke
   await bot.telegram.setWebhook(webhookUrl, { secret_token: secretToken, drop_pending_updates: true });
 }
 
-export function getWebhookCallback(bot: Telegraf, secretPath: string) {
+export function getWebhookCallback(bot: Telegraf, secretToken: string) {
   return async (req: Request, res: Response) => {
     const headerToken = req.headers['x-telegram-bot-api-secret-token'];
-    if (headerToken !== secretPath) {
+    if (headerToken !== secretToken) {
       return res.sendStatus(401);
     }
     try {

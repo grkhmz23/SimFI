@@ -179,6 +179,51 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     });
   });
 
+  // ============================================================================
+  // TELEGRAM BOT — WEBHOOK MODE (production) / POLLING MODE (dev)
+  // ============================================================================
+  // MUST be registered BEFORE static/Vite catch-all middleware so that
+  // POST requests to /telegram/webhook/* reach the handler instead of
+  // falling through to the SPA index.html.
+  const botToken = app.get("env") === "development" 
+    ? process.env.TELEGRAM_BOT_TOKEN_DEV 
+    : process.env.TELEGRAM_BOT_TOKEN;
+
+  if (botToken) {
+    const bot = createBot(botToken);
+
+    if (app.get("env") === "production") {
+      // Production: webhook only — no polling, no 409 conflicts on deploy
+      const publicUrl = process.env.PUBLIC_URL || process.env.API_BASE_URL;
+      const secretPath = process.env.TELEGRAM_WEBHOOK_SECRET_PATH || Math.random().toString(36).slice(2);
+      const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET_TOKEN || Math.random().toString(36).slice(2);
+      const webhookUrl = `${publicUrl}/telegram/webhook/${secretPath}`;
+
+      console.log('🤖 Initializing Telegram bot in webhook mode...');
+
+      try {
+        if (!publicUrl) {
+          throw new Error('PUBLIC_URL or API_BASE_URL must be set for webhook mode');
+        }
+        // Register the route BEFORE static/Vite middleware installs its catch-all
+        app.post(`/telegram/webhook/${secretPath}`, getWebhookCallback(bot, secretToken));
+        await setupWebhook(bot, webhookUrl, secretToken);
+        console.log(`✅ Telegram webhook set: ${webhookUrl}`);
+        console.log(`📱 Bot active: @${(await bot.telegram.getMe()).username}`);
+      } catch (err: any) {
+        console.error('❌ Failed to set Telegram webhook:', err.message);
+      }
+    } else {
+      // Development: polling mode via bot.launch()
+      console.log('🤖 Starting Telegram bot in polling mode (dev)...');
+      bot.launch().catch((err: any) => {
+        console.error('❌ Failed to start Telegram bot:', err.message);
+      });
+    }
+  } else {
+    console.warn(`⚠️  No Telegram bot token found - bot will not start`);
+  }
+
   // Serve static files from client/public directory (for favicon, etc.) in development
   app.use(express.static("client/public"));
 
@@ -210,45 +255,4 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   startAlphaDeskWorker().catch((err) => {
     console.error('[AlphaDesk] Worker failed to start:', err);
   });
-
-  // ============================================================================
-  // TELEGRAM BOT — WEBHOOK MODE (production) / POLLING MODE (dev)
-  // ============================================================================
-  const botToken = app.get("env") === "development" 
-    ? process.env.TELEGRAM_BOT_TOKEN_DEV 
-    : process.env.TELEGRAM_BOT_TOKEN;
-
-  if (botToken) {
-    const bot = createBot(botToken);
-
-    if (app.get("env") === "production") {
-      // Production: webhook only — no polling, no 409 conflicts on deploy
-      const publicUrl = process.env.PUBLIC_URL || process.env.API_BASE_URL;
-      const secretPath = process.env.TELEGRAM_WEBHOOK_SECRET_PATH || Math.random().toString(36).slice(2);
-      const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET_TOKEN || Math.random().toString(36).slice(2);
-      const webhookUrl = `${publicUrl}/telegram/webhook/${secretPath}`;
-
-      console.log('🤖 Initializing Telegram bot in webhook mode...');
-
-      try {
-        if (!publicUrl) {
-          throw new Error('PUBLIC_URL or API_BASE_URL must be set for webhook mode');
-        }
-        await setupWebhook(bot, webhookUrl, secretToken);
-        app.post(`/telegram/webhook/${secretPath}`, getWebhookCallback(bot, secretToken));
-        console.log(`✅ Telegram webhook set: ${webhookUrl}`);
-        console.log(`📱 Bot active: @${(await bot.telegram.getMe()).username}`);
-      } catch (err: any) {
-        console.error('❌ Failed to set Telegram webhook:', err.message);
-      }
-    } else {
-      // Development: polling mode via bot.launch()
-      console.log('🤖 Starting Telegram bot in polling mode (dev)...');
-      bot.launch().catch((err: any) => {
-        console.error('❌ Failed to start Telegram bot:', err.message);
-      });
-    }
-  } else {
-    console.warn(`⚠️  No Telegram bot token found - bot will not start`);
-  }
 })();
