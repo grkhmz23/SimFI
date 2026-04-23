@@ -2,6 +2,7 @@ import { db } from "../db";
 import { tradeHistory, users } from "@shared/schema";
 import { eq, and, sql, desc, asc } from "drizzle-orm";
 import type { Chain, Trade } from "@shared/schema";
+import { getNativePrice } from "../nativePrice";
 
 const INITIAL_BALANCE_SOL = 10;
 const INITIAL_BALANCE_ETH = 5;
@@ -203,9 +204,13 @@ export const portfolioAnalytics = {
     }
 
     // Native prices for USD conversion
-    // We approximate using current prices since historical prices aren't stored
-    const solPrice = 150; // Approximate SOL price
-    const ethPrice = 3000; // Approximate ETH price
+    // Fetch live prices instead of using hardcoded fallbacks
+    const [solPrice, ethPrice] = await Promise.all([
+      getNativePrice('solana'),
+      getNativePrice('base'),
+    ]);
+    const solPriceUsd = solPrice ?? 150;
+    const ethPriceUsd = ethPrice ?? 3000;
 
     // Compute overview stats
     let totalWins = 0;
@@ -233,7 +238,7 @@ export const portfolioAnalytics = {
     const winRate = totalTrades > 0 ? (totalWins / totalTrades) * 100 : 0;
     const avgHoldTimeHours = totalTrades > 0 ? (totalHoldSeconds / totalTrades) / 3600 : 0;
     const totalRealizedPnlNative = 0; // Mixed chains, use USD instead
-    const totalRealizedPnlUsd = (totalPnlSol * solPrice) + (totalPnlEth * ethPrice);
+    const totalRealizedPnlUsd = (totalPnlSol * solPriceUsd) + (totalPnlEth * ethPriceUsd);
 
     // PnL Timeline (cumulative)
     const pnlTimeline: { date: string; cumulativePnlNative: number; cumulativePnlUsd: number }[] = [];
@@ -247,7 +252,7 @@ export const portfolioAnalytics = {
         cumulativeEth += pnl / 1e18;
       }
       const date = new Date(trade.closedAt).toISOString().split('T')[0];
-      const cumulativeUsd = (cumulativeSol * solPrice) + (cumulativeEth * ethPrice);
+      const cumulativeUsd = (cumulativeSol * solPriceUsd) + (cumulativeEth * ethPriceUsd);
       pnlTimeline.push({
         date,
         cumulativePnlNative: cumulativeSol + cumulativeEth,
@@ -354,7 +359,7 @@ export const portfolioAnalytics = {
         losses: data.losses,
         winRate: data.trades > 0 ? (data.wins / data.trades) * 100 : 0,
         totalPnlNative: data.totalPnlSol + data.totalPnlEth,
-        totalPnlUsd: (data.totalPnlSol * solPrice) + (data.totalPnlEth * ethPrice),
+        totalPnlUsd: (data.totalPnlSol * solPriceUsd) + (data.totalPnlEth * ethPriceUsd),
       }))
       .sort((a, b) => a.month.localeCompare(b.month))
       .slice(-6); // Last 6 months
@@ -381,7 +386,7 @@ export const portfolioAnalytics = {
       trades: data.trades,
       winRate: data.trades > 0 ? (data.wins / data.trades) * 100 : 0,
       totalPnlNative: chain === 'solana' ? data.totalPnlSol : data.totalPnlEth,
-      totalPnlUsd: chain === 'solana' ? data.totalPnlSol * solPrice : data.totalPnlEth * ethPrice,
+      totalPnlUsd: chain === 'solana' ? data.totalPnlSol * solPriceUsd : data.totalPnlEth * ethPriceUsd,
     }));
 
     return {

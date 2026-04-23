@@ -57,8 +57,22 @@ const PRICE_SOURCES: Record<Chain, Array<{
       name: 'dexscreener',
       url: 'https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112',
       extract: (data: any) => {
-        const p = data?.pairs?.[0]?.priceUsd;
-        return p ? parseFloat(p) : null;
+        const pairs = data?.pairs;
+        if (!Array.isArray(pairs) || pairs.length === 0) return null;
+        // Filter for SOL pairs on Solana chain with valid price
+        const matched = pairs.filter((p: any) =>
+          p.chainId === 'solana' &&
+          p.baseToken?.address === 'So11111111111111111111111111111111111111112' &&
+          p.priceUsd
+        );
+        if (matched.length === 0) return null;
+        // Sort by liquidity (highest first) for most accurate price
+        matched.sort((a: any, b: any) => {
+          const liqA = parseFloat(a.liquidity?.usd || '0');
+          const liqB = parseFloat(b.liquidity?.usd || '0');
+          return liqB - liqA;
+        });
+        return parseFloat(matched[0].priceUsd);
       },
     },
   ],
@@ -77,8 +91,22 @@ const PRICE_SOURCES: Record<Chain, Array<{
       name: 'dexscreener',
       url: 'https://api.dexscreener.com/latest/dex/tokens/0x4200000000000000000000000000000000000006',
       extract: (data: any) => {
-        const p = data?.pairs?.[0]?.priceUsd;
-        return p ? parseFloat(p) : null;
+        const pairs = data?.pairs;
+        if (!Array.isArray(pairs) || pairs.length === 0) return null;
+        // Filter for WETH pairs on Base chain with valid price
+        const matched = pairs.filter((p: any) =>
+          p.chainId === 'base' &&
+          p.baseToken?.address === '0x4200000000000000000000000000000000000006' &&
+          p.priceUsd
+        );
+        if (matched.length === 0) return null;
+        // Sort by liquidity (highest first) for most accurate price
+        matched.sort((a: any, b: any) => {
+          const liqA = parseFloat(a.liquidity?.usd || '0');
+          const liqB = parseFloat(b.liquidity?.usd || '0');
+          return liqB - liqA;
+        });
+        return parseFloat(matched[0].priceUsd);
       },
     },
   ],
