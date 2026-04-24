@@ -193,33 +193,10 @@ export default function About() {
               Join Our Community
             </h2>
             <p className="text-sm text-[var(--text-secondary)]">
-              Connect with us on X and Telegram for updates, tips, and community discussions
+              Connect with us on Telegram and join our X Community for updates, tips, and discussions
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
-            <a
-              href="https://x.com/sim_fi_"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block"
-            >
-              <Card className="p-5 hover:bg-[var(--bg-hover)] transition-colors cursor-pointer group">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--bg-base)] border border-[var(--border-subtle)]">
-                    <SiX className="h-5 w-5 text-[var(--text-secondary)]" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <SiX className="h-3.5 w-3.5 text-[var(--text-primary)]" />
-                      <span className="text-sm font-medium text-[var(--text-primary)]">@sim_fi_</span>
-                    </div>
-                    <p className="text-xs text-[var(--text-tertiary)]">Follow SimFi on X for news & drops</p>
-                  </div>
-                  <ExternalLink className="h-4 w-4 text-[var(--text-tertiary)] group-hover:text-[var(--text-primary)] transition-colors shrink-0" />
-                </div>
-              </Card>
-            </a>
-
             <a
               href="https://t.me/sim_fi_bot"
               target="_blank"

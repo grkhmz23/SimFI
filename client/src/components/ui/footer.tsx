@@ -3,6 +3,7 @@ import { Link } from "wouter"
 import { cn } from "@/lib/utils"
 import { SiX } from "react-icons/si"
 import { FaTelegram } from "react-icons/fa"
+import { Users } from "lucide-react"
 
 export function Footer({ className }: { className?: string }) {
   const [status, setStatus] = useState<"healthy" | "unhealthy" | "loading">("loading")
@@ -43,15 +44,17 @@ export function Footer({ className }: { className?: string }) {
             <Link href="/leaderboard" className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors">
               Leaderboard
             </Link>
+            {/* Hidden — @sim_fi_ suspended */}
+            {/* <a href="https://x.com/sim_fi_" target="_blank" rel="noopener noreferrer" className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors inline-flex items-center gap-1.5" aria-label="SimFi on X"><SiX className="h-3.5 w-3.5" /><span className="hidden sm:inline">X</span></a> */}
             <a
-              href="https://x.com/sim_fi_"
+              href="https://x.com/i/communities/1981329893569835367"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors inline-flex items-center gap-1.5"
-              aria-label="SimFi on X"
+              aria-label="SimFi X Community"
             >
-              <SiX className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">X</span>
+              <Users className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Community</span>
             </a>
             <a
               href="https://t.me/sim_fi_bot"
