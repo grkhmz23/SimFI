@@ -13,6 +13,9 @@ class HeliusService {
   private rpcUrl = 'https://mainnet.helius-rpc.com';
 
   constructor(apiKeys: string[]) {
+    if (apiKeys.length === 0) {
+      throw new Error('HeliusService requires at least one API key');
+    }
     this.config = {
       apiKeys,
       currentKeyIndex: 0,

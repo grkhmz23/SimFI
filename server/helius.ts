@@ -171,18 +171,24 @@ export class HeliusService {
 
   async getTokenHolders(mintAddress: string, limit: number = 20): Promise<{ address: string; balance: number; percentage: number; }[]> {
     try {
-      const response = await this.makeRpcCall('getTokenAccounts', [{
-        mint: mintAddress,
-        limit: limit,
-        page: 1,
-      }]);
+      const [accountsResponse, supplyResponse] = await Promise.all([
+        this.makeRpcCall('getTokenAccounts', [{
+          mint: mintAddress,
+          limit: limit,
+          page: 1,
+        }]),
+        this.makeRpcCall('getTokenSupply', [mintAddress]),
+      ]);
 
-      if (!response || !response.token_accounts) {
+      if (!accountsResponse || !accountsResponse.token_accounts) {
         return [];
       }
 
-      const accounts = response.token_accounts;
-      const totalSupply = accounts.reduce((sum: number, acc: any) => sum + (acc.amount || 0), 0);
+      const accounts = accountsResponse.token_accounts;
+      // Use actual total supply from getTokenSupply, not sum of top N accounts
+      const totalSupply = supplyResponse?.value?.uiAmount
+        ? Math.round(supplyResponse.value.uiAmount * (10 ** (supplyResponse.value.decimals || 0)))
+        : accounts.reduce((sum: number, acc: any) => sum + (acc.amount || 0), 0);
 
       return accounts
         .sort((a: any, b: any) => b.amount - a.amount)

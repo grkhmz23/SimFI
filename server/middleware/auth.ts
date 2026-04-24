@@ -40,7 +40,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       return res.status(403).json({ error: 'Invalid or expired token' });
     }
 
-    if (verified.tokenVersion !== undefined && verified.tokenVersion !== user.tokenVersion) {
+    if ((verified.tokenVersion ?? 0) !== user.tokenVersion) {
       console.log(`❌ Auth failed: Token version mismatch for user ${verified.id}`);
       return res.status(403).json({ error: 'Session expired. Please log in again.', code: 'SESSION_EXPIRED' });
     }

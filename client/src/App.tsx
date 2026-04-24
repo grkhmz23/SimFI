@@ -33,7 +33,7 @@ const About = React.lazy(() => import("@/pages/About"));
 const TokenAnalyzer = React.lazy(() => import("@/pages/TokenAnalyzer"));
 const Referrals = React.lazy(() => import("@/pages/Referrals"));
 const TraderProfile = React.lazy(() => import("@/pages/TraderProfile"));
-const WhaleWatch = React.lazy(() => import("@/pages/WhaleWatch"));
+
 const AlphaDesk = React.lazy(() => import("@/pages/AlphaDesk"));
 const Watchlist = React.lazy(() => import("@/pages/Watchlist"));
 const Analytics = React.lazy(() => import("@/pages/Analytics"));
@@ -133,11 +133,7 @@ function Router() {
           <PageLayout component={TraderProfile} />
         </Suspense>
       </Route>
-      <Route path="/whales">
-        <Suspense fallback={<PageSkeleton />}>
-          <PageLayout component={WhaleWatch} />
-        </Suspense>
-      </Route>
+
       <Route path="/alpha-desk">
         <Suspense fallback={<PageSkeleton />}>
           <PageLayout component={AlphaDesk} />

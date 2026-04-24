@@ -74,6 +74,8 @@ class MarketDataService {
   private cache: Map<string, CacheEntry<any>> = new Map();
   private inFlight: Map<string, Promise<any>> = new Map();
   private circuits: Map<string, CircuitState> = new Map();
+  private refreshInProgress: Map<string, boolean> = new Map(); // Debounce SWR background refreshes
+  private readonly MAX_CACHE_SIZE = 10000;
 
   private CIRCUIT_THRESHOLD = 5;
   private CIRCUIT_RESET_MS = 30_000;
@@ -151,7 +153,7 @@ class MarketDataService {
 
     // 2. Fetch uncached in parallel (with concurrency limit)
     if (uncached.length > 0) {
-      const BATCH_SIZE = 5;
+      const BATCH_SIZE = 15;
       for (let i = 0; i < uncached.length; i += BATCH_SIZE) {
         const batch = uncached.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.all(
@@ -247,8 +249,16 @@ class MarketDataService {
     if (cached) {
       // Check if expired
       if (Date.now() > cached.expiresAt) {
-        // Trigger background refresh (don't await)
-        this.getToken(address, chain).catch(() => {});
+        // Trigger background refresh with debounce (min 2s between refreshes per key)
+        const refreshKey = `refresh:${cacheKey}`;
+        if (!this.refreshInProgress.get(refreshKey)) {
+          this.refreshInProgress.set(refreshKey, true);
+          this.getToken(address, chain)
+            .catch(() => {})
+            .finally(() => {
+              setTimeout(() => this.refreshInProgress.delete(refreshKey), 2000);
+            });
+        }
       }
       return cached.data;
     }
@@ -368,6 +378,13 @@ class MarketDataService {
   }
 
   private setCache(key: string, data: any, ttlMs: number): void {
+    // LRU eviction: remove oldest entries if cache is at capacity
+    if (this.cache.size >= this.MAX_CACHE_SIZE) {
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.cache.delete(oldestKey);
+      }
+    }
     this.cache.set(key, {
       data,
       fetchedAt: Date.now(),
@@ -796,46 +813,38 @@ class MarketDataService {
     this.stats.upstreamCalls++;
 
     try {
-      const searchTerms = ['pepe', 'doge', 'brett', 'degen', 'cat', 'ai', 'meme', 'wolf', 'mog'];
-      const seen = new Set<string>();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(
+        'https://api.dexscreener.com/token-boosts/top/v1',
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        this.recordFailure('dexscreener');
+        return [];
+      }
+
+      const data = await response.json();
+      this.recordSuccess('dexscreener');
+
+      // Filter for Base chain tokens
+      const baseTokens = (data || [])
+        .filter((t: any) => t.chainId === 'base')
+        .slice(0, limit);
+
+      // Fetch full data for each
       const results: TokenData[] = [];
-
-      for (const term of searchTerms.slice(0, 5)) {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 4000);
-
-        const response = await fetch(
-          `https://api.dexscreener.com/latest/dex/search/?q=${encodeURIComponent(term)}`,
-          { signal: controller.signal }
-        );
-        clearTimeout(timeout);
-
-        if (!response.ok) continue;
-
-        const data = await response.json();
-        const basePairs = (data.pairs || [])
-          .filter((p: any) => p.chainId === 'base')
-          .slice(0, 6);
-
-        for (const pair of basePairs) {
-          const address = pair.baseToken?.address;
-          if (!address || seen.has(address)) continue;
-          seen.add(address);
-
-          const fullData = await this.getToken(address, 'base');
-          if (fullData) {
-            results.push(fullData);
-          }
+      for (const token of baseTokens) {
+        const fullData = await this.getToken(token.tokenAddress, 'base');
+        if (fullData) {
+          results.push(fullData);
         }
       }
 
-      if (results.length > 0) {
-        this.recordSuccess('dexscreener');
-      }
-
-      return results
-        .sort((a, b) => b.volume24h - a.volume24h)
-        .slice(0, limit);
+      return results;
     } catch (error: any) {
       this.recordFailure('dexscreener');
       console.warn(`❌ Failed to fetch Base trending:`, error.message);
@@ -905,13 +914,57 @@ class MarketDataService {
   }
 
   private async fetchBaseNewPairsFromSearch(ageHours: number): Promise<TokenData[]> {
-    const trending = await this.fetchBaseTrendingFromSearch(40);
-    const cutoff = Date.now() - (ageHours * 60 * 60 * 1000);
+    if (this.isCircuitOpen('dexscreener')) {
+      return [];
+    }
 
-    return trending
-      .filter((t) => (t.pairCreatedAt || 0) >= cutoff)
-      .sort((a, b) => (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0))
-      .slice(0, 30);
+    this.stats.upstreamCalls++;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(
+        'https://api.dexscreener.com/token-profiles/latest/v1',
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        this.recordFailure('dexscreener');
+        return [];
+      }
+
+      const data = await response.json();
+      this.recordSuccess('dexscreener');
+
+      const cutoff = Date.now() - (ageHours * 60 * 60 * 1000);
+
+      // Filter for Base chain tokens
+      const baseTokens = (data || [])
+        .filter((t: any) => t.chainId === 'base')
+        .slice(0, 40);
+
+      // Fetch full details and filter by pair creation time
+      const results: TokenData[] = [];
+      for (const token of baseTokens) {
+        const fullData = await this.getToken(token.tokenAddress, 'base');
+        if (fullData) {
+          const createdAt = fullData.pairCreatedAt || 0;
+          if (createdAt >= cutoff || (createdAt === 0 && ageHours >= 24)) {
+            results.push(fullData);
+          }
+        }
+      }
+
+      return results
+        .sort((a, b) => (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0))
+        .slice(0, 30);
+    } catch (error: any) {
+      this.recordFailure('dexscreener');
+      console.warn(`❌ Failed to fetch Base new pairs:`, error.message);
+      return [];
+    }
   }
 
   private async fetchHotFromUpstream(limit: number, chain: Chain): Promise<TokenData[]> {
@@ -1088,7 +1141,7 @@ class MarketDataService {
     const cleanWhole = wholePart.replace(/^0+/, '') || '0';
     const nativeUnits = BigInt(cleanWhole + fracPart);
 
-    return nativeUnits > 0n ? nativeUnits : 1n;
+    return nativeUnits;
   }
 
   /**
@@ -1107,7 +1160,7 @@ class MarketDataService {
     const priceInNative = tokenPriceUsd / nativePriceUsd;
     const multiplier = 10 ** nativeDecimals;
     const nativeUnits = BigInt(Math.floor(priceInNative * multiplier));
-    return nativeUnits > 0n ? nativeUnits : 1n;
+    return nativeUnits;
   }
 
   /**

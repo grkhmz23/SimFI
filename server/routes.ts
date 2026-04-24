@@ -20,7 +20,7 @@ import { getSolPrice, getCachedSolPrice, fetchEthPrice, getNativePrice, getCache
 import { registerMarketRoutes } from "./services/marketRoutes";
 import { achievementEngine } from "./services/achievementEngine";
 import { portfolioAnalytics } from "./services/portfolioAnalytics";
-import { whaleFeed } from "./services/whaleFeed";
+
 import { jupiterService, SOL_MINT } from "./services/jupiterService";
 import { runDailyPipeline } from "./services/alphaDesk";
 import { getIdeasForRun } from "./services/alphaDesk/persist/ideas";
@@ -1807,8 +1807,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // CRITICAL: Use fresh prices from DexScreener, never fall back to entryPrice
       const enrichedPositions = positions.map(p => {
         const freshPrice = priceMap.get(p.tokenAddress);
-        const priceToUse = freshPrice || p.entryPrice; // Use entry price as fallback only
-        const priceIsFresh = !!freshPrice;
+        const priceToUse = freshPrice !== undefined ? freshPrice : p.entryPrice; // Use entry price as fallback only
+        const priceIsFresh = freshPrice !== undefined;
         const priceAgeMs = priceIsFresh && pricesFetchedAt ? Date.now() - pricesFetchedAt : -1;
 
         // ✅ Recalculate current value based on FRESH price, not stale DB value
@@ -2001,17 +2001,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!check) {
           check = await fetchDexScreenerPriceForChain(tokenAddress, chain);
         }
-        if (check) {
-          liquidityUsd = check.liquidityUsd;
-          volume24hUsd = check.volume24hUsd;
-          if (!meetsLiquidityRequirements(liquidityUsd, volume24hUsd)) {
-            console.log(`⚠️ Token ${tokenSymbol} rejected post-Jupiter: liquidity=$${liquidityUsd}`);
-            return res.status(400).json({
-              error: `Token does not meet minimum liquidity requirements ($${MIN_LIQUIDITY_USD} liquidity, $${MIN_VOLUME_24H_USD} 24h volume)`,
-              liquidityUsd,
-              volume24hUsd,
-            });
-          }
+        if (!check) {
+          console.log(`⚠️ Token ${tokenSymbol} rejected post-Jupiter: liquidity verification unavailable`);
+          return res.status(400).json({
+            error: 'Liquidity verification temporarily unavailable. Please try again.',
+          });
+        }
+        liquidityUsd = check.liquidityUsd;
+        volume24hUsd = check.volume24hUsd;
+        if (!meetsLiquidityRequirements(liquidityUsd, volume24hUsd)) {
+          console.log(`⚠️ Token ${tokenSymbol} rejected post-Jupiter: liquidity=$${liquidityUsd}`);
+          return res.status(400).json({
+            error: `Token does not meet minimum liquidity requirements ($${MIN_LIQUIDITY_USD} liquidity, $${MIN_VOLUME_24H_USD} 24h volume)`,
+            liquidityUsd,
+            volume24hUsd,
+          });
         }
       }
 
@@ -2253,14 +2257,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       achievementEngine.runAllChecks(req.userId!, chainForAchievements).catch(console.error);
       achievementEngine.checkGreenDay(req.userId!).catch(console.error);
 
-      // Convert referral if this is the user's first trade
+      // Convert referral if this is the user's first trade on any chain
+      const tradeChain = positionChain as Chain;
       storage.getReferralByReferee(req.userId!).then(async (referral) => {
         if (referral && referral.status === 'pending' && !referral.rewardClaimed) {
-          const tradeCount = await storage.getUserTradesCount(req.userId!, 'base');
+          const tradeCount = await storage.getUserTradesCount(req.userId!, tradeChain);
           if (tradeCount >= 1) {
-            await storage.convertReferral(req.userId!);
-            // Referrer gets +0.5 ETH
-            await storage.updateUserBalance(referral.referrerId, WEI_PER_ETH / 2n, 'base');
+            const converted = await storage.convertReferral(req.userId!);
+            if (converted) {
+              // Referrer gets +0.5 native token on the chain where the trade happened
+              await storage.updateUserBalance(referral.referrerId, WEI_PER_ETH / 2n, tradeChain);
+            }
           }
         }
       }).catch(console.error);
@@ -2286,11 +2293,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/trades/sell-all', ipBackstopLimiter, authenticateToken, userTradeLimiter, async (req, res) => {
-  return res.status(501).json({
-    error: 'sell-all temporarily disabled (storage batch sell not implemented). Sell positions individually for now.'
-  });
-});
+  // sell-all removed — users can sell positions individually via /api/trades/sell
 
 
   app.get('/api/trades/history', authenticateToken, async (req, res) => {
@@ -3459,23 +3462,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================================================
-  // Whale Watch (Phase 7)
-  // ============================================================================
-
-  app.get('/api/whales/activity', publicApiLimiter, async (req, res) => {
-    try {
-      const chainParam = (req.query.chain as string) || 'base';
-      if (!isValidChain(chainParam)) {
-        return res.status(400).json({ error: 'Invalid chain' });
-      }
-      const activity = await whaleFeed.getActivity(chainParam as Chain);
-      res.json({ activity });
-    } catch (error: any) {
-      console.error('Whale activity error:', error);
-      res.status(500).json({ error: 'Could not fetch whale activity' });
-    }
-  });
-
   // ============================================================================
   // Daily Streaks (Phase 8)
   // ============================================================================
@@ -3540,7 +3526,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Initialize leaderboard service for period management
   leaderboardService.start();
-  registerMarketRoutes(app, { authenticateToken, searchLimiter });
+  registerMarketRoutes(app, { authenticateToken, searchLimiter, publicApiLimiter });
 
   // ============================================================================
   // Alpha Desk API
@@ -3702,8 +3688,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
 
   // GET /api/sse/prices — Server-Sent Events endpoint
-  app.get('/api/sse/prices', (req, res) => {
+  app.get('/api/sse/prices', publicApiLimiter, (req, res) => {
     const clientId = ssePriceFeed.addClient(res);
+    if (!clientId) return; // Rejected (max clients reached)
 
     // Keep-alive ping every 15s to prevent proxy timeouts
     const keepAlive = setInterval(() => {

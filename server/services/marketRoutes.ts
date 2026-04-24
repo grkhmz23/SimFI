@@ -19,9 +19,10 @@ export function registerMarketRoutes(
   deps: {
     authenticateToken: RequestHandler;
     searchLimiter: RequestHandler;
+    publicApiLimiter: RequestHandler;
   }
 ): void {
-  const { authenticateToken, searchLimiter } = deps;
+  const { authenticateToken, searchLimiter, publicApiLimiter } = deps;
 
   // =========================================================================
   // MARKET DATA ENDPOINTS (cached, rate-limit friendly)
@@ -32,7 +33,7 @@ export function registerMarketRoutes(
    * Get single token data (cached)
    * Replaces frontend DexScreener calls
    */
-  app.get('/api/market/token/:address', async (req, res) => {
+  app.get('/api/market/token/:address', publicApiLimiter, async (req, res) => {
     try {
       const { address } = req.params;
       const chainParam = (req.query.chain as string) || 'solana';
@@ -72,7 +73,7 @@ export function registerMarketRoutes(
    * Batch endpoint for positions page
    * Much more efficient than individual calls
    */
-  app.get('/api/market/tokens', async (req, res) => {
+  app.get('/api/market/tokens', publicApiLimiter, async (req, res) => {
     try {
       const addressesParam = req.query.addresses as string;
       const chainParam = (req.query.chain as string) || 'solana';
@@ -123,7 +124,7 @@ export function registerMarketRoutes(
    * GET /api/market/trending?chain=solana|base&limit=20
    * Get trending tokens (cached 30s)
    */
-  app.get('/api/market/trending', async (req, res) => {
+  app.get('/api/market/trending', publicApiLimiter, async (req, res) => {
     try {
       const chainParam = (req.query.chain as string) || 'solana';
       const limit = Math.min(50, parseInt(req.query.limit as string) || 20);
@@ -156,7 +157,7 @@ export function registerMarketRoutes(
    * GET /api/market/new-pairs?chain=solana|base&age=1|6|24
    * Recently launched pairs
    */
-  app.get('/api/market/new-pairs', async (req, res) => {
+  app.get('/api/market/new-pairs', publicApiLimiter, async (req, res) => {
     try {
       const chainParam = (req.query.chain as string) || 'solana';
       const ageHours = Math.min(168, Math.max(1, parseInt(req.query.age as string) || 24));
@@ -189,7 +190,7 @@ export function registerMarketRoutes(
    * GET /api/market/hot?chain=solana|base&limit=20
    * Hot tokens by volume/liquidity momentum
    */
-  app.get('/api/market/hot', async (req, res) => {
+  app.get('/api/market/hot', publicApiLimiter, async (req, res) => {
     try {
       const chainParam = (req.query.chain as string) || 'solana';
       const limit = Math.min(50, parseInt(req.query.limit as string) || 20);
@@ -283,7 +284,7 @@ export function registerMarketRoutes(
    * - amountNative: Native amount for buys (required for buy) - in SOL or ETH
    * - amountTokens: token amount for sells (required for sell)
    */
-  app.get('/api/quote', authenticateToken, async (req, res) => {
+  app.get('/api/quote', authenticateToken, publicApiLimiter, async (req, res) => {
     try {
       const { token, chain, side, amountNative, amountTokens } = req.query;
 

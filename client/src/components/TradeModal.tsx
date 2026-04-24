@@ -33,6 +33,7 @@ import {
   nativeToTokens,
   formatUSD,
   formatPricePerTokenNative,
+  parseTokenAmount,
 } from "@/lib/token-format"
 import { formatUsd, formatTokenQty, formatPct } from "@/lib/format"
 import { useChain } from "@/lib/chain-context"
@@ -108,7 +109,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       : undefined)
 
   const currentPrice = toBigInt(
-    (activeToken as any)?.priceLamports || activeToken?.price || 0
+    (activeToken as any)?.priceNative || (activeToken as any)?.priceLamports || activeToken?.price || 0
   )
   const currentPriceUsd = activeToken?.priceUsd
 
@@ -267,9 +268,9 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       positionId?: string
       tokenName?: string
       tokenSymbol?: string
+      idempotencyKey: string
     }) => {
-      const idempotencyKey = generateIdempotencyKey()
-      const headers = { "X-Idempotency-Key": idempotencyKey }
+      const headers = { "X-Idempotency-Key": data.idempotencyKey }
 
       if (data.side === "buy") {
         return apiRequest(
@@ -323,7 +324,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
 
   const onBuySubmit = buyForm.handleSubmit((data) => {
     if (!activeToken || !tokenAddress) return
-    const nativeSpentBigInt = BigInt(Math.floor(data.amount * 10 ** nativeDecimals))
+    const nativeSpentBigInt = parseTokenAmount(data.amount.toString(), nativeDecimals)
     const userBalance = activeChain === "solana" ? user?.balance : user?.baseBalance
     const userBalanceBigInt = toBigInt(userBalance || 0)
     if (nativeSpentBigInt > userBalanceBigInt) {
@@ -340,6 +341,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       amountSol: data.amount.toString(),
       tokenName: activeToken.name || name,
       tokenSymbol: activeToken.symbol || symbol,
+      idempotencyKey: generateIdempotencyKey(),
     })
   })
 
@@ -351,6 +353,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       tokenAddress: position.tokenAddress,
       amountTokens: sellAmountLamports.toString(),
       positionId: position.id,
+      idempotencyKey: generateIdempotencyKey(),
     })
   })
 

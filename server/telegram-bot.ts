@@ -3,18 +3,15 @@ import axios from 'axios';
 import type { Request, Response } from 'express';
 
 // ── Config ──
-const DEV_BOT_SECRET = 'simfi-dev-bot-secret-change-in-production';
 function getBotApiSecret(): string {
-  if (process.env.NODE_ENV === 'production') {
-    if (!process.env.BOT_API_SECRET) {
-      throw new Error('FATAL: BOT_API_SECRET must be set in production');
-    }
-    if (process.env.BOT_API_SECRET.length < 20) {
-      throw new Error('FATAL: BOT_API_SECRET must be at least 20 characters');
-    }
-    return process.env.BOT_API_SECRET;
+  const secret = process.env.BOT_API_SECRET;
+  if (!secret) {
+    throw new Error('FATAL: BOT_API_SECRET environment variable must be set');
   }
-  return process.env.BOT_API_SECRET || DEV_BOT_SECRET;
+  if (secret.length < 20) {
+    throw new Error('FATAL: BOT_API_SECRET must be at least 20 characters');
+  }
+  return secret;
 }
 
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:5000';

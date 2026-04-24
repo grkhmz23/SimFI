@@ -84,7 +84,7 @@ export interface IStorage {
   // Referral operations (Phase 4)
   getReferralByReferee(refereeId: string): Promise<Referral | undefined>;
   createReferral(referrerId: string, refereeId: string, code: string): Promise<Referral>;
-  convertReferral(refereeId: string): Promise<void>;
+  convertReferral(refereeId: string): Promise<boolean>;
   getReferralStats(userId: string): Promise<{ total: number; converted: number; pending: number }>;
   getTopReferrers(limit: number): Promise<any[]>;
 
@@ -822,10 +822,12 @@ class DbStorage implements IStorage {
     return row;
   }
 
-  async convertReferral(refereeId: string): Promise<void> {
-    await db.update(referrals)
+  async convertReferral(refereeId: string): Promise<boolean> {
+    const result = await db.update(referrals)
       .set({ status: 'converted' })
-      .where(and(eq(referrals.refereeId, refereeId), eq(referrals.status, 'pending')));
+      .where(and(eq(referrals.refereeId, refereeId), eq(referrals.status, 'pending')))
+      .returning();
+    return result.length > 0;
   }
 
   async getReferralStats(userId: string): Promise<{ total: number; converted: number; pending: number }> {

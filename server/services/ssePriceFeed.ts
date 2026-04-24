@@ -19,6 +19,8 @@ class SsePriceFeed {
   private clients = new Map<string, SseClient>();
   private broadcastInterval: NodeJS.Timeout | null = null;
   private clientCounter = 0;
+  private readonly MAX_CLIENTS = 200;
+  private heartbeatInterval: NodeJS.Timeout | null = null;
 
   /**
    * Start the broadcast loop if not already running
@@ -38,12 +40,46 @@ class SsePriceFeed {
       this.broadcastInterval = null;
       console.log("[SSE] Price feed broadcast loop stopped");
     }
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+      console.log("[SSE] Heartbeat stopped");
+    }
+  }
+
+  private startHeartbeat(): void {
+    if (this.heartbeatInterval) return;
+    this.heartbeatInterval = setInterval(() => {
+      this.purgeStaleClients();
+    }, 30000); // Check every 30s
+  }
+
+  private purgeStaleClients(): void {
+    const now = Date.now();
+    const STALE_THRESHOLD_MS = 60000; // 60s without activity
+    for (const [clientId, client] of this.clients) {
+      if (now - client.connectedAt > STALE_THRESHOLD_MS) {
+        // Try to send a ping; if it fails, remove the client
+        try {
+          client.res.write(":ping\n\n");
+        } catch {
+          this.removeClient(clientId);
+        }
+      }
+    }
   }
 
   /**
    * Add a new SSE client
    */
-  addClient(res: Response): string {
+  addClient(res: Response): string | null {
+    // Enforce max client limit
+    if (this.clients.size >= this.MAX_CLIENTS) {
+      console.warn(`[SSE] Max clients reached (${this.MAX_CLIENTS}), rejecting new connection`);
+      res.status(503).end();
+      return null;
+    }
+
     this.clientCounter++;
     const clientId = `sse-${Date.now()}-${this.clientCounter}`;
 
@@ -63,6 +99,7 @@ class SsePriceFeed {
 
     this.clients.set(clientId, client);
     this.start();
+    this.startHeartbeat();
 
     // Send initial connection ack
     this.sendToClient(clientId, "connected", { clientId, message: "SSE connection established" });
