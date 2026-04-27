@@ -299,7 +299,7 @@ export default function Positions() {
 
             const tokenQty =
               Number(toBigInt(position.amount)) /
-              10 ** (position.decimals || 6);
+              10 ** (position.decimals ?? 6);
 
             return (
               <motion.div

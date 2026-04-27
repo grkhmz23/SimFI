@@ -229,17 +229,22 @@ export default function Portfolio() {
   });
 
   // Subscribe to position token prices via SSE
+  const positionTokenKey = useMemo(() => {
+    if (!positionsData?.positions?.length) return "";
+    return positionsData.positions.map((p) => p.tokenAddress).sort().join(",");
+  }, [positionsData?.positions]);
+
   useEffect(() => {
-    if (!positionsData?.positions?.length || !activeChain) return;
-    const tokens = positionsData.positions.map((p) => ({
-      address: p.tokenAddress,
+    if (!positionTokenKey || !activeChain) return;
+    const tokens = positionTokenKey.split(",").map((address) => ({
+      address,
       chain: activeChain,
     }));
     sse.subscribe(tokens);
     return () => {
       sse.unsubscribe(tokens);
     };
-  }, [positionsData, activeChain]);
+  }, [positionTokenKey, activeChain]);
 
   const { data: analyticsData } = useQuery<AnalyticsResponse>({
     queryKey: ['/api/portfolio/analytics', activeChain],
@@ -673,7 +678,7 @@ export default function Portfolio() {
                           </TableCell>
                           <TableCell className="text-right">
                             <span className="font-mono text-[var(--text-primary)]">
-                              {formatTokenQty(Number(toBigInt(position.amount)) / 10 ** (position.decimals || 6))}
+                              {formatTokenQty(Number(toBigInt(position.amount)) / 10 ** (position.decimals ?? 6))}
                             </span>
                           </TableCell>
                           <TableCell className="text-right">

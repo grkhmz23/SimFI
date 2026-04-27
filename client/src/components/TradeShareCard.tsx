@@ -49,7 +49,7 @@ export const TradeShareCard = forwardRef<HTMLDivElement, TradeShareCardProps>(
         : weiToEth(toBigInt(trade.exitPrice));
     const exitPriceUsd = exitPriceNative * nativePrice;
 
-    const tokenQty = Number(toBigInt(trade.amount)) / 10 ** (trade.decimals || 6);
+    const tokenQty = Number(toBigInt(trade.amount)) / 10 ** (trade.decimals ?? 6);
     const chainLabel = trade.chain === 'solana' ? 'Solana' : 'Base';
     const chainColor = trade.chain === 'solana' ? '#14F195' : '#0052FF';
 

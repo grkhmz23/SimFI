@@ -207,7 +207,7 @@ export default function History() {
 
                       const tokenQty =
                         Number(toBigInt(trade.amount)) /
-                        10 ** (trade.decimals || 6);
+                        10 ** (trade.decimals ?? 6);
 
                       return (
                         <TableRow

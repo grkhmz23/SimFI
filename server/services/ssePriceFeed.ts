@@ -27,6 +27,15 @@ class SsePriceFeed {
    */
   start(): void {
     if (this.broadcastInterval) return;
+
+    // Prime native price caches before first broadcast so clients don't get nulls
+    import("../nativePrice")
+      .then(({ getNativePrice }) =>
+        Promise.all([getNativePrice("solana"), getNativePrice("base")])
+      )
+      .then(() => console.log("[SSE] Native price cache primed"))
+      .catch((err: any) => console.warn("[SSE] Failed to prime native price cache:", err.message));
+
     this.broadcastInterval = setInterval(() => this.broadcast(), 3000);
     console.log("[SSE] Price feed broadcast loop started (3s interval)");
   }
@@ -101,8 +110,20 @@ class SsePriceFeed {
     this.start();
     this.startHeartbeat();
 
-    // Send initial connection ack
-    this.sendToClient(clientId, "connected", { clientId, message: "SSE connection established" });
+    // Send initial connection ack with current prices immediately
+    try {
+      const prices = getAllNativePricesDetailed();
+      this.sendToClient(clientId, "connected", {
+        clientId,
+        message: "SSE connection established",
+        prices: {
+          sol: prices.sol.usd,
+          eth: prices.eth.usd,
+        },
+      });
+    } catch {
+      this.sendToClient(clientId, "connected", { clientId, message: "SSE connection established" });
+    }
 
     // Clean up on disconnect
     res.on("close", () => {

@@ -8,6 +8,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import { PriceProvider } from "@/lib/price-context";
 import { ChainProvider } from "@/lib/chain-context";
 import { WatchlistProvider } from "@/lib/watchlist-context";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Navigation } from "@/components/Navigation";
 import { MobileNav } from "@/components/MobileNav";
 import { Footer } from "@/components/ui/footer";
@@ -38,6 +39,7 @@ const AlphaDesk = React.lazy(() => import("@/pages/AlphaDesk"));
 const Watchlist = React.lazy(() => import("@/pages/Watchlist"));
 const Analytics = React.lazy(() => import("@/pages/Analytics"));
 const Security = React.lazy(() => import("@/pages/Security"));
+const Rewards = React.lazy(() => import("@/pages/Rewards"));
 const NotFound = React.lazy(() => import("@/pages/not-found"));
 
 const DesignSystem = import.meta.env.DEV
@@ -154,6 +156,11 @@ function Router() {
           <PageLayout component={Security} />
         </Suspense>
       </Route>
+      <Route path="/rewards">
+        <Suspense fallback={<PageSkeleton />}>
+          <PageLayout component={Rewards} />
+        </Suspense>
+      </Route>
       {import.meta.env.DEV && DesignSystem && (
         <Route path="/_design">
           <Suspense fallback={<PageSkeleton />}>
@@ -192,12 +199,14 @@ function App() {
           <ChainProvider>
             <WatchlistProvider>
               <PriceProvider>
-                <Toaster />
-                <WelcomePopup 
-                  delay={800}
-                  showOncePerSession={false}
-                />
-                <Router />
+                <ErrorBoundary>
+                  <Toaster />
+                  <WelcomePopup 
+                    delay={800}
+                    showOncePerSession={false}
+                  />
+                  <Router />
+                </ErrorBoundary>
               </PriceProvider>
             </WatchlistProvider>
           </ChainProvider>

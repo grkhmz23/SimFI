@@ -31,39 +31,50 @@ class HeliusService {
     return key;
   }
 
-  // Generic request handler with error handling
+  // Generic request handler with error handling and timeout
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const apiKey = this.getApiKey();
     const url = `${this.baseUrl}${endpoint}?api-key=${apiKey}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
       const response = await fetch(url, {
         ...options,
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
           ...options.headers,
         },
       });
+      clearTimeout(timeout);
 
       if (!response.ok) {
         throw new Error(`Helius API error: ${response.status} ${response.statusText}`);
       }
 
       return await response.json();
-    } catch (error) {
+    } catch (error: any) {
+      clearTimeout(timeout);
+      if (error.name === 'AbortError') {
+        throw new Error('Helius API request timed out');
+      }
       console.error('Helius request error:', error);
       throw error;
     }
   }
 
-  // RPC request handler
+  // RPC request handler with timeout
   private async rpcRequest<T>(method: string, params: any[]): Promise<T> {
     const apiKey = this.getApiKey();
     const url = `${this.rpcUrl}?api-key=${apiKey}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
       const response = await fetch(url, {
         method: 'POST',
+        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jsonrpc: '2.0',
@@ -72,13 +83,18 @@ class HeliusService {
           params,
         }),
       });
+      clearTimeout(timeout);
 
       const data = await response.json();
       if (data.error) {
         throw new Error(data.error.message || JSON.stringify(data.error));
       }
       return data.result;
-    } catch (error) {
+    } catch (error: any) {
+      clearTimeout(timeout);
+      if (error.name === 'AbortError') {
+        throw new Error('Helius RPC request timed out');
+      }
       console.error('RPC request error:', error);
       throw error;
     }

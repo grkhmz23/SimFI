@@ -64,8 +64,12 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const { toast } = useToast()
   const [, setLocation] = useLocation()
   const { activeChain, nativeSymbol, nativeDecimals } = useChain()
+  // Lock the chain when modal opens to prevent race if user switches chains in nav
+  const [lockedChain] = useState(activeChain)
+  const lockedNativeSymbol = lockedChain === "solana" ? "SOL" : "ETH"
+  const lockedNativeDecimals = lockedChain === "solana" ? 9 : 18
   const { getPrice } = usePrice()
-  const nativePriceUSD = getPrice(activeChain) ?? 0
+  const nativePriceUSD = getPrice(lockedChain) ?? 0
   const isBuying = mode === "buy" || !position
   const effectiveMode = mode || "buy"
   const [lastQuoteUpdate, setLastQuoteUpdate] = useState<Date>(new Date())
@@ -76,9 +80,9 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     data: freshToken,
     isLoading: isFetchingFreshToken,
   } = useQuery<Token>({
-    queryKey: [`/api/market/token/${tokenAddress}`, activeChain],
+    queryKey: [`/api/market/token/${tokenAddress}`, lockedChain],
     queryFn: async () => {
-      const res = await fetch(`/api/market/token/${tokenAddress}?chain=${activeChain}`, {
+      const res = await fetch(`/api/market/token/${tokenAddress}?chain=${lockedChain}`, {
         credentials: "include",
       })
       if (!res.ok) throw new Error("Failed to fetch token")
@@ -101,10 +105,10 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
           price: position.currentPrice || 0,
           priceUsd: nativePriceUSD > 0
             ? (Number(toBigInt(position.currentPrice || 0)) /
-                (activeChain === 'solana' ? 1e9 : 1e18)) *
+                (lockedChain === 'solana' ? 1e9 : 1e18)) *
               nativePriceUSD
             : undefined,
-          decimals: position.decimals || 6,
+          decimals: position.decimals ?? 6,
         } as Partial<Token>)
       : undefined)
 
@@ -115,7 +119,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
 
   // Compute USD display price from native units when priceUsd is unavailable
   const currentPriceNativeNum =
-    Number(currentPrice) / (activeChain === 'solana' ? 1e9 : 1e18)
+    Number(currentPrice) / (lockedChain === 'solana' ? 1e9 : 1e18)
   const displayCurrentPriceUsd =
     currentPriceUsd ??
     (nativePriceUSD > 0 ? currentPriceNativeNum * nativePriceUSD : undefined)
@@ -142,7 +146,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
               <p className="text-2xl font-mono font-medium text-[var(--text-primary)]">
                 {displayCurrentPriceUsd !== undefined
                   ? formatUsd(displayCurrentPriceUsd)
-                  : formatPricePerTokenNative(currentPrice, activeChain)}
+                  : formatPricePerTokenNative(currentPrice, lockedChain)}
               </p>
             </div>
             <div className="flex gap-3">
@@ -171,7 +175,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
 
   const nativeAmount = buyForm.watch("amount") || 0
   const percentage = sellForm.watch("percentage") || 100
-  const buyTokenDecimals = activeToken?.decimals || 6
+  const buyTokenDecimals = activeToken?.decimals ?? 6
 
   // Debounce amount for quote requests
   const [debouncedAmount, setDebouncedAmount] = useState(nativeAmount)
@@ -180,7 +184,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     return () => clearTimeout(timer)
   }, [nativeAmount])
 
-  const positionDecimals = position?.decimals || 6
+  const positionDecimals = position?.decimals ?? 6
   const sellAmountBigInt =
     !isBuying && position
       ? (toBigInt(position.amount) * BigInt(percentage)) / BigInt(100)
@@ -200,11 +204,11 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     priceImpactBps: number
     nativeSymbol: string
   }>({
-    queryKey: ["/api/quote", tokenAddress, activeChain, effectiveMode, isBuying ? debouncedAmount : percentage],
+    queryKey: ["/api/quote", tokenAddress, lockedChain, effectiveMode, isBuying ? debouncedAmount : percentage],
     queryFn: async () => {
       const params = new URLSearchParams()
       params.set("token", tokenAddress)
-      params.set("chain", activeChain)
+      params.set("chain", lockedChain)
       params.set("side", effectiveMode)
       if (isBuying) {
         params.set("amountNative", debouncedAmount.toString())
@@ -240,7 +244,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       ? (nativeAmount * 10 ** nativeDecimals) / currentPriceNumber
       : 0
 
-  const tokenDecimals = position?.decimals || activeToken?.decimals || 6
+  const tokenDecimals = position?.decimals ?? activeToken?.decimals ?? 6
 
   const estimatedTokens = isBuying && quote
     ? Number(quote.estimatedOutput) / 10 ** tokenDecimals
@@ -281,7 +285,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
             tokenName: data.tokenName,
             tokenSymbol: data.tokenSymbol,
             amount: data.amountSol,
-            chain: activeChain,
+            chain: lockedChain,
           },
           headers
         )
@@ -292,7 +296,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
           {
             positionId: data.positionId,
             amountLamports: data.amountTokens,
-            chain: activeChain,
+            chain: lockedChain,
           },
           headers
         )
@@ -300,11 +304,11 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     },
     onSuccess: async (response: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/profile"] })
-      queryClient.invalidateQueries({ queryKey: ["/api/trades/positions", activeChain] })
-      queryClient.invalidateQueries({ queryKey: ["/api/trades/history", activeChain] })
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/positions", lockedChain] })
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/history", lockedChain] })
       await refreshUser()
 
-      const decimals = token?.decimals || position?.decimals || 6
+      const decimals = token?.decimals ?? position?.decimals ?? 6
       toast({
         title: isBuying ? "Position Opened" : "Position Closed",
         description: isBuying
@@ -325,12 +329,12 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const onBuySubmit = buyForm.handleSubmit((data) => {
     if (!activeToken || !tokenAddress) return
     const nativeSpentBigInt = parseTokenAmount(data.amount.toString(), nativeDecimals)
-    const userBalance = activeChain === "solana" ? user?.balance : user?.baseBalance
+    const userBalance = lockedChain === "solana" ? user?.balance : user?.baseBalance
     const userBalanceBigInt = toBigInt(userBalance || 0)
     if (nativeSpentBigInt > userBalanceBigInt) {
       toast({
         title: "Insufficient Balance",
-        description: `You need ${data.amount} ${nativeSymbol} but only have ${formatNativeAmount(userBalance || 0, activeChain)} ${nativeSymbol}`,
+        description: `You need ${data.amount} ${nativeSymbol} but only have ${formatNativeAmount(userBalance || 0, lockedChain)} ${nativeSymbol}`,
         variant: "destructive",
       })
       return
@@ -386,7 +390,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
               <p className="text-mono-lg">
                 {displayCurrentPriceUsd !== undefined
                   ? formatUsd(displayCurrentPriceUsd)
-                  : formatPricePerTokenNative(currentPrice, activeChain)}
+                  : formatPricePerTokenNative(currentPrice, lockedChain)}
               </p>
             )}
             <p className="text-xs text-[var(--text-tertiary)] mt-1">
@@ -462,8 +466,8 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                     <span className="text-[var(--text-secondary)]">Balance</span>
                     <span className="font-mono">
                       {formatNativeAmount(
-                        (activeChain === "solana" ? user?.balance : user?.baseBalance) ?? 0n,
-                        activeChain,
+                        (lockedChain === "solana" ? user?.balance : user?.baseBalance) ?? 0n,
+                        lockedChain,
                         4
                       )} {nativeSymbol}
                     </span>
@@ -560,7 +564,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                             Quoting...
                           </span>
                         ) : (
-                          `${formatNativeAmount(sellValueBigInt, activeChain, 4)} ${nativeSymbol}`
+                          `${formatNativeAmount(sellValueBigInt, lockedChain, 4)} ${nativeSymbol}`
                         )}
                       </span>
                     </div>
@@ -583,7 +587,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                         )}
                       >
                         {profitLossBigInt >= 0n ? "+" : ""}
-                        {`${formatNativeAmount(profitLossBigInt, activeChain, 4)} ${nativeSymbol}`}
+                        {`${formatNativeAmount(profitLossBigInt, lockedChain, 4)} ${nativeSymbol}`}
                       </span>
                     </div>
                     <p className="text-xs text-[var(--text-tertiary)] text-right">

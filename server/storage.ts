@@ -698,7 +698,10 @@ class DbStorage implements IStorage {
       if (sellAmount <= 0n) throw new Error("Sell amount must be positive");
       if (sellAmount > positionAmount) throw new Error("Sell amount exceeds position size");
 
-      const decimals = position.decimals || 6;
+      const decimals = position.decimals ?? 6;
+      if (decimals < 0 || decimals > 78 || !Number.isFinite(decimals)) {
+        throw new Error(`Invalid decimals: ${decimals}`);
+      }
       const decimalDivisor = BigInt(10 ** decimals);
 
       // Recompute server-side to avoid trusting caller-provided math
@@ -901,12 +904,9 @@ class DbStorage implements IStorage {
       id: users.id,
       username: users.username,
       createdAt: users.createdAt,
-      solanaWalletAddress: users.solanaWalletAddress,
-      baseWalletAddress: users.baseWalletAddress,
-      balance: users.balance,
-      baseBalance: users.baseBalance,
-      totalProfit: users.totalProfit,
-      baseTotalProfit: users.baseTotalProfit,
+      // Wallet addresses and exact balances are private — only return existence flags
+      hasSolanaWallet: sql<boolean>`CASE WHEN ${users.solanaWalletAddress} IS NOT NULL THEN true ELSE false END`,
+      hasBaseWallet: sql<boolean>`CASE WHEN ${users.baseWalletAddress} IS NOT NULL THEN true ELSE false END`,
     })
     .from(users)
     .where(eq(users.username, username));

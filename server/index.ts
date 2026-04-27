@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import crypto from "crypto";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { createBot, setupWebhook, getWebhookCallback } from "./telegram-bot";
@@ -195,8 +196,8 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     if (app.get("env") === "production") {
       // Production: webhook only — no polling, no 409 conflicts on deploy
       const publicUrl = process.env.PUBLIC_URL || process.env.API_BASE_URL;
-      const secretPath = process.env.TELEGRAM_WEBHOOK_SECRET_PATH || Math.random().toString(36).slice(2);
-      const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET_TOKEN || Math.random().toString(36).slice(2);
+      const secretPath = process.env.TELEGRAM_WEBHOOK_SECRET_PATH || crypto.randomBytes(16).toString('hex');
+      const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET_TOKEN || crypto.randomBytes(32).toString('hex');
       const webhookUrl = `${publicUrl}/telegram/webhook/${secretPath}`;
 
       console.log('🤖 Initializing Telegram bot in webhook mode...');

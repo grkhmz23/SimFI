@@ -116,7 +116,10 @@ class QuoteService {
 
     const chainConfig = CHAIN_CONFIG[chain];
     const nativeDecimals = chainConfig.nativeDecimals;
-    const tokenDecimals = tokenData.decimals || chainConfig.defaultTokenDecimals;
+    const tokenDecimals = tokenData.decimals ?? chainConfig.defaultTokenDecimals;
+    if (!Number.isFinite(tokenDecimals) || tokenDecimals < 0 || tokenDecimals > 78) {
+      throw new Error(`Invalid token decimals: ${tokenDecimals}`);
+    }
 
     // 5. Try Jupiter Swap API for Solana first (more accurate quotes)
     let jupiterQuote: { executionPrice: bigint; estimatedOutput: bigint; priceImpactBps: number } | null = null;

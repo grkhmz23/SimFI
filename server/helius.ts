@@ -90,7 +90,7 @@ export class HeliusService {
           name: metadata.onChainMetadata?.metadata?.data?.name || 'Unknown',
           symbol: metadata.onChainMetadata?.metadata?.data?.symbol || 'UNKNOWN',
           mint: mintAddress,
-          decimals: metadata.account?.data?.parsed?.info?.decimals || 9,
+          decimals: metadata.account?.data?.parsed?.info?.decimals ?? 9,
           logoURI: metadata.offChainMetadata?.metadata?.image,
         };
       }

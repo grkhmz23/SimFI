@@ -29,6 +29,7 @@ import {
   Bookmark,
   PieChart,
   Shield,
+  Gift,
 } from "lucide-react"
 import { formatBalance, formatUSD } from "@/lib/token-format"
 import { cn } from "@/lib/utils"
@@ -202,6 +203,10 @@ export function Navigation() {
                     <DropdownMenuItem onClick={() => setLocation("/referrals")}>
                       <Users className="mr-2 h-4 w-4" strokeWidth={1.5} />
                       Referrals
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setLocation("/rewards")}>
+                      <Gift className="mr-2 h-4 w-4" strokeWidth={1.5} />
+                      Rewards
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setLocation("/security")}>
                       <Shield className="mr-2 h-4 w-4" strokeWidth={1.5} />

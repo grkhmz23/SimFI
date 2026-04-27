@@ -704,7 +704,7 @@ export function createBot(token: string): Telegraf {
       const chainEmoji = chain === 'solana' ? '☀️' : '🔷';
 
       message += `${profitEmoji} *${escapeMarkdown(pos.tokenSymbol)}* ${chainEmoji}\n`;
-      message += `Amount: ${formatTokenAmount(pos.amount, pos.decimals || 6)} ${escapeMarkdown(pos.tokenSymbol)}\n`;
+      message += `Amount: ${formatTokenAmount(pos.amount, pos.decimals ?? 6)} ${escapeMarkdown(pos.tokenSymbol)}\n`;
       message += `Value: ${formatNative(currentValue, chain)} ${cfg.symbol}\n`;
       message += `P/L: ${profitSign}${formatNative(profitLoss, chain)} ${cfg.symbol} (${profitSign}${profitPercent.toFixed(2)}%)\n\n`;
 
@@ -788,7 +788,7 @@ export function createBot(token: string): Telegraf {
       const chainEmoji = chain === 'solana' ? '☀️' : '🔷';
 
       message += `${profitEmoji} *${escapeMarkdown(trade.tokenSymbol)}* ${chainEmoji}\n`;
-      message += `Amount: ${formatTokenAmount(trade.amount, trade.decimals || 6)}\n`;
+      message += `Amount: ${formatTokenAmount(trade.amount, trade.decimals ?? 6)}\n`;
       message += `P/L: ${profitSign}${formatNative(profitLoss, chain)} ${cfg.symbol}\n`;
       message += `Date: ${new Date(trade.closedAt).toLocaleDateString()}\n\n`;
     }
@@ -1003,7 +1003,7 @@ export function createBot(token: string): Telegraf {
 
       userStates.delete(userId);
       const tokenAmount = result.data.tokensReceived || 0;
-      const decimals = result.data.decimals || 6;
+      const decimals = result.data.decimals ?? 6;
 
       await ctx.reply(
         `✅ Successfully bought *${escapeMarkdown(state.token.symbol)}*!\n\n` +
@@ -1249,7 +1249,7 @@ export function createBot(token: string): Telegraf {
       const chainEmoji = chain === 'solana' ? '☀️' : '🔷';
 
       message += `${profitEmoji} *${escapeMarkdown(pos.tokenSymbol)}* ${chainEmoji}\n`;
-      message += `Amount: ${formatTokenAmount(pos.amount, pos.decimals || 6)} ${escapeMarkdown(pos.tokenSymbol)}\n`;
+      message += `Amount: ${formatTokenAmount(pos.amount, pos.decimals ?? 6)} ${escapeMarkdown(pos.tokenSymbol)}\n`;
       message += `Value: ${formatNative(currentValue, chain)} ${cfg.symbol}\n`;
       message += `P/L: ${profitSign}${formatNative(profitLoss, chain)} ${cfg.symbol} (${profitSign}${profitPercent.toFixed(2)}%)\n\n`;
 
@@ -1304,7 +1304,7 @@ export function createBot(token: string): Telegraf {
       const chainEmoji = chain === 'solana' ? '☀️' : '🔷';
 
       message += `${profitEmoji} *${escapeMarkdown(trade.tokenSymbol)}* ${chainEmoji}\n`;
-      message += `Amount: ${formatTokenAmount(trade.amount, trade.decimals || 6)}\n`;
+      message += `Amount: ${formatTokenAmount(trade.amount, trade.decimals ?? 6)}\n`;
       message += `P/L: ${profitSign}${formatNative(profitLoss, chain)} ${cfg.symbol}\n`;
       message += `Date: ${new Date(trade.closedAt).toLocaleDateString()}\n\n`;
     }
@@ -1791,7 +1791,7 @@ export function createBot(token: string): Telegraf {
 
         userStates.delete(userId);
         const tokenAmount = result.data.tokensReceived || 0;
-        const decimals = result.data.decimals || 6;
+        const decimals = result.data.decimals ?? 6;
 
         await ctx.reply(
           `✅ Successfully bought *${escapeMarkdown(state.token.symbol)}*!\n\n` +

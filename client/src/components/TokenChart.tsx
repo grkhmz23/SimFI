@@ -60,6 +60,15 @@ export default function TokenChart({
   useEffect(() => {
     if (!chartContainerRef.current) return
 
+    // Clean up any existing chart instance when tokenAddress changes
+    if (chartRef.current) {
+      chartRef.current.remove()
+      chartRef.current = null
+      candleSeriesRef.current = null
+      volumeSeriesRef.current = null
+      priceLineRef.current = null
+    }
+
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
       height: chartHeight,
@@ -143,25 +152,41 @@ export default function TokenChart({
       }
       if (chartRef.current) {
         chartRef.current.remove()
+        chartRef.current = null
+        candleSeriesRef.current = null
+        volumeSeriesRef.current = null
+        priceLineRef.current = null
       }
     }
-  }, [])
+  }, [tokenAddress])
+
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const fetchTokenData = async (tf: Timeframe, isBackgroundRefresh = false) => {
+    // Cancel any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     try {
       if (isBackgroundRefresh) setRefreshing(true)
       else setLoading(true)
       setError(null)
 
       const response = await fetch(
-        `/api/tokens/${tokenAddress}/ohlcv?timeframe=${tf}&chain=${chartChain}`
+        `/api/tokens/${tokenAddress}/ohlcv?timeframe=${tf}&chain=${chartChain}`,
+        { signal: controller.signal }
       )
-      if (!response.ok) throw new Error(`API returned ${response.status}`)
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}))
+        throw new Error(errData.error || `API returned ${response.status}`)
+      }
 
       const data = await response.json()
       const candles = data.candles
       if (!Array.isArray(candles)) throw new Error("Invalid candles data")
-      if (candles.length === 0) throw new Error("No chart data available")
 
       const candleData: CandlestickData[] = []
       const volumeData: HistogramData[] = []
@@ -183,13 +208,33 @@ export default function TokenChart({
         })
       })
 
+      // If no valid candles, try to use synthetic data from the API
+      if (candleData.length === 0 && data.synthetic && Array.isArray(data.synthetic)) {
+        data.synthetic.forEach((candle: any) => {
+          if (!Array.isArray(candle)) return
+          const [timestamp, open, high, low, close, volume] = candle
+          if (typeof timestamp !== "number") return
+          if ([open, high, low, close].some((v) => typeof v !== "number")) return
+          candleData.push({ time: timestamp as any, open, high, low, close })
+          volumeData.push({
+            time: timestamp as any,
+            value: volume || 0,
+            color: "rgba(95, 93, 88, 0.15)",
+          })
+        })
+      }
+
+      if (candleData.length === 0) {
+        throw new Error("No chart data available")
+      }
+
       if (candleSeriesRef.current && volumeSeriesRef.current) {
         candleSeriesRef.current.setData(candleData)
         volumeSeriesRef.current.setData(volumeData)
       }
 
-      const oldestPrice = candles[0]?.[4] || currentPrice
-      const latest = candles[candles.length - 1]?.[4] || currentPrice
+      const oldestPrice = candleData[0]?.close || currentPrice
+      const latest = candleData[candleData.length - 1]?.close || currentPrice
       const change = oldestPrice > 0 ? ((latest - oldestPrice) / oldestPrice) * 100 : 0
       setPriceChange(change)
       setLastUpdate(new Date())
@@ -215,6 +260,7 @@ export default function TokenChart({
       setLoading(false)
       setRefreshing(false)
     } catch (err: any) {
+      if (err.name === "AbortError") return
       setError(err?.message || "Failed to load chart")
       setLoading(false)
       setRefreshing(false)
@@ -226,14 +272,14 @@ export default function TokenChart({
     if (tokenAddress && isValidPrice) {
       fetchTokenData(selectedTimeframe)
     }
-  }, [tokenAddress, selectedTimeframe, currentPrice, chartChain])
+  }, [tokenAddress, selectedTimeframe, chartChain])
 
   useEffect(() => {
     const isValidPrice = currentPrice !== null && currentPrice !== undefined && !isNaN(currentPrice) && isFinite(currentPrice)
     if (!tokenAddress || !isValidPrice) return
     const interval = setInterval(() => fetchTokenData(selectedTimeframe, true), 30000)
     return () => clearInterval(interval)
-  }, [tokenAddress, selectedTimeframe, currentPrice, chartChain])
+  }, [tokenAddress, selectedTimeframe, chartChain])
 
   return (
     <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">

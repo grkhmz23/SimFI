@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { z } from "zod";
 import { sql, and, eq } from "drizzle-orm";
 import rateLimit from "express-rate-limit";
@@ -321,6 +322,12 @@ function validateTradeAmountForChain(nativeAmount: bigint, chain: Chain): void {
 }
 
 // Parse native amount string (SOL or ETH) to native units (lamports or wei)
+function validateDecimals(decimals: number): void {
+  if (!Number.isFinite(decimals) || decimals < 0 || decimals > 78) {
+    throw new Error(`Invalid decimals: ${decimals}. Must be 0-78.`);
+  }
+}
+
 function parseNativeAmount(amountStr: string, nativeDecimals: number): bigint {
   const amountString = String(amountStr);
 
@@ -1510,17 +1517,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return process.env.BOT_API_SECRET;
     }
 
-    // Development: Use env var if set, otherwise fall back to dev default
-    // This MUST match the value in bot.js for local development to work
-    const devFallback = 'simfi-dev-bot-secret-change-in-production';
-
-    if (process.env.BOT_API_SECRET) {
-      return process.env.BOT_API_SECRET;
-    }
-
-    console.warn('⚠️  BOT_API_SECRET not set. Using dev default (matches bot.js).');
-    return devFallback;
+    // Development: BOT_API_SECRET is required even in dev for security
+    console.error('❌ FATAL: BOT_API_SECRET must be set (min 20 chars)');
+    throw new Error('BOT_API_SECRET required');
   })();
+
+  const timingSafeEqualString = (a: string, b: string): boolean => {
+    try {
+      const bufA = Buffer.from(a, 'utf8');
+      const bufB = Buffer.from(b, 'utf8');
+      if (bufA.length !== bufB.length) return false;
+      return crypto.timingSafeEqual(bufA, bufB);
+    } catch {
+      return false;
+    }
+  };
 
   const verifyBotSecret = (req: any, res: any, next: any) => {
     const botSecret = req.headers['x-bot-secret'];
@@ -1533,7 +1544,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
 
-    if (!botSecret || botSecret !== DEV_BOT_SECRET) {
+    if (!botSecret || !timingSafeEqualString(botSecret, DEV_BOT_SECRET)) {
       return res.status(403).json({ error: 'Forbidden - Invalid bot secret' });
     }
 
@@ -1866,6 +1877,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
+      if (tokenName.length > 128 || tokenSymbol.length > 32) {
+        return res.status(400).json({ error: 'Token name or symbol too long' });
+      }
+
       if (!isValidChain(chain)) {
         return res.status(400).json({ error: 'Invalid chain. Must be "solana" or "base"' });
       }
@@ -1920,6 +1935,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Still need decimals for DB storage — fetch from DexScreener or Jupiter token API
             const jupToken = await jupiterService.getToken(tokenAddress);
             decimals = jupToken?.decimals ?? 6;
+            validateDecimals(decimals);
             const decimalMultiplier = BigInt(10 ** decimals);
             executionPriceNative = tokenAmount > 0n
               ? (nativeSpent * decimalMultiplier) / tokenAmount
@@ -1990,6 +2006,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`   Dynamic slippage: ${(slippageBps / 100).toFixed(2)}%`);
         console.log(`   Execution price: ${executionPriceNative.toString()} native units/token`);
 
+        validateDecimals(decimals);
         const decimalMultiplier = BigInt(10 ** decimals);
         tokenAmount = (nativeSpent * decimalMultiplier) / executionPriceNative;
       } else {
@@ -2146,6 +2163,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // ✅ ANTI-CHEAT: Fetch price BEFORE transaction (no external calls in tx)
       // For Solana with Jupiter: try Jupiter quote FIRST
       const decimals = position.decimals ?? (positionChain === 'base' ? 18 : 6);
+      validateDecimals(decimals);
       const decimalDivisor = BigInt(10 ** decimals);
       let executionPriceNative: bigint = 0n;
       let nativeReceived: bigint = 0n;
@@ -2355,7 +2373,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tokenAddress,
         tokenName,
         tokenSymbol,
-        decimals: decimals || 6,
+        decimals: decimals ?? 6,
       });
       res.status(201).json(serializeBigInts({ item }));
     } catch (error: any) {
@@ -2797,14 +2815,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return true;
       });
 
-      if (candles.length === 0) {
-        console.warn(`⚠️ No valid OHLCV candles for ${address} on ${chainParam} after filtering`);
-        return res.status(404).json({ error: 'No chart data available for this token', details: `GeckoTerminal returned no candles for pool ${pairAddress} on ${chainParam}` });
-      }
-
       // Sort candles in ascending order by timestamp (required by TradingView Lightweight Charts)
       // GeckoTerminal returns them in descending order (newest first), we need ascending (oldest first)
       candles = [...candles].sort((a: number[], b: number[]) => a[0] - b[0]);
+
+      let synthetic: number[][] | undefined;
+
+      // If no real candles, generate synthetic flat-line candles from current price
+      // so the user always sees a chart instead of an error
+      if (candles.length === 0) {
+        const currentPriceUsd = parseFloat(pair.priceUsd || '0');
+        if (currentPriceUsd > 0) {
+          const now = Math.floor(Date.now() / 1000);
+          const tfMinutes =
+            tfConfig.unit === 'minute'
+              ? tfConfig.aggregate
+              : tfConfig.unit === 'hour'
+              ? tfConfig.aggregate * 60
+              : tfConfig.aggregate * 60 * 24;
+          const syntheticCandles: number[][] = [];
+          for (let i = tfConfig.limit; i >= 0; i--) {
+            const t = now - i * tfMinutes * 60;
+            // Add tiny pseudo-random wiggle so it looks like a real candle
+            const wiggle = currentPriceUsd * (Math.sin(i * 7.3) * 0.002);
+            const o = currentPriceUsd + wiggle;
+            const c = currentPriceUsd + currentPriceUsd * (Math.sin((i + 1) * 7.3) * 0.002);
+            const h = Math.max(o, c) + currentPriceUsd * 0.001;
+            const l = Math.min(o, c) - currentPriceUsd * 0.001;
+            syntheticCandles.push([t, o, h, l, c, 0]);
+          }
+          synthetic = syntheticCandles;
+          console.log(`📊 Generated ${syntheticCandles.length} synthetic candles for ${address} (price $${currentPriceUsd})`);
+        }
+      }
 
       // Debug: Log first and last timestamps to verify sort order
       if (candles.length >= 2) {
@@ -2821,6 +2864,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ 
         success: true,
         candles,
+        synthetic,
         pairAddress,
         timeframe,
         candleCount: candles.length
@@ -2901,10 +2945,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get Jupiter quote for buying tokens with SOL
+  // Get Jupiter quote for buying tokens with SOL (Solana only — deprecated, use /api/quote)
   app.get('/api/tokens/quote/buy', publicApiLimiter, async (req, res) => {
     try {
-      const { tokenAddress, solAmount, decimals } = req.query;
+      const { tokenAddress, solAmount, decimals, chain } = req.query;
+
+      if (chain === 'base') {
+        return res.status(400).json({ error: 'This endpoint only supports Solana. Use /api/quote for multi-chain quotes.' });
+      }
 
       if (!tokenAddress || !solAmount) {
         return res.status(400).json({ error: 'tokenAddress and solAmount are required' });
@@ -2988,10 +3036,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get Jupiter quote for selling tokens for SOL
+  // Get Jupiter quote for selling tokens for SOL (Solana only — deprecated, use /api/quote)
   app.get('/api/tokens/quote/sell', publicApiLimiter, async (req, res) => {
     try {
-      const { tokenAddress, tokenAmount, decimals } = req.query;
+      const { tokenAddress, tokenAmount, decimals, chain } = req.query;
+
+      if (chain === 'base') {
+        return res.status(400).json({ error: 'This endpoint only supports Solana. Use /api/quote for multi-chain quotes.' });
+      }
 
       if (!tokenAddress || !tokenAmount) {
         return res.status(400).json({ error: 'tokenAddress and tokenAmount are required' });
@@ -3063,7 +3115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
 
   // Legacy endpoint - redirects to enhanced analysis
-  app.get('/api/analyze/:mintAddress', async (req, res) => {
+  app.get('/api/analyze/:mintAddress', publicApiLimiter, async (req, res) => {
     try {
       const { mintAddress } = req.params;
 
@@ -3088,7 +3140,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Token Analysis Endpoint
    * GET /api/study/token/:mintAddress
    */
-  app.get('/api/study/token/:mintAddress', async (req, res) => {
+  app.get('/api/study/token/:mintAddress', publicApiLimiter, async (req, res) => {
     try {
       const { mintAddress } = req.params;
 
@@ -3120,7 +3172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Wallet Portfolio Endpoint
    * GET /api/study/wallet/:walletAddress
    */
-  app.get('/api/study/wallet/:walletAddress', async (req, res) => {
+  app.get('/api/study/wallet/:walletAddress', publicApiLimiter, async (req, res) => {
     try {
       const { walletAddress } = req.params;
 
@@ -3152,7 +3204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Transaction History Endpoint
    * GET /api/study/transactions/:address
    */
-  app.get('/api/study/transactions/:address', async (req, res) => {
+  app.get('/api/study/transactions/:address', publicApiLimiter, async (req, res) => {
     try {
       const { address } = req.params;
       const { limit, before, type } = req.query;
@@ -3187,7 +3239,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Transaction Details Endpoint
    * GET /api/study/transaction/:signature
    */
-  app.get('/api/study/transaction/:signature', async (req, res) => {
+  app.get('/api/study/transaction/:signature', publicApiLimiter, async (req, res) => {
     try {
       const { signature } = req.params;
       const details = await heliusService.getTransactionDetails(signature);
@@ -3202,7 +3254,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Search Endpoint (Unified search for tokens/wallets)
    * GET /api/study/search?q=<address>
    */
-  app.get('/api/study/search', async (req, res) => {
+  app.get('/api/study/search', searchLimiter, async (req, res) => {
     try {
       const { q } = req.query;
 
@@ -3223,7 +3275,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * POST /api/study/tokens/batch
    * Body: { mintAddresses: string[] }
    */
-  app.post('/api/study/tokens/batch', async (req, res) => {
+  app.post('/api/study/tokens/batch', publicApiLimiter, async (req, res) => {
     try {
       const { mintAddresses } = req.body;
 
@@ -3247,7 +3299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * API Usage Stats Endpoint (for monitoring)
    * GET /api/study/stats
    */
-  app.get('/api/study/stats', async (req, res) => {
+  app.get('/api/study/stats', publicApiLimiter, async (req, res) => {
     try {
       const stats = heliusService.getUsageStats();
       res.json(stats);
@@ -3783,7 +3835,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const authHeader = req.headers.authorization;
       const adminToken = process.env.ADMIN_TOKEN;
-      if (!adminToken || !authHeader || !authHeader.startsWith('Bearer ') || authHeader.slice(7) !== adminToken) {
+      const providedToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '';
+      if (!adminToken || !providedToken) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const bufAdmin = Buffer.from(adminToken, 'utf8');
+      const bufProvided = Buffer.from(providedToken, 'utf8');
+      if (bufAdmin.length !== bufProvided.length || !crypto.timingSafeEqual(bufAdmin, bufProvided)) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 

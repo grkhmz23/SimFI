@@ -176,7 +176,7 @@ export default function TokenPage() {
     token.priceUsd !== undefined
       ? token.priceUsd
       : token.price
-      ? token.price / (activeChain === 'base' ? 1_000_000_000_000_000_000 : 1_000_000_000)
+      ? Number(token.price) / (activeChain === 'base' ? 1_000_000_000_000_000_000 : 1_000_000_000)
       : 0
 
   return (
@@ -223,7 +223,7 @@ export default function TokenPage() {
                           tokenAddress: tokenAddress || '',
                           tokenName: token.name,
                           tokenSymbol: token.symbol,
-                          decimals: token.decimals || 6,
+                          decimals: token.decimals ?? 6,
                         });
                       }
                     }}
@@ -333,7 +333,7 @@ export default function TokenPage() {
                   <div className="flex justify-between text-sm">
                     <span className="text-[var(--text-secondary)]">Amount</span>
                     <span className="font-mono text-[var(--text-primary)]">
-                      {formatTokenAmount(userPosition.amount, userPosition.decimals || token.decimals || 6, 2)} {token.symbol}
+                      {formatTokenAmount(userPosition.amount, userPosition.decimals ?? token.decimals ?? 6, 2)} {token.symbol}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
@@ -356,7 +356,7 @@ export default function TokenPage() {
                     <span className="font-mono text-[var(--text-primary)] text-right">
                       {(() => {
                         try {
-                          const decimals = userPosition.decimals || token.decimals || 6;
+                          const decimals = userPosition.decimals ?? token.decimals ?? 6;
                           const valueUsd = computeTokenValueUSD(userPosition.amount, decimals, priceUsd);
                           const nativePrice = getPrice(activeChain);
                           const valueNative = nativePrice && nativePrice > 0 ? valueUsd / nativePrice : 0;

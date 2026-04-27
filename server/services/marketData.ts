@@ -504,7 +504,7 @@ class MarketDataService {
             }, chainPairs[0]);
 
             if (bestPair) {
-              const tokenDecimals = bestPair.baseToken?.decimals || config.defaultTokenDecimals;
+              const tokenDecimals = bestPair.baseToken?.decimals ?? config.defaultTokenDecimals;
               dexData = {
                 tokenAddress: address,
                 name: bestPair.baseToken?.name || 'Unknown',
@@ -575,7 +575,7 @@ class MarketDataService {
         volume24h: 0,
         liquidity: 0,
         priceChange24h: 0,
-        decimals: jupiterMeta.decimals || config.defaultTokenDecimals,
+        decimals: jupiterMeta.decimals ?? config.defaultTokenDecimals,
         chain,
         icon: jupiterMeta.logoURI,
         lastUpdated: Date.now(),
@@ -1006,7 +1006,7 @@ class MarketDataService {
               marketCap: 0,
               volume24h: 0,
               priceChange24h: 0,
-              decimals: token.decimals || CHAIN_CONFIG.solana.defaultTokenDecimals,
+              decimals: token.decimals ?? CHAIN_CONFIG.solana.defaultTokenDecimals,
               chain,
               icon: token.logoURI,
             });
