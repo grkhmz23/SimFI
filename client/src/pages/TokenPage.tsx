@@ -37,12 +37,20 @@ function getExplorerUrl(chain: string, tokenAddress: string): string {
   return `https://dexscreener.com/${chain}/${tokenAddress}`
 }
 
+// Detect chain from token address format — never rely on activeChain for token pages
+function detectChainFromAddress(address: string): "solana" | "base" {
+  return address.startsWith("0x") ? "base" : "solana"
+}
+
 export default function TokenPage() {
   const params = useParams()
   const tokenAddress = params.address
   const [, setLocation] = useLocation()
   const { isAuthenticated } = useAuth()
-  const { activeChain, nativeSymbol } = useChain()
+  const { activeChain } = useChain()
+  // Derive the token's actual chain from its address format — never let activeChain override it
+  const tokenChain = tokenAddress ? detectChainFromAddress(tokenAddress) : activeChain
+  const nativeSymbol = tokenChain === 'base' ? 'ETH' : 'SOL'
   const { getPrice } = usePrice()
   const { isInWatchlist, addToWatchlist, removeFromWatchlist, items: watchlistItems } = useWatchlist()
 
@@ -53,27 +61,27 @@ export default function TokenPage() {
 
   // Subscribe to this token's price updates via SSE
   useEffect(() => {
-    if (!tokenAddress || !activeChain) return
-    sse.subscribe([{ address: tokenAddress, chain: activeChain }])
+    if (!tokenAddress) return
+    sse.subscribe([{ address: tokenAddress, chain: tokenChain }])
     return () => {
-      sse.unsubscribe([{ address: tokenAddress, chain: activeChain }])
+      sse.unsubscribe([{ address: tokenAddress, chain: tokenChain }])
     }
-  }, [tokenAddress, activeChain])
+  }, [tokenAddress, tokenChain])
 
   // Get live price from SSE if available
   const sseTokenPrice = useMemo(() => {
-    if (!tokenAddress || !activeChain) return null
-    return sse.tokenPrices.get(`${activeChain}:${tokenAddress}`) ?? null
-  }, [sse.tokenPrices, tokenAddress, activeChain])
+    if (!tokenAddress) return null
+    return sse.tokenPrices.get(`${tokenChain}:${tokenAddress}`) ?? null
+  }, [sse.tokenPrices, tokenAddress, tokenChain])
 
   const {
     data: tokenData,
     isLoading: tokenLoading,
     error: tokenError,
   } = useQuery<Token & { cached?: boolean; ageMs?: number }>({
-    queryKey: [`/api/market/token/${tokenAddress}`, activeChain],
+    queryKey: [`/api/market/token/${tokenAddress}`, tokenChain],
     queryFn: async () => {
-      const res = await fetch(`/api/market/token/${tokenAddress}?chain=${activeChain}`, {
+      const res = await fetch(`/api/market/token/${tokenAddress}?chain=${tokenChain}`, {
         credentials: "include",
       })
       if (!res.ok) throw new Error("Failed to fetch token")
@@ -85,9 +93,9 @@ export default function TokenPage() {
   })
 
   const { data: positionsData } = useQuery<{ positions: Position[] }>({
-    queryKey: ["/api/trades/positions", activeChain],
+    queryKey: ["/api/trades/positions", tokenChain],
     queryFn: async () => {
-      const res = await fetch(`/api/trades/positions?chain=${activeChain}`, {
+      const res = await fetch(`/api/trades/positions?chain=${tokenChain}`, {
         credentials: "include",
       })
       if (!res.ok) throw new Error("Failed to fetch positions")
@@ -176,7 +184,7 @@ export default function TokenPage() {
     token.priceUsd !== undefined
       ? token.priceUsd
       : token.price
-      ? Number(token.price) / (activeChain === 'base' ? 1_000_000_000_000_000_000 : 1_000_000_000)
+      ? Number(token.price) / (tokenChain === 'base' ? 1_000_000_000_000_000_000 : 1_000_000_000)
       : 0
 
   return (
@@ -204,22 +212,22 @@ export default function TokenPage() {
               <div className="flex items-center gap-3 flex-wrap mb-2">
                 <h1 className="text-h1">{token.name}</h1>
                 <Badge variant="outline">{token.symbol}</Badge>
-                <ChainChip chain={activeChain} />
+                <ChainChip chain={tokenChain} />
                 {isAuthenticated && (
                   <Button
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
                     onClick={() => {
-                      const inList = isInWatchlist(tokenAddress || '', activeChain);
+                      const inList = isInWatchlist(tokenAddress || '', tokenChain);
                       if (inList) {
                         const item = watchlistItems.find(
-                          (w) => w.tokenAddress === tokenAddress && w.chain === activeChain
+                          (w) => w.tokenAddress === tokenAddress && w.chain === tokenChain
                         );
                         if (item) removeFromWatchlist(item.id);
                       } else {
                         addToWatchlist({
-                          chain: activeChain,
+                          chain: tokenChain,
                           tokenAddress: tokenAddress || '',
                           tokenName: token.name,
                           tokenSymbol: token.symbol,
@@ -228,7 +236,7 @@ export default function TokenPage() {
                       }
                     }}
                   >
-                    {isInWatchlist(tokenAddress || '', activeChain) ? (
+                    {isInWatchlist(tokenAddress || '', tokenChain) ? (
                       <BookmarkCheck className="h-4 w-4 text-[var(--accent-premium)]" strokeWidth={2} />
                     ) : (
                       <Bookmark className="h-4 w-4 text-[var(--text-tertiary)]" strokeWidth={1.5} />
@@ -239,7 +247,7 @@ export default function TokenPage() {
               <div className="flex items-center gap-3 flex-wrap">
                 <AddressPill address={tokenAddress || ""} />
                 <a
-                  href={getExplorerUrl(activeChain, tokenAddress!)}
+                  href={getExplorerUrl(tokenChain, tokenAddress!)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
@@ -301,7 +309,7 @@ export default function TokenPage() {
               priceChange24h={token.priceChange24h || 0}
               volume24h={token.volume24h || 0}
               height="480px"
-              chain={activeChain}
+              chain={tokenChain}
             />
           </div>
 
@@ -340,10 +348,10 @@ export default function TokenPage() {
                     <span className="text-[var(--text-secondary)]">Entry Price</span>
                     <span className="font-mono text-[var(--text-primary)]">
                       {(() => {
-                        const entryPriceNative = activeChain === 'solana'
+                        const entryPriceNative = tokenChain === 'solana'
                           ? lamportsToSol(toBigInt(userPosition.entryPrice))
                           : weiToEth(toBigInt(userPosition.entryPrice));
-                        const nativePrice = getPrice(activeChain);
+                        const nativePrice = getPrice(tokenChain);
                         const entryPriceUsd = nativePrice != null
                           ? entryPriceNative * nativePrice
                           : null;
@@ -358,14 +366,14 @@ export default function TokenPage() {
                         try {
                           const decimals = userPosition.decimals ?? token.decimals ?? 6;
                           const valueUsd = computeTokenValueUSD(userPosition.amount, decimals, priceUsd);
-                          const nativePrice = getPrice(activeChain);
+                          const nativePrice = getPrice(tokenChain);
                           const valueNative = nativePrice && nativePrice > 0 ? valueUsd / nativePrice : 0;
                           if (valueUsd <= 0) return <span>$0.00</span>;
                           return (
                             <span className="flex flex-col items-end">
                               <span>{formatPricePerTokenUSD(valueUsd, 2)}</span>
                               <span className="text-xs text-[var(--text-tertiary)]">
-                                {formatNative(valueNative, activeChain)}
+                                {formatNative(valueNative, tokenChain)}
                               </span>
                             </span>
                           );

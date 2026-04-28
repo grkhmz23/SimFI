@@ -47,8 +47,12 @@ export function ChainProvider({ children }: { children: ReactNode }) {
   const isBase = activeChain === 'base';
   const isSolana = activeChain === 'solana';
 
-  // Sync with user's preferred chain from profile (if logged in)
+  // Sync with user's preferred chain from profile ONLY on first login (when localStorage is empty)
+  // After that, localStorage is the source of truth so the user's explicit chain selection is preserved
   useEffect(() => {
+    const stored = localStorage.getItem(CHAIN_STORAGE_KEY);
+    if (stored) return; // User already has a preference, don't override
+
     const syncWithUserPreference = async () => {
       try {
         const response = await fetch('/api/auth/profile', {
@@ -57,15 +61,12 @@ export function ChainProvider({ children }: { children: ReactNode }) {
         if (response.ok) {
           const user = await response.json();
           if (user.preferredChain && (user.preferredChain === 'base' || user.preferredChain === 'solana')) {
-            // Only update if different from current
-            if (user.preferredChain !== activeChain) {
-              setActiveChainState(user.preferredChain);
-            }
+            setActiveChainState(user.preferredChain);
+            localStorage.setItem(CHAIN_STORAGE_KEY, user.preferredChain);
           }
         }
       } catch (error) {
-        // Silent fail - localStorage value will be used
-        console.warn('Could not sync chain preference with user profile');
+        // Silent fail - default value will be used
       }
     };
 

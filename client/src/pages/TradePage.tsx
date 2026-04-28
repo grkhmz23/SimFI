@@ -16,6 +16,11 @@ import type { Token } from "@shared/schema"
 import { cn } from "@/lib/utils"
 import { formatUsdText, formatPct } from "@/lib/format"
 
+// Detect chain from token address format
+function detectChainFromAddress(address: string): "solana" | "base" {
+  return address.startsWith("0x") ? "base" : "solana"
+}
+
 type ListType = "trending" | "new-pairs" | "hot"
 
 interface TokenListResponse {
@@ -215,7 +220,7 @@ export default function TradePage() {
                   }
                   priceChange24h={selectedToken.priceChange24h || 0}
                   volume24h={selectedToken.volume24h || 0}
-                  chain={activeChain}
+                  chain={detectChainFromAddress(selectedToken.tokenAddress)}
                 />
 
                 <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-5">
