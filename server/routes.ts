@@ -2858,10 +2858,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
         geckoFailed = true;
       }
 
+      // Fallback 2: Birdeye history_price (excellent Solana coverage, including new tokens)
+      if (candles.length === 0 && chainParam === 'solana') {
+        try {
+          const birdeyeTypeMap: Record<string, string> = {
+            '5S': '1m', '15S': '1m', '30S': '1m',
+            '1M': '1m', '3M': '5m', '5M': '5m'
+          };
+          const birdeyeType = birdeyeTypeMap[timeframe as string] || '1m';
+          const now = Math.floor(Date.now() / 1000);
+          const intervalSeconds = birdeyeType.endsWith('m') ? parseInt(birdeyeType) * 60 : 3600;
+          const timeFrom = now - (tfConfig.limit * intervalSeconds);
+
+          const birdeyeRes = await fetchBirdeye(
+            `/defi/history_price?address=${encodeURIComponent(address)}&address_type=token&type=${birdeyeType}&time_from=${timeFrom}&time_to=${now}`,
+            'solana'
+          );
+
+          if (birdeyeRes?.ok) {
+            const birdeyeData = await birdeyeRes.json();
+            const items = birdeyeData?.data?.items || [];
+            if (Array.isArray(items) && items.length > 0) {
+              const birdeyeCandles = items
+                .map((item: any) => {
+                  const ts = item.unixTime;
+                  const o = item.open;
+                  const h = item.high;
+                  const l = item.low;
+                  const c = item.close;
+                  const v = item.volume || 0;
+                  if (typeof ts !== 'number' || !isFinite(ts)) return null;
+                  if ([o, h, l, c].some((v) => typeof v !== 'number' || !isFinite(v))) return null;
+                  return [ts, o, h, l, c, v] as number[];
+                })
+                .filter((c): c is number[] => c !== null)
+                .sort((a: number[], b: number[]) => a[0] - b[0]);
+
+              if (birdeyeCandles.length > 0) {
+                candles = birdeyeCandles;
+                console.log(`✅ Birdeye fallback: ${birdeyeCandles.length} candles for ${address}`);
+              }
+            }
+          }
+        } catch (birdeyeErr: any) {
+          console.warn(`⚠️ Birdeye history fallback failed for ${address}:`, birdeyeErr.message);
+        }
+      }
+
       let synthetic: number[][] | undefined;
 
-      // If no real candles (or GeckoTerminal failed), generate synthetic flat-line candles from current price
-      // so the user always sees a chart instead of an error
+      // Fallback 3: Synthetic flat-line candles from current price
       if (candles.length === 0) {
         const currentPriceUsd = parseFloat(pair.priceUsd || '0');
         if (currentPriceUsd > 0 && isFinite(currentPriceUsd)) {
