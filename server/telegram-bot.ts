@@ -148,6 +148,15 @@ const getNativePrices = async (token: string | null) => {
   return cachedNativePrices;
 };
 
+const formatCompactUsd = (value: number): string => {
+  if (!Number.isFinite(value) || value === 0) return '$0';
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `$${(value / 1_000).toFixed(2)}K`;
+  return `$${value.toFixed(2)}`;
+};
+
 const formatSol = (lamports: any): string => formatNative(lamports, 'solana');
 const formatSolToUsd = (lamports: any, solPrice = cachedNativePrices.sol): string => {
   if (!solPrice || !Number.isFinite(solPrice)) return 'N/A';
@@ -403,7 +412,8 @@ const showBuyMenu = async (ctx: any, tokenAddress: string, session: any) => {
     lastActivity: Date.now()
   });
 
-  const priceUsdStr = priceInUsd ? `($${priceInUsd.toFixed(6)})` : '';
+  const priceUsdStr = priceInUsd ? `$${priceInUsd.toFixed(6)}` : 'N/A';
+  const marketCapStr = token.marketCap ? formatCompactUsd(Number(token.marketCap)) : 'N/A';
 
   const quickAmounts = chain === 'solana'
     ? [['0.1 SOL', '0.1'], ['0.5 SOL', '0.5'], ['1 SOL', '1'], ['5 SOL', '5']]
@@ -412,7 +422,8 @@ const showBuyMenu = async (ctx: any, tokenAddress: string, session: any) => {
   await ctx.reply(
     `📊 *${escapeMarkdown(token.symbol)}* \(${cfg.nativeName}\)\n` +
     `${escapeMarkdown(token.name)}\n\n` +
-    `💰 Price: ${priceDisplay.toFixed(9)} ${cfg.symbol} ${priceUsdStr}\n` +
+    `💰 Price: *${priceUsdStr}*\n` +
+    `📈 Market Cap: *${marketCapStr}*\n` +
     `⚠️ Note: ~0.5% slippage will be applied\n\n` +
     `How much ${cfg.symbol} do you want to spend?`,
     {
