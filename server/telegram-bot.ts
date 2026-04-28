@@ -453,7 +453,7 @@ export function createBot(token: string): Telegraf {
     const userId = ctx.from?.id;
     const username = ctx.from?.username || ctx.from?.first_name;
 
-    console.log(`[MIDDLEWARE] 📨 Received update: ${updateType} from user ${userId} (@${username})`);
+    console.log(`[MIDDLEWARE] 📨 Received update: ${updateType} from user ${userId}`);
 
     if (ctx.message?.text) {
       const st = userStates.get(userId);
@@ -477,7 +477,7 @@ export function createBot(token: string): Telegraf {
     const userId = ctx.from.id;
     const username = ctx.from.username || ctx.from.first_name;
 
-    console.log(`📱 User ${userId} (@${username}) started the bot`);
+    console.log(`📱 User ${userId} started the bot`);
 
     const session = userSessions.get(userId);
 
@@ -1570,7 +1570,7 @@ export function createBot(token: string): Telegraf {
       const user = result.data.user;
       const token = result.data.token;
 
-      console.log(`✅ Bot user ${user.username} registered successfully`);
+      console.log(`✅ Bot user ${user.id} registered successfully`);
 
       const balanceSol = user.balance || 0;
       const balanceEth = user.baseBalance || 0;
@@ -1672,7 +1672,7 @@ export function createBot(token: string): Telegraf {
         const user = result.data.user;
         const token = result.data.token;
 
-        console.log(`✅ Bot user ${user.username} logged in successfully`);
+        console.log(`✅ Bot user ${user.id} logged in successfully`);
 
         const balanceSol = user.balance || 0;
         const balanceEth = user.baseBalance || 0;

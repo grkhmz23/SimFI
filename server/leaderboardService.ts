@@ -139,7 +139,7 @@ class LeaderboardService {
         const winner = leaders[0];
         const winnerProfit = BigInt(winner.periodProfit || '0');
         await storage.updateLeaderboardPeriodWinner(periodId, winner.id, winnerProfit);
-        console.log(`🏅 ${chain} Winner: ${winner.username}`);
+        console.log(`🏅 ${chain} Winner: ${winner.id}`);
       }
     } catch (error) {
       console.error("Period close error:", error);

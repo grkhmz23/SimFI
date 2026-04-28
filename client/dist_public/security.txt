@@ -1,5 +1,0 @@
-Contact: mailto:security@simfi.example
-Expires: 2027-12-31T23:59:59.000Z
-Preferred-Languages: en
-Policy: https://simfi.example/security-policy
-Acknowledgments: https://simfi.example/hall-of-fame

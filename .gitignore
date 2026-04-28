@@ -40,6 +40,9 @@ coverage
 # Attached assets (internal development files)
 attached_assets/
 
+# Screenshots
+Screenshot*.png
+
 # Internal documentation (not for public repo)
 AUDIT.md
 BACKEND_CHANGES.md

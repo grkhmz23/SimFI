@@ -1197,8 +1197,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         maxAge: 24 * 60 * 60 * 1000
       });
 
-      console.log('✅ User registered, cookie set for:', user.username);
-
       // Return user without password
       const { password, ...userWithoutPassword } = user;
       res.status(201).json(serializeBigInts({ user: userWithoutPassword }));
@@ -1287,8 +1285,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         path: '/',
         maxAge: 24 * 60 * 60 * 1000
       });
-
-      console.log('✅ User logged in, cookie set for:', user.username);
 
       const { password: _, ...userWithoutPassword } = user;
       res.json(serializeBigInts({ user: userWithoutPassword }));
@@ -1655,8 +1651,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { expiresIn: '24h' }
       );
 
-      console.log('✅ Telegram bot user registered:', user.username);
-
       const { password: _, ...userWithoutPassword } = user;
       res.status(201).json(serializeBigInts({ 
         user: userWithoutPassword,
@@ -1674,8 +1668,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { email, username, password } = req.body;
       const identifier = email || username; // Support both email and username
 
-      console.log(`🔐 Telegram login attempt for: ${identifier}`);
-
       if (!identifier || !password) {
         console.warn('Missing email/username or password in login request');
         return res.status(400).json({ error: 'Email or username and password are required' });
@@ -1686,25 +1678,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!user && !identifier.includes('@')) {
         // If it doesn't look like an email and we didn't find it by email, try username
-        console.log(`🔍 Email lookup failed, trying username: ${identifier}`);
         user = await storage.getUserByUsername(identifier);
       }
 
       if (!user) {
-        console.warn(`❌ No user found with email or username: ${identifier}`);
+        console.warn(`❌ Login failed: user not found`);
         return res.status(400).json({ error: 'Invalid credentials - user not found' });
       }
-
-      console.log(`✅ User found: ${user.username}, checking password...`);
 
       // Check password
       const validPassword = await bcrypt.compare(password, user.password);
       if (!validPassword) {
-        console.warn(`❌ Invalid password for user: ${user.username}`);
+        console.warn(`❌ Login failed: invalid password for user ${user.id}`);
         return res.status(400).json({ error: 'Invalid credentials - wrong password' });
       }
-
-      console.log(`✅ Password valid for user: ${user.username}`);
 
       // Increment token version and update last login
       const clientIp = sanitizeIp(req.ip || req.headers['x-forwarded-for']);
@@ -1717,8 +1704,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         JWT_SECRET,
         { expiresIn: '24h' }
       );
-
-      console.log('✅ Telegram bot user logged in:', user.username);
 
       const { password: _, ...userWithoutPassword } = user;
       res.json(serializeBigInts({ 
