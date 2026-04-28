@@ -44,8 +44,16 @@ export function Footer({ className }: { className?: string }) {
             <Link href="/leaderboard" className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors">
               Leaderboard
             </Link>
-            {/* Hidden — @sim_fi_ suspended */}
-            {/* <a href="https://x.com/sim_fi_" target="_blank" rel="noopener noreferrer" className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors inline-flex items-center gap-1.5" aria-label="SimFi on X"><SiX className="h-3.5 w-3.5" /><span className="hidden sm:inline">X</span></a> */}
+            <a
+              href="https://x.com/sim__fi"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors inline-flex items-center gap-1.5"
+              aria-label="SimFi on X"
+            >
+              <SiX className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">X</span>
+            </a>
             <a
               href="https://x.com/i/communities/1981329893569835367"
               target="_blank"

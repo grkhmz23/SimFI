@@ -31,6 +31,7 @@ import {
   Shield,
   Gift,
 } from "lucide-react"
+import { FaTelegram } from "react-icons/fa"
 import { formatBalance, formatUSD } from "@/lib/token-format"
 import { cn } from "@/lib/utils"
 
@@ -148,6 +149,18 @@ export function Navigation() {
                   Solana
                 </button>
               </div>
+
+              {/* Telegram Bot */}
+              <a
+                href="https://t.me/sim_fi_bot"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-[var(--text-secondary)] bg-[hsl(240_4%_12%)] border border-[var(--border-subtle)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
+                title="Trade on Telegram"
+              >
+                <FaTelegram className="h-3.5 w-3.5 text-sky-400" />
+                <span>Trade on Telegram</span>
+              </a>
 
               {isAuthenticated ? (
                 <DropdownMenu>
