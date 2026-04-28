@@ -2818,51 +2818,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
         10000
       );
 
-      if (!geckoResponse.ok) {
+      let candles: number[][] = [];
+      let geckoFailed = false;
+
+      if (geckoResponse.ok) {
+        try {
+          const ohlcvData = await geckoResponse.json();
+          let rawCandles = ohlcvData?.data?.attributes?.ohlcv_list || [];
+
+          // Validate candles is an array and contains valid data
+          if (!Array.isArray(rawCandles)) {
+            console.error(`⚠️ OHLCV candles is not an array for ${address}:`, typeof rawCandles);
+            rawCandles = [];
+          }
+
+          // Filter out any invalid candles
+          candles = rawCandles.filter((candle: any) => {
+            if (!Array.isArray(candle) || candle.length < 5) {
+              console.warn(`Skipping invalid candle: ${JSON.stringify(candle)}`);
+              return false;
+            }
+            // Ensure all OHLC values are valid numbers (not NaN/Infinity)
+            const [, open, high, low, close] = candle;
+            if ([open, high, low, close].some((v) => typeof v !== 'number' || !isFinite(v))) {
+              return false;
+            }
+            return true;
+          });
+
+          // Sort candles in ascending order by timestamp (required by TradingView Lightweight Charts)
+          candles = [...candles].sort((a: number[], b: number[]) => a[0] - b[0]);
+        } catch (parseErr: any) {
+          console.warn(`⚠️ Failed to parse GeckoTerminal response for ${address}:`, parseErr.message);
+          geckoFailed = true;
+        }
+      } else {
         const geckoText = await geckoResponse.text().catch(() => '');
         console.warn(`GeckoTerminal API error: ${geckoResponse.status} for ${address} on ${chainParam}`, geckoText.substring(0, 200));
-        return res.status(502).json({ error: `GeckoTerminal API error (${geckoResponse.status})`, details: geckoText.substring(0, 200) });
+        geckoFailed = true;
       }
-
-      const ohlcvData = await geckoResponse.json();
-
-      // Debug: Log what we got from GeckoTerminal
-      console.log(`📊 GeckoTerminal response structure for ${address}:`, {
-        hasData: !!ohlcvData?.data,
-        hasAttributes: !!ohlcvData?.data?.attributes,
-        hasOhlcvList: !!ohlcvData?.data?.attributes?.ohlcv_list,
-        ohlcvListLength: ohlcvData?.data?.attributes?.ohlcv_list?.length || 0,
-        responseKeys: Object.keys(ohlcvData || {})
-      });
-
-      let candles = ohlcvData?.data?.attributes?.ohlcv_list || [];
-
-      // Validate candles is an array and contains valid data
-      if (!Array.isArray(candles)) {
-        console.error(`⚠️ OHLCV candles is not an array for ${address}:`, typeof candles, candles);
-        candles = [];
-      }
-
-      // Filter out any invalid candles
-      candles = candles.filter((candle: any) => {
-        if (!Array.isArray(candle) || candle.length < 5) {
-          console.warn(`Skipping invalid candle: ${JSON.stringify(candle)}`);
-          return false;
-        }
-        return true;
-      });
-
-      // Sort candles in ascending order by timestamp (required by TradingView Lightweight Charts)
-      // GeckoTerminal returns them in descending order (newest first), we need ascending (oldest first)
-      candles = [...candles].sort((a: number[], b: number[]) => a[0] - b[0]);
 
       let synthetic: number[][] | undefined;
 
-      // If no real candles, generate synthetic flat-line candles from current price
+      // If no real candles (or GeckoTerminal failed), generate synthetic flat-line candles from current price
       // so the user always sees a chart instead of an error
       if (candles.length === 0) {
         const currentPriceUsd = parseFloat(pair.priceUsd || '0');
-        if (currentPriceUsd > 0) {
+        if (currentPriceUsd > 0 && isFinite(currentPriceUsd)) {
           const now = Math.floor(Date.now() / 1000);
           const tfMinutes =
             tfConfig.unit === 'minute'

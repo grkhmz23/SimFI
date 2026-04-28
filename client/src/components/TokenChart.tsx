@@ -194,13 +194,13 @@ export default function TokenChart({
       candles.forEach((candle: any) => {
         if (!Array.isArray(candle)) return
         const [timestamp, open, high, low, close, volume] = candle
-        if (typeof timestamp !== "number") return
-        if ([open, high, low, close].some((v) => typeof v !== "number")) return
+        if (typeof timestamp !== "number" || !isFinite(timestamp)) return
+        if ([open, high, low, close].some((v) => typeof v !== "number" || !isFinite(v))) return
 
         candleData.push({ time: timestamp as any, open, high, low, close })
         volumeData.push({
           time: timestamp as any,
-          value: volume || 0,
+          value: typeof volume === "number" && isFinite(volume) ? volume : 0,
           color:
             close >= open
               ? "rgba(63, 168, 118, 0.2)"
@@ -213,12 +213,12 @@ export default function TokenChart({
         data.synthetic.forEach((candle: any) => {
           if (!Array.isArray(candle)) return
           const [timestamp, open, high, low, close, volume] = candle
-          if (typeof timestamp !== "number") return
-          if ([open, high, low, close].some((v) => typeof v !== "number")) return
+          if (typeof timestamp !== "number" || !isFinite(timestamp)) return
+          if ([open, high, low, close].some((v) => typeof v !== "number" || !isFinite(v))) return
           candleData.push({ time: timestamp as any, open, high, low, close })
           volumeData.push({
             time: timestamp as any,
-            value: volume || 0,
+            value: typeof volume === "number" && isFinite(volume) ? volume : 0,
             color: "rgba(95, 93, 88, 0.15)",
           })
         })
