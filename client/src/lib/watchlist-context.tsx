@@ -1,6 +1,7 @@
 import { createContext, useContext, useCallback, ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { WatchlistItem, Chain } from '@shared/schema';
+import { useAuth } from '@/lib/auth-context';
 
 interface WatchlistContextType {
   items: WatchlistItem[];
@@ -21,6 +22,7 @@ const WatchlistContext = createContext<WatchlistContextType | undefined>(undefin
 
 export function WatchlistProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
 
   const {
     data,
@@ -28,8 +30,17 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     isError,
   } = useQuery<{ items: WatchlistItem[] }>({
     queryKey: ['/api/watchlist'],
+    queryFn: async () => {
+      const res = await fetch('/api/watchlist', { credentials: 'include' });
+      if (res.status === 401 || res.status === 403) {
+        return { items: [] };
+      }
+      if (!res.ok) throw new Error('Failed to fetch watchlist');
+      return res.json();
+    },
+    enabled: isAuthenticated,
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: isAuthenticated ? 60_000 : false,
   });
 
   const items = data?.items || [];
