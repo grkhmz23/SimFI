@@ -17,14 +17,5 @@
   <body class="dark">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      // Prevent Vite HMR WebSocket errors from crashing the app in production
-      window.addEventListener('unhandledrejection', (event) => {
-        if (event.reason?.message?.includes('WebSocket') || event.reason?.message?.includes('wss://localhost:undefined')) {
-          event.preventDefault();
-          console.warn('Suppressed WebSocket error:', event.reason);
-        }
-      });
-    </script>
   </body>
 </html>
