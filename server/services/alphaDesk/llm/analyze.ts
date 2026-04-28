@@ -146,6 +146,12 @@ export async function generateDevBuildIdeas(
       evidence: Array.isArray(idea.evidence)
         ? idea.evidence.filter((s): s is string => typeof s === "string")
         : [],
+      riskFlags: Array.isArray(idea.risk_flags)
+        ? idea.risk_flags.filter((s): s is string => typeof s === "string")
+        : [],
+      riskLevel: ["low", "medium", "high"].includes(String(idea.risk_level))
+        ? (String(idea.risk_level) as "low" | "medium" | "high")
+        : "medium",
     };
   });
 

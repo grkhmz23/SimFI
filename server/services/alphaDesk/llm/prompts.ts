@@ -65,7 +65,7 @@ export function buildMemeLaunchUserPrompt(
   tweets: SocialDataTweet[],
   githubSignals: GithubSignal[]
 ): string {
-  const chainLabel = chain === "any" ? "ANY blockchain" : `the ${chain.toUpperCase()} blockchain`;
+  const chainLabel = chain === "any" ? "the Solana and Base ecosystems" : `the ${chain.toUpperCase()} blockchain`;
   return `Generate 3-5 viral meme token LAUNCH CONCEPTS for ${chainLabel}.
 
 Period: ${periodLabel}
@@ -160,7 +160,7 @@ export function buildDevBuildUserPrompt(
   tweets: SocialDataTweet[],
   githubSignals: GithubSignal[]
 ): string {
-  const chainLabel = chain === "any" ? "blockchain ecosystems" : `the ${chain.toUpperCase()} ecosystem`;
+  const chainLabel = chain === "any" ? "the Solana and Base ecosystems" : `the ${chain.toUpperCase()} ecosystem`;
   return `Generate 3-5 developer BUILD IDEAS for ${chainLabel}.
 
 Period: ${periodLabel}
@@ -187,6 +187,8 @@ Now generate 3-5 build ideas for developers. Each must include:
 - complexity: one of [weekend, sprint, quarter]
 - monetization: how it makes money or sustains itself
 - evidence: array of specific tweets, Reddit posts, or market signals that support this idea
+- risk_flags: array of honest risks (technical, regulatory, competition, etc.)
+- risk_level: one of [low, medium, high]
 - confidence: 0-100 score
 
 Respond with JSON in this exact shape:

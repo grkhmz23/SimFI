@@ -35,6 +35,11 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+function getCsrfToken(): string | undefined {
+  const match = document.cookie.match(/csrfToken=([^;]+)/);
+  return match ? match[1] : undefined;
+}
+
 export async function apiRequest<T = any>(
   method: string,
   url: string,
@@ -45,6 +50,10 @@ export async function apiRequest<T = any>(
     ...(data ? { "Content-Type": "application/json" } : {}),
     ...(extraHeaders || {}),
   };
+  const csrfToken = getCsrfToken();
+  if (csrfToken && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
+    headers['X-CSRF-Token'] = csrfToken;
+  }
   const res = await fetch(url, {
     method,
     headers,

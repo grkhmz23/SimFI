@@ -627,7 +627,12 @@ class DbStorage implements IStorage {
         throw new Error("Insufficient balance");
       }
 
-      // 2. Create or aggregate position
+      // 2. Lock position row to prevent race conditions with concurrent sells
+      await tx.execute(
+        sql`SELECT 1 FROM ${positions} WHERE ${positions.userId} = ${params.userId} AND ${positions.tokenAddress} = ${params.tokenAddress} AND ${positions.chain} = ${params.chain} FOR UPDATE`
+      );
+
+      // 3. Create or aggregate position
       const nativeDecimals = this.nativeDecimalsForChain(params.chain);
       const [rawPosition] = await tx.insert(positions)
         .values({
@@ -1077,9 +1082,17 @@ class DbStorage implements IStorage {
   }
 
   async voteOnPick(userId: string, pickId: string): Promise<{ voteCount: number }> {
-    await db.insert(communityVotes)
+    const result = await db.insert(communityVotes)
       .values({ pickId, userId })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: communityVotes.id });
+
+    if (result.length === 0) {
+      const [pick] = await db.select({ voteCount: communityPicks.voteCount })
+        .from(communityPicks)
+        .where(eq(communityPicks.id, pickId));
+      return { voteCount: pick?.voteCount ?? 0 };
+    }
 
     const [updated] = await db.update(communityPicks)
       .set({ voteCount: sql`${communityPicks.voteCount} + 1` })
@@ -1090,8 +1103,16 @@ class DbStorage implements IStorage {
   }
 
   async removeVoteFromPick(userId: string, pickId: string): Promise<{ voteCount: number }> {
-    await db.delete(communityVotes)
-      .where(and(eq(communityVotes.pickId, pickId), eq(communityVotes.userId, userId)));
+    const result = await db.delete(communityVotes)
+      .where(and(eq(communityVotes.pickId, pickId), eq(communityVotes.userId, userId)))
+      .returning({ id: communityVotes.id });
+
+    if (result.length === 0) {
+      const [pick] = await db.select({ voteCount: communityPicks.voteCount })
+        .from(communityPicks)
+        .where(eq(communityPicks.id, pickId));
+      return { voteCount: pick?.voteCount ?? 0 };
+    }
 
     const [updated] = await db.update(communityPicks)
       .set({ voteCount: sql`${communityPicks.voteCount} - 1` })

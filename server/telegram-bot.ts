@@ -1,5 +1,6 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
+import crypto from 'crypto';
 import type { Request, Response } from 'express';
 
 // ── Config ──
@@ -317,7 +318,7 @@ const showMainMenu = async (ctx: any) => {
 
   const balance = result.data.balance;
   const baseBalance = result.data.baseBalance;
-  const preferredChain = result.data.preferredChain || 'base';
+  const preferredChain = result.data.preferredChain || 'solana';
 
   session.balance = BigInt(balance);
   session.baseBalance = BigInt(baseBalance);
@@ -497,7 +498,7 @@ export function createBot(token: string): Telegraf {
         const profile = profileTest.data;
         const balanceSol = profile.balance || dbSession.balance || 0;
         const balanceEth = profile.baseBalance || 0;
-        const preferredChain = profile.preferredChain || 'base';
+        const preferredChain = profile.preferredChain || 'solana';
 
         let balanceValue;
         if (typeof balanceSol === 'bigint') {
@@ -1531,7 +1532,7 @@ export function createBot(token: string): Telegraf {
 
       const loadingMsg = await ctx.reply('⏳ Creating account...');
 
-      const preferredChain = hasBase ? 'base' : (hasSolana ? 'solana' : 'base');
+      const preferredChain = hasSolana ? 'solana' : (hasBase ? 'base' : 'solana');
       const payload: any = { email, username, password, preferredChain };
       if (hasSolana) payload.solanaWalletAddress = solanaWallet;
       if (hasBase) payload.baseWalletAddress = baseWallet;
@@ -1573,7 +1574,7 @@ export function createBot(token: string): Telegraf {
 
       const balanceSol = user.balance || 0;
       const balanceEth = user.baseBalance || 0;
-      const userPreferredChain = user.preferredChain || 'base';
+      const userPreferredChain = user.preferredChain || 'solana';
 
       userSessions.set(userId, {
         username: user.username,
@@ -1675,7 +1676,7 @@ export function createBot(token: string): Telegraf {
 
         const balanceSol = user.balance || 0;
         const balanceEth = user.baseBalance || 0;
-        const preferredChain = user.preferredChain || 'base';
+        const preferredChain = user.preferredChain || 'solana';
 
         userSessions.set(userId, {
           username: user.username,
@@ -1819,7 +1820,9 @@ export async function setupWebhook(bot: Telegraf, webhookUrl: string, secretToke
 export function getWebhookCallback(bot: Telegraf, secretToken: string) {
   return async (req: Request, res: Response) => {
     const headerToken = req.headers['x-telegram-bot-api-secret-token'];
-    if (headerToken !== secretToken) {
+    const headerBuf = Buffer.from(String(headerToken), 'utf8');
+    const secretBuf = Buffer.from(secretToken, 'utf8');
+    if (headerBuf.length !== secretBuf.length || !crypto.timingSafeEqual(headerBuf, secretBuf)) {
       return res.sendStatus(401);
     }
     try {

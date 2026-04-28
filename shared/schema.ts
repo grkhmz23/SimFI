@@ -37,7 +37,7 @@ export const users = pgTable("users", {
   totalProfit: bigint("total_profit", { mode: "bigint" }).notNull().default(sql`0`), // Solana profit
   baseTotalProfit: bigint("base_total_profit", { mode: "bigint" }).notNull().default(sql`0`), // Base profit
   // User preferences
-  preferredChain: text("preferred_chain").notNull().default('base'),
+  preferredChain: text("preferred_chain").notNull().default('solana'),
   // Streak tracking (Phase 8)
   streakCount: integer("streak_count").notNull().default(0),
   lastStreakDate: timestamp("last_streak_date"),
@@ -223,11 +223,13 @@ export const insertUserSchema = createInsertSchema(users).omit({
 }).extend({
   username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_-]+$/),
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string().min(8).max(128),
   // Either Solana or Base wallet (or both) is required
   solanaWalletAddress: z.string().regex(solanaAddressRegex).optional().or(z.literal('')),
   baseWalletAddress: z.string().regex(baseAddressRegex).optional().or(z.literal('')),
-  preferredChain: z.enum(['base', 'solana']).default('base'),
+  preferredChain: z.enum(['base', 'solana']).default('solana'),
+  referralCode: z.string().max(50).optional(),
+  walletAddress: z.string().max(64).optional(),
 }).refine(
   (data) => data.solanaWalletAddress || data.baseWalletAddress,
   { message: "At least one wallet address (Solana or Base) is required" }

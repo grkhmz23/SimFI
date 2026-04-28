@@ -1,6 +1,62 @@
+# Dependencies
 node_modules
+.pnp
+.pnp.js
+
+# Build outputs
 dist
-.DS_Store
+dist-ssr
+client/dist_public/
 server/public
-vite.config.ts.*
-*.tar.gzclient/dist_public/
+*.tar.gz
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# System files
+.DS_Store
+*.pem
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Testing
+coverage
+*.tsbuildinfo
+
+# Attached assets (internal development files)
+attached_assets/
+
+# Internal documentation (not for public repo)
+AUDIT.md
+BACKEND_CHANGES.md
+BASE_CHAIN_IMPLEMENTATION_PLAN.md
+BASE_INTEGRATION_PLAN.md
+BASE_INTEGRATION_SUMMARY.md
+BUG_REPORT.md
+DECIMAL_IMPLEMENTATION.md
+FIX_EVIDENCE.md
+FUTURE_HOOKS.md
+INVESTOR_DEMO_ROADMAP.md
+PHASE_0_DIAGNOSIS.md
+REBUILD_REPORT.md
+RENDER_DEPLOY.md
+SECURITY_AUDIT_REPORT.md
+SECURITY_FIXES_APPLIED.md
+TELEGRAM_BOT_COMMANDS.md
+TRAILBLAZER_AUDIT.md
+design_guidelines.md
+simfi-*.md

@@ -838,8 +838,8 @@ export default function AlphaDesk() {
             </h1>
           </div>
           <p className="text-[var(--text-secondary)] max-w-2xl">
-            AI-generated daily ideation for blockchain creators. Meme token concepts for launchers
-            and project ideas for developers — powered by Reddit, Twitter, GitHub, and on-chain signals.
+            AI-generated daily signals for traders and builders. Meme token picks for day traders
+            and onchain project ideas for developers — powered by Reddit, Twitter, GitHub, and on-chain signals.
           </p>
         </motion.div>
 
@@ -884,10 +884,10 @@ export default function AlphaDesk() {
               <div className="flex items-center gap-2 mb-4">
                 <Rocket className="h-5 w-5 text-[var(--accent-premium)]" />
                 <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-                  Today's Launch Ideas
+                  Daily Meme Picks for Day Traders
                 </h2>
                 <span className="text-xs text-[var(--text-tertiary)] ml-2">
-                  Meme token concepts for creators
+                  Viral token concepts backed by social momentum
                 </span>
               </div>
 
@@ -922,10 +922,10 @@ export default function AlphaDesk() {
               <div className="flex items-center gap-2 mb-4">
                 <Wrench className="h-5 w-5 text-blue-400" />
                 <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-                  Build Ideas for Developers
+                  Onchain Build Ideas for Developers
                 </h2>
                 <span className="text-xs text-[var(--text-tertiary)] ml-2">
-                  Project concepts for builders
+                  Project concepts for onchain builders
                 </span>
               </div>
 

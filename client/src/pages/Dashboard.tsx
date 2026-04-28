@@ -222,7 +222,12 @@ export default function Dashboard() {
   const handleClaimStreak = async () => {
     setStreakMessage(null);
     try {
-      const res = await fetch('/api/streak/claim', { method: 'POST', credentials: 'include' });
+      const csrfToken = document.cookie.match(/csrfToken=([^;]+)/)?.[1];
+      const res = await fetch('/api/streak/claim', {
+        method: 'POST',
+        credentials: 'include',
+        headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {}
+      });
       const data = await res.json();
       if (res.ok) {
         setStreakMessage({ type: 'success', text: `+${data.bonusEth} ETH claimed!` });

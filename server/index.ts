@@ -27,9 +27,9 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// ✅ CRITICAL: Trust first proxy for correct client IP detection
-// Required for rate limiting to work correctly behind Nginx/Cloudflare/Render/Fly
-app.set('trust proxy', 1);
+// Trust proxy only when explicitly configured
+// Set TRUST_PROXY=true for Nginx/Cloudflare/Render/Fly deployments
+app.set('trust proxy', process.env.TRUST_PROXY === 'true');
 
 // ============================================================================
 // ✅ FIX #7: SECURITY HEADERS
@@ -56,10 +56,12 @@ app.use((req, res, next) => {
   }
 
   // Content Security Policy - prevent XSS and data injection
-  // This is a moderate policy - adjust based on your needs
+  const isDev = process.env.NODE_ENV === 'development';
   const cspDirectives = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com",
+    isDev
+      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com"
+      : "script-src 'self' https://cdnjs.cloudflare.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: https: blob:",
@@ -105,11 +107,21 @@ app.use((req, res, next) => {
 // ✅ FIX: Track if shutdown is in progress to prevent duplicate cleanup
 let isShuttingDown = false;
 
-async function gracefulShutdown(signal: string, botProcess?: any) {
+async function gracefulShutdown(signal: string, server: any, botProcess?: any) {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
   console.log(`\n🛑 Received ${signal}, starting graceful shutdown...`);
+
+  // Stop accepting new connections
+  try {
+    console.log('   Closing HTTP server...');
+    server.close(() => {
+      console.log('   ✅ HTTP server closed');
+    });
+  } catch (e) {
+    console.error('   ❌ Error closing HTTP server:', e);
+  }
 
   // Stop leaderboard service (releases advisory lock)
   try {
@@ -131,6 +143,12 @@ async function gracefulShutdown(signal: string, botProcess?: any) {
     }
   }
 
+  // Force exit after timeout
+  setTimeout(() => {
+    console.error('❌ Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+
   console.log('✅ Graceful shutdown complete');
   process.exit(0);
 }
@@ -150,7 +168,10 @@ app.use('/api', (req, res) => {
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   if (req.originalUrl && req.originalUrl.startsWith('/api/')) {
     console.error('API error:', err);
-    return res.status(err?.status || 500).json({ error: err?.message || 'Internal server error' });
+    const isDev = process.env.NODE_ENV === 'development';
+    const status = err?.status || 500;
+    const message = isDev ? (err?.message || 'Internal server error') : 'Internal server error';
+    return res.status(status).json({ error: message });
   }
   next(err);
 });
@@ -256,4 +277,8 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   startAlphaDeskWorker().catch((err) => {
     console.error('[AlphaDesk] Worker failed to start:', err);
   });
+
+  // Register graceful shutdown handlers
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM', server));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT', server));
 })();

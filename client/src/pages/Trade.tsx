@@ -279,7 +279,7 @@ export default function Trade() {
               </div>
               <h3 className="text-h3 mb-3">Trade without risk</h3>
               <p className="text-body text-[var(--text-secondary)] leading-relaxed">
-                Start with 5 ETH and 10 SOL in virtual balance. Execute trades with real
+                Start with 10 SOL and 5 ETH in virtual balance. Execute trades with real
                 market prices from DexScreener and Jupiter — no real capital at stake.
               </p>
             </div>

@@ -19,18 +19,18 @@ export function ChainSelector({ variant = 'default', className }: ChainSelectorP
 
   const chains = [
     {
-      id: 'base' as const,
-      name: 'Base',
-      symbol: 'ETH',
-      color: 'bg-blue-500',
-      description: 'Base Chain',
-    },
-    {
       id: 'solana' as const,
       name: 'Solana',
       symbol: 'SOL',
       color: 'bg-purple-500',
       description: 'Solana Chain',
+    },
+    {
+      id: 'base' as const,
+      name: 'Base',
+      symbol: 'ETH',
+      color: 'bg-blue-500',
+      description: 'Base Chain',
     },
   ];
 

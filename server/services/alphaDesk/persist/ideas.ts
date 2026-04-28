@@ -49,6 +49,7 @@ export async function insertAlphaDeskIdeas(
         symbol: null,
         narrativeThesis: idea.concept,
         whyNow: idea.whyNow,
+        riskFlags: idea.riskFlags ?? [],
         evidence: {
           targetAudience: idea.targetAudience,
           suggestedStack: idea.suggestedStack,

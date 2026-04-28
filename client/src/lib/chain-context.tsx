@@ -24,7 +24,7 @@ export function ChainProvider({ children }: { children: ReactNode }) {
         return stored;
       }
     }
-    return 'base';
+    return 'solana';
   });
 
   // Persist chain preference to localStorage

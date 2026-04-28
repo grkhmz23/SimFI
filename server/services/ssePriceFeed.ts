@@ -162,11 +162,16 @@ class SsePriceFeed {
     const client = this.clients.get(clientId);
     if (!client) return;
 
+    const MAX_SUBS = 50;
     for (const { address, chain } of tokens) {
+      if (client.subscriptions.size >= MAX_SUBS) {
+        console.warn(`[SSE] Client ${clientId} hit max subscriptions (${MAX_SUBS})`);
+        break;
+      }
       client.subscriptions.add(`${chain}:${address}`);
     }
 
-    console.log(`[SSE] Client ${clientId} subscribed to ${tokens.length} tokens`);
+    console.log(`[SSE] Client ${clientId} subscribed to ${client.subscriptions.size} tokens`);
   }
 
   /**

@@ -1,33 +1,129 @@
-# SimFi
+# SimFi — Paper Trade. Real Skills. Zero Risk.
 
-Multi-chain paper trading platform for memecoin discovery and education. Practice risk-free trading on real token pairs from **Solana** and **Base**, compete on leaderboards, earn achievement badges, and follow top traders.
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite)](https://vitejs.dev/)
+[![Express](https://img.shields.io/badge/Express-4-404040?logo=express)](https://expressjs.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-4169E1?logo=postgresql)](https://neon.tech/)
 
-## Features
+**SimFi** is a multi-chain paper trading platform for memecoin discovery and education. Practice risk-free trading on real token pairs from **Solana** and **Base**, compete on leaderboards, earn achievement badges, and follow top traders — all with zero real capital at stake.
 
-- **Paper Trading** — Trade real memecoins with virtual capital (5 ETH / 10 SOL starting balance)
-- **Multi-Chain** — Full support for Base and Solana with chain-specific balances and leaderboards
-- **Alpha Desk** — AI-curated daily token ideas backed by social momentum, dev activity, and on-chain signals
-- **Leaderboards** — 6-hour competitive periods with live rankings
-- **Achievements** — Unlock badges for trading milestones
-- **Social** — Follow traders, referral system, streak tracking
-- **Token Analysis** — Helius-powered wallet and token research tools
+> 🏆 Built for the onchain generation. Trade like it's real. Learn without the losses.
 
-## Tech Stack
+---
 
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui, TanStack Query
-- **Backend**: Express.js, TypeScript, Drizzle ORM
-- **Database**: PostgreSQL (Neon)
-- **Blockchain APIs**: Helius, DexScreener, Jupiter, CoinGecko, GeckoTerminal
+## 🎯 The Problem
 
-## Quick Start
+Memecoin trading is high-risk, high-volatility, and expensive to learn. New traders lose real money on:
+- **Rug pulls** and low-liquidity traps
+- **Emotional trading** without strategy
+- **No safe sandbox** to practice pattern recognition
+- **Isolation** — no way to learn from top performers
+
+## 💡 The Solution
+
+SimFi gives every trader a **risk-free, investor-grade paper trading environment**:
+
+- **$50,000 virtual portfolios** (5 ETH Base + 10 SOL Solana) backed by real market data
+- **Live leaderboards** with 6-hour competitive periods
+- **Social features** — follow top traders, copy their strategies, build your reputation
+- **AI-curated Alpha Desk** — daily meme picks and dev build ideas powered by social signals
+- **Achievement system** — unlock badges, streaks, and referral rewards
+
+---
+
+## ✨ Key Features
+
+| Feature | Description |
+|---------|-------------|
+| 📈 **Paper Trading** | Buy/sell real memecoins with virtual capital. Prices from DexScreener, Jupiter, Birdeye. |
+| 🔗 **Multi-Chain** | Full support for **Base** (primary) and **Solana** with chain-specific balances & leaderboards. |
+| 🤖 **Alpha Desk** | AI-generated daily picks: meme token ideas for day traders + onchain build ideas for developers. |
+| 🏆 **Leaderboards** | 6-hour competitive periods. Rank by profit, win rate, and consistency. |
+| 🎖️ **Achievements** | Unlock badges: `First Trade`, `Diamond Hands`, `Top 10`, `Green Day`, and more. |
+| 👥 **Social Trading** | Follow top traders, view public profiles, compete with friends. |
+| 🔥 **Streaks & Referrals** | Daily trading streaks with ETH bonuses. Referral system with leaderboard. |
+| 🔬 **Token Analysis** | Helius-powered wallet and token research tools. |
+
+---
+
+## 🛠 Tech Stack
+
+### Frontend
+- **React 18** + **TypeScript**
+- **Vite** (ultra-fast builds)
+- **Tailwind CSS** + **shadcn/ui** components
+- **TanStack Query** (server state)
+- **Lightweight Charts** (candlestick charts)
+- **Framer Motion** (animations)
+
+### Backend
+- **Express.js** + **TypeScript**
+- **Drizzle ORM** (type-safe SQL)
+- **PostgreSQL** (Neon serverless)
+- **JWT** auth with token versioning
+- **Rate limiting** (tiered: IP, auth, trade, search)
+
+### Blockchain APIs
+- **Helius** — Solana data
+- **DexScreener** — real-time prices
+- **Jupiter** — Solana swap quotes
+- **Birdeye** — Base token data
+- **CoinGecko** — native price feeds
+
+### AI Pipeline (Alpha Desk)
+- **Moonshot Kimi K2** (primary LLM)
+- **OpenAI / OpenRouter** (fallbacks)
+- **SocialData.tools** — Twitter/X signals
+- **GitHub API** — dev activity
+- **Reddit** — culture & narrative signals
+
+---
+
+## 🏗 Architecture Highlights
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   React + Vite  │────▶│   Express API    │────▶│  PostgreSQL     │
+│   (Client)      │     │   (Server)       │     │  (Neon)         │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+         │                       │
+         ▼                       ▼
+   TanStack Query         Circuit Breakers
+   SSE Price Feed         Atomic Transactions
+                          Row-Level Locking (FOR UPDATE)
+```
+
+### Security-First Design
+- **Server-authoritative trading** — all prices fetched server-side; execution price pinned at quote time
+- **Atomic transactions** — buy/sell operations use `FOR UPDATE` row locks to prevent race conditions
+- **JWT token versioning** — instant session invalidation on logout or password change
+- **CSRF double-submit cookies** — protection against cross-site request forgery
+- **Input validation** — Zod schemas on all endpoints; BigInt guards against DoS
+- **Rate limiting** — tiered limits per IP, user, and endpoint
+
+### Alpha Desk Pipeline
+```
+Ingest (DexScreener + Twitter + Reddit + GitHub)
+    ↓
+Score (z-score normalization, novelty bonus, hype penalty)
+    ↓
+LLM Analysis (narrative thesis, risk flags, confidence score)
+    ↓
+Persist (PostgreSQL with outcome tracking at 1h/6h/24h/7d)
+```
+
+---
+
+## 🚀 Quick Start
 
 ```bash
 # Install dependencies
 npm install
 
-# Set up environment variables
+# Set up environment
 cp .env.example .env
-# Edit .env with your database URL and API keys
+# Edit .env with your DATABASE_URL and API keys
 
 # Push database schema
 npm run db:push
@@ -36,47 +132,43 @@ npm run db:push
 npm run dev
 ```
 
-## Alpha Desk
+The app runs on `http://localhost:5000`.
 
-Alpha Desk is SimFi's AI-curated daily token signal pipeline. It surfaces 3 high-conviction memecoin picks per day on Base and Solana.
+---
 
-### How it works
+## 📊 Business Model
 
-1. **Ingestion** — Fetches trending tokens from DexScreener, Twitter signals via SocialData.tools, and optional GitHub dev activity
-2. **Scoring** — Computes weighted scores (50% dev / 35% social / 15% market by default) with novelty bonus and hype-only penalty
-3. **LLM Analysis** — Moonshot Kimi K2 Thinking Turbo generates narrative thesis, why-now, and risk flags
-4. **Persistence** — Stores picks in PostgreSQL with outcome tracking (1h/6h/24h/7d returns)
+| Revenue Stream | Mechanism |
+|----------------|-----------|
+| **Premium Subscriptions** | Advanced analytics, whale alerts, early Alpha Desk access |
+| **API Access** | B2B data feeds for trading bots and research platforms |
+| **Sponsored Picks** | Curated token spotlights (clearly labeled) |
+| **Affiliate Revenue** | Referral fees from DEX aggregators and wallets |
 
-### Environment Variables
+---
 
-See `.env.example` for all Alpha Desk variables:
+## 🗺 Roadmap
 
-- `MOONSHOT_API_KEY` — Primary LLM provider
-- `OPENAI_API_KEY` / `OPENROUTER_API_KEY` — Fallback LLM providers
-- `SOCIALDATA_API_KEY` — Twitter/X signal ingestion
-- `GITHUB_TOKEN` — Optional GitHub dev signals
-- `ADMIN_TOKEN` — Secures the admin trigger endpoint
-- `ALPHA_DESK_MAX_RUNS_PER_DAY` — Cost guard (default: 2)
+- [x] Multi-chain paper trading (Base + Solana)
+- [x] Leaderboards & competitive periods
+- [x] Achievement & badge system
+- [x] Social following & public profiles
+- [x] Alpha Desk AI pipeline
+- [x] Streaks & referral system
+- [ ] **Mobile app** (React Native)
+- [ ] **Copy trading** — auto-mirror top trader moves
+- [ ] **Whale alerts** — onchain wallet monitoring
+- [ ] **Educational academy** — guided trading courses
+- [ ] **Live tournaments** — sponsored trading competitions
 
-### Manual Run
+---
 
-```bash
-curl -X POST http://localhost:5000/api/admin/alpha-desk/run \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"chain":"base"}'
-```
+## 👨‍💻 Team
 
-### Scheduled Runs
+Built with 💜 by the SimFi team.
 
-Alpha Desk runs daily at 13:00 UTC via GitHub Actions (`.github/workflows/alpha-desk-daily.yml`). The workflow POSTs to the admin endpoint for both Base and Solana.
+---
 
-On Render, a worker service (`simfi-alpha-desk`) can also run the pipeline and measure outcomes every 6 hours.
-
-## Deployment
-
-See `RENDER_DEPLOY.md` for Render deployment instructions.
-
-## License
+## 📄 License
 
 Proprietary — All rights reserved.

@@ -182,7 +182,7 @@ export const portfolioAnalytics = {
         and(eq(tradeHistory.userId, userId), eq(tradeHistory.chain, chain))
       ) as any;
     }
-    const trades = await tradesQuery.orderBy(asc(tradeHistory.closedAt));
+    const trades = await tradesQuery.orderBy(asc(tradeHistory.closedAt)).limit(10000);
 
     // Fetch user for balance / native price context
     const [user] = await db.select({

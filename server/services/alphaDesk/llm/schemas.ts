@@ -26,6 +26,8 @@ export const DevBuildIdeaSchema = z.object({
   complexity: z.enum(["weekend", "sprint", "quarter"]),
   monetization: z.string().min(1),
   evidence: z.array(z.string()),
+  risk_flags: z.array(z.string()).optional().default([]),
+  risk_level: z.enum(["low", "medium", "high"]).optional().default("medium"),
   confidence: z.number().min(0).max(100),
 });
 

@@ -184,7 +184,10 @@ class QuoteService {
 
     } else {
       // Parse token amount
-      const tokenAmount = BigInt(amountTokens!);
+      if (!amountTokens || amountTokens.length > 30 || !/^\d+$/.test(amountTokens)) {
+        throw new Error('Invalid token amount');
+      }
+      const tokenAmount = BigInt(amountTokens);
 
       if (jupiterQuote) {
         executionPrice = jupiterQuote.executionPrice;
@@ -257,7 +260,7 @@ class QuoteService {
       const priceImpactBps = Math.min(1000, Math.round(Math.abs(jup.priceImpact || 0) * 10000));
       return { executionPrice, estimatedOutput, priceImpactBps };
     } else {
-      if (!amountTokens) return null;
+      if (!amountTokens || amountTokens.length > 30 || !/^\d+$/.test(amountTokens)) return null;
       const tokenAmount = BigInt(amountTokens);
       const jup = await jupiterService.getOrderQuote(
         outputMint,
@@ -421,7 +424,11 @@ class QuoteService {
     }
 
     const cleanWhole = wholePart.replace(/^0+/, '') || '0';
-    return BigInt(cleanWhole + fracPart);
+    const nativeStr = cleanWhole + fracPart;
+    if (nativeStr.length > 30) {
+      throw new Error('Amount exceeds maximum precision');
+    }
+    return BigInt(nativeStr);
   }
 }
 

@@ -13,10 +13,10 @@ const pool = new Pool({
   max: 20,                    // Maximum 20 connections
   idleTimeoutMillis: 30000,   // Close idle connections after 30s
   connectionTimeoutMillis: 5000, // Timeout for new connections
-  // SSL configuration for production databases
-  ssl: process.env.NODE_ENV === 'production' ? {
+  // SSL configuration — enabled by default, opt-out via DISABLE_DB_SSL=true
+  ssl: process.env.DISABLE_DB_SSL === 'true' ? undefined : {
     rejectUnauthorized: true
-  } : undefined
+  }
 });
 
 // Handle pool errors

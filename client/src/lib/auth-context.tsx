@@ -75,7 +75,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn('Session expired, forcing logout');
       setUser(null);
       // Call logout to clear the invalid cookie server-side
-      fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+      const csrfToken = document.cookie.match(/csrfToken=([^;]+)/)?.[1];
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {}
+      })
         .catch(() => {})
         .finally(() => {
           window.location.href = '/login?expired=1';

@@ -133,6 +133,8 @@ export interface DevBuildIdeaGenerated {
   chain: AlphaDeskChain;
   confidence: number;
   evidence: string[];
+  riskFlags: string[];
+  riskLevel: "low" | "medium" | "high";
 }
 
 export type AlphaDeskIdeaGenerated = MemeLaunchIdeaGenerated | DevBuildIdeaGenerated;

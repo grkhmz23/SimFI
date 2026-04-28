@@ -22,13 +22,24 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
     return res.status(401).json({ error: 'Access denied - no token provided' });
   }
 
+  // CSRF double-submit cookie check for state-changing requests
+  const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method);
+  if (isMutation && req.cookies.token) {
+    const csrfCookie = req.cookies.csrfToken;
+    const csrfHeader = req.headers['x-csrf-token'];
+    if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
+      console.log('❌ Auth failed: CSRF token mismatch');
+      return res.status(403).json({ error: 'CSRF token mismatch' });
+    }
+  }
+
   try {
     // Use same secret resolution as routes.ts
     const secret = process.env.JWT_SECRET || process.env.SESSION_SECRET;
     if (!secret) {
       throw new Error('JWT_SECRET or SESSION_SECRET environment variable must be set');
     }
-    const verified = jwt.verify(token, secret) as { id: string; username: string; tokenVersion?: number };
+    const verified = jwt.verify(token, secret, { algorithms: ['HS256'] }) as { id: string; username: string; tokenVersion?: number };
 
     // Verify tokenVersion matches current DB value (session invalidation check)
     const [user] = await db.select({ tokenVersion: users.tokenVersion })

@@ -51,19 +51,14 @@ async function initializeRateLimitStore() {
   }
 
   try {
-    // Dynamic import to avoid requiring redis packages in dev/test
-    // These packages are optional - install with: npm install ioredis rate-limit-redis
-    // Using Function constructor to bypass TypeScript module resolution
-    const dynamicImport = new Function('modulePath', 'return import(modulePath)');
-
     let RedisStore: any;
     let Redis: any;
 
     try {
-      const RedisStoreModule = await dynamicImport('rate-limit-redis');
-      const IoRedisModule = await dynamicImport('ioredis');
-      RedisStore = RedisStoreModule.default;
-      Redis = IoRedisModule.default || IoRedisModule.Redis;
+      const RedisStoreModule = await import('rate-limit-redis');
+      const IoRedisModule = await import('ioredis');
+      RedisStore = (RedisStoreModule as any).default || RedisStoreModule;
+      Redis = (IoRedisModule as any).default || (IoRedisModule as any).Redis || IoRedisModule;
     } catch (importError) {
       console.warn('⚠️  Redis packages not installed. Run: npm install ioredis rate-limit-redis');
       console.log('   Falling back to in-memory rate limiting');
@@ -397,7 +392,7 @@ async function fetchBirdeyeTokenData(
 
   const birdeyeChain = chain === 'solana' ? 'solana' : 'base';
   try {
-    const res = await fetchBirdeye(`/defi/token_overview?address=${tokenAddress}`, birdeyeChain);
+    const res = await fetchBirdeye(`/defi/token_overview?address=${encodeURIComponent(tokenAddress)}`, birdeyeChain);
     if (!res?.ok) return null;
 
     const json = await res.json();
@@ -520,11 +515,38 @@ function parseDecimalToNative(decimalString: string, nativeDecimals: number = 9)
 
   // Combine and parse as BigInt to avoid precision loss
   const nativeStr = wholePart + fracPart;
+  if (nativeStr.length > 30) {
+    console.warn(`Decimal input too long: ${nativeStr.length} digits`);
+    return 0n;
+  }
   const nativeUnits = BigInt(nativeStr);
 
   // Return at least 1n for any valid non-zero price (sub-atomic tokens)
   if (nativeUnits > 0n) return nativeUnits;
   return str !== '0' && parseFloat(str) > 0 ? 1n : 0n;
+}
+
+// ============================================================================
+// SECURITY HELPERS
+// ============================================================================
+
+/** Validate and parse BigInt safely — blocks CPU-exhaustion DoS from oversized strings */
+function safeBigInt(value: string | number | bigint): bigint {
+  if (typeof value === 'string') {
+    if (value.length > 30) {
+      throw new Error('Numeric input exceeds maximum length');
+    }
+    if (!/^-?\d+$/.test(value)) {
+      throw new Error('Invalid numeric format');
+    }
+  }
+  return BigInt(value);
+}
+
+/** Sanitize IP strings to prevent log injection */
+function sanitizeIp(ip: string | string[] | undefined): string {
+  const raw = String(ip ?? 'unknown');
+  return raw.replace(/[^a-zA-Z0-9.:]/g, '').slice(0, 45);
 }
 
 // ============================================================================
@@ -893,7 +915,7 @@ const MIN_VOLUME_24H_USD = 500; // $500 minimum 24h volume
 
 async function fetchDexScreenerPriceInternal(tokenAddress: string): Promise<PriceCache | null> {
   try {
-    const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, 3000);
+    const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(tokenAddress)}`, 3000);
     if (dexResponse.ok) {
       const dexData = await dexResponse.json();
       const solanaPair = findBestPair(dexData.pairs, tokenAddress, 'solana');
@@ -1118,7 +1140,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const hashedPassword = await bcrypt.hash(data.password, 10);
 
       // Handle referral code if provided
-      const referralCode = req.body.referralCode as string | undefined;
+      const { referralCode, walletAddress } = data;
       let referrerId: string | undefined;
       if (referralCode) {
         const referrer = await storage.getUserByUsername(referralCode);
@@ -1128,12 +1150,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create user
-      const walletAddress = req.body.walletAddress as string | undefined;
       const user = await storage.createUser({
         ...data,
         password: hashedPassword,
         walletAddress: walletAddress || data.solanaWalletAddress,
-      } as any);
+      });
 
       // Apply referral bonus if valid referrer
       if (referrerId) {
@@ -1147,8 +1168,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Update last login and set initial token version
-      const clientIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-      await storage.updateLastLogin(user.id, String(clientIp));
+      const clientIp = sanitizeIp(req.ip || req.headers['x-forwarded-for']);
+      await storage.updateLastLogin(user.id, clientIp);
 
       // Generate token with tokenVersion
       const token = jwt.sign(
@@ -1162,7 +1183,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        path: '/api',
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      });
+
+      // Set CSRF double-submit cookie
+      const csrfToken = crypto.randomBytes(32).toString('hex');
+      res.cookie('csrfToken', csrfToken, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        path: '/',
+        maxAge: 24 * 60 * 60 * 1000
       });
 
       console.log('✅ User registered, cookie set for:', user.username);
@@ -1172,10 +1204,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(serializeBigInts({ user: userWithoutPassword }));
     } catch (error: any) {
       console.error('Registration error:', error?.message || String(error));
+      const isDev = process.env.NODE_ENV === 'development';
       let message = 'Registration failed';
       if (error.errors && Array.isArray(error.errors)) {
         message = error.errors[0]?.message || message;
-      } else if (error.message) {
+      } else if (isDev && error.message) {
         message = error.message;
       }
       res.status(400).json({ error: message });
@@ -1185,7 +1218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/auth/login', authLimiter, async (req, res) => {
     try {
       const { email, username } = req.body;
-      console.log('🔐 Login attempt:', { email, username });
+      console.log('🔐 Login attempt');
 
       // Validate request body with Zod - accept either email OR username
       const loginSchema = z.object({
@@ -1225,8 +1258,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Increment token version and update last login
-      const clientIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-      const updatedUser = await storage.updateLastLogin(user.id, String(clientIp));
+      const clientIp = sanitizeIp(req.ip || req.headers['x-forwarded-for']);
+      const updatedUser = await storage.updateLastLogin(user.id, clientIp);
       const userWithNewVersion = await storage.incrementTokenVersion(user.id);
       const tokenVersion = userWithNewVersion?.tokenVersion ?? (updatedUser?.tokenVersion ?? 0) + 1;
 
@@ -1241,7 +1274,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        path: '/api',
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      });
+
+      // Set CSRF double-submit cookie
+      const csrfToken = crypto.randomBytes(32).toString('hex');
+      res.cookie('csrfToken', csrfToken, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        path: '/',
+        maxAge: 24 * 60 * 60 * 1000
       });
 
       console.log('✅ User logged in, cookie set for:', user.username);
@@ -1254,14 +1298,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/auth/logout', (req, res) => {
-    res.clearCookie('token', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax'
-    });
-    console.log('✅ User logged out, cookie cleared');
-    res.json({ message: 'Logged out successfully' });
+  app.post('/api/auth/logout', authenticateToken, async (req, res) => {
+    try {
+      await storage.incrementTokenVersion(req.userId!);
+      res.clearCookie('token', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        path: '/api'
+      });
+      console.log('✅ User logged out, cookie cleared');
+      res.json({ message: 'Logged out successfully' });
+    } catch (error: any) {
+      console.error('Logout error:', error);
+      res.status(500).json({ error: 'Logout failed' });
+    }
   });
 
   // POST /api/auth/logout-all — invalidate all existing sessions
@@ -1271,7 +1322,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.clearCookie('token', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax'
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        path: '/api'
       });
       res.json({ message: 'All sessions logged out successfully' });
     } catch (error: any) {
@@ -1289,7 +1341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userAgent = req.headers['user-agent'] || 'Unknown';
-      const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'Unknown';
+      const ip = sanitizeIp(req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress);
 
       // Simple device detection from user agent
       const device = userAgent.includes('Mobile')
@@ -1588,14 +1640,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email,
         username,
         password: hashedPassword,
-        preferredChain: 'base',
+        preferredChain: 'solana',
         ...(hasSolana ? { solanaWalletAddress } : {}),
         ...(hasBase ? { baseWalletAddress } : {}),
       });
 
       // Update last login and generate token with tokenVersion
-      const clientIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-      await storage.updateLastLogin(user.id, String(clientIp));
+      const clientIp = sanitizeIp(req.ip || req.headers['x-forwarded-for']);
+      await storage.updateLastLogin(user.id, clientIp);
 
       const token = jwt.sign(
         { id: user.id, username: user.username, tokenVersion: user.tokenVersion },
@@ -1655,8 +1707,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`✅ Password valid for user: ${user.username}`);
 
       // Increment token version and update last login
-      const clientIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-      const updatedUser = await storage.updateLastLogin(user.id, String(clientIp));
+      const clientIp = sanitizeIp(req.ip || req.headers['x-forwarded-for']);
+      const updatedUser = await storage.updateLastLogin(user.id, clientIp);
       const userWithNewVersion = await storage.incrementTokenVersion(user.id);
       const tokenVersion = userWithNewVersion?.tokenVersion ?? (updatedUser?.tokenVersion ?? 0) + 1;
 
@@ -2144,7 +2196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         // Partial sell: validate client-provided amount
         try {
-          sellAmount = BigInt(amountLamports);
+          sellAmount = safeBigInt(amountLamports);
         } catch {
           return res.status(400).json({ error: 'Invalid sell amount format' });
         }
@@ -2946,7 +2998,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get Jupiter quote for buying tokens with SOL (Solana only — deprecated, use /api/quote)
-  app.get('/api/tokens/quote/buy', publicApiLimiter, async (req, res) => {
+  app.get('/api/tokens/quote/buy', authenticateToken, publicApiLimiter, async (req, res) => {
     try {
       const { tokenAddress, solAmount, decimals, chain } = req.query;
 
@@ -2982,7 +3034,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`🔮 Fetching Jupiter quote for ${solAmountNum} SOL → ${tokenAddress}`);
 
       // ✅ FIX: Use circuit breaker protected fetch
-      const response = await fetchJupiter(`/v6/quote?inputMint=${SOL_MINT}&outputMint=${tokenAddress}&amount=${inputAmountLamports}&slippageBps=50`);
+      const response = await fetchJupiter(`/v6/quote?inputMint=${SOL_MINT}&outputMint=${encodeURIComponent(tokenAddress as string)}&amount=${inputAmountLamports}&slippageBps=50`);
 
       if (!response) {
         console.error(`❌ Jupiter API unavailable (circuit breaker open or timeout)`);
@@ -3037,7 +3089,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get Jupiter quote for selling tokens for SOL (Solana only — deprecated, use /api/quote)
-  app.get('/api/tokens/quote/sell', publicApiLimiter, async (req, res) => {
+  app.get('/api/tokens/quote/sell', authenticateToken, publicApiLimiter, async (req, res) => {
     try {
       const { tokenAddress, tokenAmount, decimals, chain } = req.query;
 
@@ -3065,7 +3117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`🔮 Fetching Jupiter quote for ${tokenAmountNum} tokens → SOL (${tokenAddress})`);
 
       // ✅ FIX: Use circuit breaker protected fetch
-      const response = await fetchJupiter(`/v6/quote?inputMint=${tokenAddress}&outputMint=${SOL_MINT}&amount=${inputAmountTokenUnits}&slippageBps=50`);
+      const response = await fetchJupiter(`/v6/quote?inputMint=${encodeURIComponent(tokenAddress as string)}&outputMint=${SOL_MINT}&amount=${inputAmountTokenUnits}&slippageBps=50`);
 
       if (!response) {
         console.error(`❌ Jupiter API unavailable (circuit breaker open or timeout)`);
@@ -3163,7 +3215,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.status(500).json({ 
         error: 'Failed to fetch token data',
-        message: error.message || 'Unknown error occurred'
+        message: process.env.NODE_ENV === 'development' ? (error.message || 'Unknown error occurred') : 'Study service unavailable'
       });
     }
   });
@@ -3195,7 +3247,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.status(500).json({ 
         error: 'Failed to fetch wallet data',
-        message: error.message || 'Unknown error occurred'
+        message: process.env.NODE_ENV === 'development' ? (error.message || 'Unknown error occurred') : 'Study service unavailable'
       });
     }
   });
@@ -3831,12 +3883,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // POST /api/admin/alpha-desk/run
-  app.post('/api/admin/alpha-desk/run', async (req, res) => {
+  app.post('/api/admin/alpha-desk/run', authLimiter, async (req, res) => {
     try {
-      const authHeader = req.headers.authorization;
       const adminToken = process.env.ADMIN_TOKEN;
+      if (!adminToken || adminToken.length < 20) {
+        return res.status(500).json({ error: 'Admin token not configured' });
+      }
+      const authHeader = req.headers.authorization;
       const providedToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '';
-      if (!adminToken || !providedToken) {
+      if (!providedToken) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
       const bufAdmin = Buffer.from(adminToken, 'utf8');
