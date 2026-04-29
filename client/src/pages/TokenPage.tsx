@@ -108,12 +108,28 @@ export default function TokenPage() {
     (p) => p.tokenAddress === tokenAddress
   )
 
+  // Merge SSE price updates into token data — must compute before any conditional returns
+  const token = useMemo(() => {
+    if (!tokenData) return null
+    const base = { ...tokenData }
+    if (sseTokenPrice) {
+      base.priceUsd = sseTokenPrice.priceUsd
+      base.priceChange24h = sseTokenPrice.priceChange24h
+    }
+    return base
+  }, [tokenData, sseTokenPrice])
+
+  const hasValidPrice = token && token.price && !isNaN(token.price) && isFinite(token.price) && token.price > 0
+
   const openTradeModal = (mode: "buy" | "sell") => {
     setTradeMode(mode)
     setShowModal(true)
   }
 
-  if (tokenError || (!tokenData && !tokenLoading)) {
+  // ── Conditional render states ──
+  // These must come AFTER all hooks to obey React's Rules of Hooks
+
+  if (tokenError || (!token && !tokenLoading)) {
     return (
       <div className="min-h-screen bg-[var(--bg-base)]">
         <div className="mx-auto max-w-content px-4 sm:px-6 py-8">
@@ -133,7 +149,7 @@ export default function TokenPage() {
     )
   }
 
-  if (!tokenData && tokenLoading) {
+  if (!token && tokenLoading) {
     return (
       <div className="min-h-screen bg-[var(--bg-base)]">
         <div className="mx-auto max-w-content px-4 sm:px-6 py-8">
@@ -146,19 +162,6 @@ export default function TokenPage() {
     )
   }
 
-  // Merge SSE price updates into token data
-  const token = useMemo(() => {
-    if (!tokenData) return null
-    const base = { ...tokenData }
-    if (sseTokenPrice) {
-      base.priceUsd = sseTokenPrice.priceUsd
-      base.priceChange24h = sseTokenPrice.priceChange24h
-    }
-    return base
-  }, [tokenData, sseTokenPrice])!
-
-  const hasValidPrice = token.price && !isNaN(token.price) && isFinite(token.price) && token.price > 0
-
   if (!hasValidPrice) {
     return (
       <div className="min-h-screen bg-[var(--bg-base)]">
@@ -168,8 +171,8 @@ export default function TokenPage() {
             Back
           </Button>
           <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-8 text-center">
-            <h1 className="text-h2 mb-2">{token.name}</h1>
-            <Badge variant="outline" className="mb-4">{token.symbol}</Badge>
+            <h1 className="text-h2 mb-2">{token?.name}</h1>
+            <Badge variant="outline" className="mb-4">{token?.symbol}</Badge>
             <p className="text-body text-[var(--text-secondary)] mb-4">
               Price data is currently unavailable for this token.
             </p>
@@ -179,6 +182,8 @@ export default function TokenPage() {
       </div>
     )
   }
+
+  if (!token) return null // runtime no-op (already guarded above), narrows TypeScript type
 
   const priceUsd =
     token.priceUsd !== undefined

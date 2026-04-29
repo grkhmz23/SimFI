@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import {
   createChart,
   ColorType,
@@ -46,6 +46,7 @@ export default function TokenChart({
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null)
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
   const priceLineRef = useRef<any>(null)
+  const pendingDataRef = useRef<{ candleData: CandlestickData[]; volumeData: HistogramData[] } | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -53,6 +54,7 @@ export default function TokenChart({
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>("1M")
   const [priceChange, setPriceChange] = useState<number>(0)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
+  const [chartReady, setChartReady] = useState(false)
 
   const chartHeight = parseInt(height.replace("px", ""), 10) || 480
 
@@ -67,10 +69,20 @@ export default function TokenChart({
       candleSeriesRef.current = null
       volumeSeriesRef.current = null
       priceLineRef.current = null
+      pendingDataRef.current = null
+      setChartReady(false)
     }
 
-    const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth,
+    const container = chartContainerRef.current
+    let initialWidth = container.clientWidth
+
+    // Defensive: if container has 0 width, try parent or fallback
+    if (initialWidth <= 0) {
+      initialWidth = container.parentElement?.clientWidth || 600
+    }
+
+    const chart = createChart(container, {
+      width: initialWidth,
       height: chartHeight,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
@@ -134,21 +146,32 @@ export default function TokenChart({
     chartRef.current = chart
     candleSeriesRef.current = candleSeries
     volumeSeriesRef.current = volumeSeries
+    setChartReady(true)
 
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-        })
+        const w = chartContainerRef.current.clientWidth
+        if (w > 0) {
+          chartRef.current.applyOptions({ width: w })
+        }
       }
     }
 
     resizeObserverRef.current = new ResizeObserver(handleResize)
-    resizeObserverRef.current.observe(chartContainerRef.current)
+    resizeObserverRef.current.observe(container)
+
+    // Apply any pending data that arrived before chart was ready
+    if (pendingDataRef.current) {
+      const { candleData, volumeData } = pendingDataRef.current
+      candleSeries.setData(candleData)
+      volumeSeries.setData(volumeData)
+      chart.timeScale().fitContent()
+      pendingDataRef.current = null
+    }
 
     return () => {
-      if (resizeObserverRef.current && chartContainerRef.current) {
-        resizeObserverRef.current.unobserve(chartContainerRef.current)
+      if (resizeObserverRef.current && container) {
+        resizeObserverRef.current.unobserve(container)
       }
       if (chartRef.current) {
         chartRef.current.remove()
@@ -162,7 +185,35 @@ export default function TokenChart({
 
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  const fetchTokenData = async (tf: Timeframe, isBackgroundRefresh = false) => {
+  const applyChartData = useCallback((
+    candleData: CandlestickData[],
+    volumeData: HistogramData[],
+    latest: number,
+    change: number
+  ) => {
+    if (candleSeriesRef.current && volumeSeriesRef.current && chartRef.current) {
+      candleSeriesRef.current.setData(candleData)
+      volumeSeriesRef.current.setData(volumeData)
+
+      if (priceLineRef.current) {
+        candleSeriesRef.current.removePriceLine(priceLineRef.current)
+      }
+      priceLineRef.current = candleSeriesRef.current.createPriceLine({
+        price: latest,
+        color: change >= 0 ? "#3fa876" : "#c24d4d",
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: "Last",
+      })
+
+      chartRef.current.timeScale().fitContent()
+      return true
+    }
+    return false
+  }, [])
+
+  const fetchTokenData = useCallback(async (tf: Timeframe, isBackgroundRefresh = false) => {
     // Cancel any in-flight request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
@@ -228,33 +279,16 @@ export default function TokenChart({
         throw new Error("No chart data available")
       }
 
-      if (candleSeriesRef.current && volumeSeriesRef.current) {
-        candleSeriesRef.current.setData(candleData)
-        volumeSeriesRef.current.setData(volumeData)
-      }
-
       const oldestPrice = candleData[0]?.close || currentPrice
       const latest = candleData[candleData.length - 1]?.close || currentPrice
       const change = oldestPrice > 0 ? ((latest - oldestPrice) / oldestPrice) * 100 : 0
       setPriceChange(change)
       setLastUpdate(new Date())
 
-      if (candleSeriesRef.current) {
-        if (priceLineRef.current) {
-          candleSeriesRef.current.removePriceLine(priceLineRef.current)
-        }
-        priceLineRef.current = candleSeriesRef.current.createPriceLine({
-          price: latest,
-          color: change >= 0 ? "#3fa876" : "#c24d4d",
-          lineWidth: 1,
-          lineStyle: 2,
-          axisLabelVisible: true,
-          title: "Last",
-        })
-      }
-
-      if (chartRef.current) {
-        chartRef.current.timeScale().fitContent()
+      // Try to apply data immediately; if chart not ready, stash for later
+      const applied = applyChartData(candleData, volumeData, latest, change)
+      if (!applied) {
+        pendingDataRef.current = { candleData, volumeData }
       }
 
       setLoading(false)
@@ -265,21 +299,34 @@ export default function TokenChart({
       setLoading(false)
       setRefreshing(false)
     }
-  }
+  }, [tokenAddress, chartChain, currentPrice, applyChartData])
 
+  // Fetch data when token/timeframe/chain changes
   useEffect(() => {
     const isValidPrice = currentPrice !== null && currentPrice !== undefined && !isNaN(currentPrice) && isFinite(currentPrice)
     if (tokenAddress && isValidPrice) {
       fetchTokenData(selectedTimeframe)
     }
-  }, [tokenAddress, selectedTimeframe, chartChain])
+  }, [tokenAddress, selectedTimeframe, chartChain, currentPrice, fetchTokenData])
 
+  // Apply pending data when chart becomes ready
+  useEffect(() => {
+    if (chartReady && pendingDataRef.current && candleSeriesRef.current && volumeSeriesRef.current && chartRef.current) {
+      const { candleData, volumeData } = pendingDataRef.current
+      candleSeriesRef.current.setData(candleData)
+      volumeSeriesRef.current.setData(volumeData)
+      chartRef.current.timeScale().fitContent()
+      pendingDataRef.current = null
+    }
+  }, [chartReady])
+
+  // Background refresh interval
   useEffect(() => {
     const isValidPrice = currentPrice !== null && currentPrice !== undefined && !isNaN(currentPrice) && isFinite(currentPrice)
     if (!tokenAddress || !isValidPrice) return
     const interval = setInterval(() => fetchTokenData(selectedTimeframe, true), 30000)
     return () => clearInterval(interval)
-  }, [tokenAddress, selectedTimeframe, chartChain])
+  }, [tokenAddress, selectedTimeframe, chartChain, currentPrice, fetchTokenData])
 
   return (
     <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
