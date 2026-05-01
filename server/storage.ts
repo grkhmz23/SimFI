@@ -709,7 +709,7 @@ class DbStorage implements IStorage {
       if (decimals < 0 || decimals > 78 || !Number.isFinite(decimals)) {
         throw new Error(`Invalid decimals: ${decimals}`);
       }
-      const decimalDivisor = BigInt(10 ** decimals);
+      const decimalDivisor = BigInt(10) ** BigInt(decimals);
 
       // Trust caller-provided nativeReceived (computed precisely in route handler)
       // Recompute proportional cost and profit/loss from locked position data

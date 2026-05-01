@@ -420,8 +420,11 @@ async function fetchBirdeyeTokenData(
 
     // priceNative = (priceUsd / nativePriceUsd) * 10^nativeDecimals
     const nativeDecimals = chain === 'solana' ? 9 : 18;
-    const priceInNative = priceUsd / nativePriceUsd;
-    const priceNative = parseDecimalToNativeUnits(priceInNative.toFixed(nativeDecimals), nativeDecimals);
+    // Use BigInt math to avoid floating-point rounding errors
+    const priceUsdRaw = BigInt(Math.round(priceUsd * 1e8));
+    const nativePriceUsdRaw = BigInt(Math.round(nativePriceUsd * 1e8));
+    const divisor = BigInt(10) ** BigInt(nativeDecimals - 8);
+    const priceNative = (priceUsdRaw * divisor) / nativePriceUsdRaw;
 
     if (priceNative <= 0n) return null;
 
@@ -1998,7 +2001,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const jupToken = await jupiterService.getToken(tokenAddress);
             decimals = jupToken?.decimals ?? 6;
             validateDecimals(decimals);
-            const decimalMultiplier = BigInt(10 ** decimals);
+            const decimalMultiplier = BigInt(10) ** BigInt(decimals);
             executionPriceNative = tokenAmount > 0n
               ? (nativeSpent * decimalMultiplier) / tokenAmount
               : 0n;
@@ -2069,7 +2072,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`   Execution price: ${executionPriceNative.toString()} native units/token`);
 
         validateDecimals(decimals);
-        const decimalMultiplier = BigInt(10 ** decimals);
+        const decimalMultiplier = BigInt(10) ** BigInt(decimals);
         tokenAmount = (nativeSpent * decimalMultiplier) / executionPriceNative;
       } else {
         // Jupiter succeeded — still validate token exists via liquidity check
@@ -2231,7 +2234,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // For Solana with Jupiter: try Jupiter quote FIRST
       const decimals = position.decimals ?? (positionChain === 'base' ? 18 : 6);
       validateDecimals(decimals);
-      const decimalDivisor = BigInt(10 ** decimals);
+      const decimalDivisor = BigInt(10) ** BigInt(decimals);
       let executionPriceNative: bigint = 0n;
       let nativeReceived: bigint = 0n;
       let priceSource = 'unknown';
@@ -3429,7 +3432,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/leaderboard/overall', publicApiLimiter, async (req, res) => {
     try {
-      const { chain = 'solana' } = req.query;
+      const chain = (req.query.chain as string) || 'solana';
+      if (!isValidChain(chain)) {
+        return res.status(400).json({ error: 'Invalid chain. Use base or solana.' });
+      }
       const leaders = await storage.getTopUsersByTotalProfit(100, chain as 'solana' | 'base');
       res.json(serializeBigInts({ leaders: leaders.map((l, i) => ({ ...l, rank: i + 1 })) }));
     } catch (error: any) {
@@ -3440,7 +3446,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/leaderboard/current-period', publicApiLimiter, async (req, res) => {
     try {
-      const { chain = 'solana' } = req.query;
+      const chain = (req.query.chain as string) || 'solana';
+      if (!isValidChain(chain)) {
+        return res.status(400).json({ error: 'Invalid chain. Use base or solana.' });
+      }
       // Get the actual current period from storage
       const currentPeriod = await storage.getCurrentLeaderboardPeriod(chain as 'solana' | 'base');
 
@@ -3469,7 +3478,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/leaderboard/winners', publicApiLimiter, async (req, res) => {
     try {
-      const winners = await storage.getPastWinners(10);
+      const chain = (req.query.chain as string) || undefined;
+      if (chain && !isValidChain(chain)) {
+        return res.status(400).json({ error: 'Invalid chain. Use base or solana.' });
+      }
+      const winners = await storage.getPastWinners(10, chain as 'solana' | 'base' | undefined);
       res.json(serializeBigInts({ winners }));
     } catch (error: any) {
       console.error('Get winners error:', error);
@@ -3944,7 +3957,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // POST /api/admin/alpha-desk/run
-  app.post('/api/admin/alpha-desk/run', authLimiter, async (req, res) => {
+  app.post('/api/admin/alpha-desk/run', ipBackstopLimiter, authLimiter, async (req, res) => {
     try {
       const adminToken = process.env.ADMIN_TOKEN;
       if (!adminToken || adminToken.length < 20) {

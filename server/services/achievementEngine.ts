@@ -82,12 +82,13 @@ export const achievementEngine = {
     const hasDiamondHands = await storage.hasAchievement(userId, 'diamond_hands');
     if (hasDiamondHands) return;
 
-    // Check open positions held >24h
+    // Check open positions held >24h with positive amount
     const [row] = await db.select({ count: sql<number>`count(*)` })
       .from(positions)
       .where(and(
         eq(positions.userId, userId),
-        sql`${positions.openedAt} <= NOW() - INTERVAL '24 hours'`
+        sql`${positions.openedAt} <= NOW() - INTERVAL '24 hours'`,
+        sql`${positions.amount} > 0`
       ));
     if ((row?.count || 0) > 0) {
       await storage.unlockAchievement(userId, 'diamond_hands');

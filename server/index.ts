@@ -22,7 +22,7 @@ const corsOptions = {
     : ['http://localhost:5000', 'http://localhost:5173'], // Allow dev servers
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Idempotency-Key'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Idempotency-Key', 'X-CSRF-Token'],
   maxAge: 86400 // 24 hours
 };
 app.use(cors(corsOptions));
