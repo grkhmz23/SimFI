@@ -24,7 +24,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
 
   // CSRF double-submit cookie check for state-changing requests
   const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method);
-  if (isMutation && req.cookies.token) {
+  if (isMutation) {
     const csrfCookie = req.cookies.csrfToken;
     const csrfHeader = req.headers['x-csrf-token'];
     if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {

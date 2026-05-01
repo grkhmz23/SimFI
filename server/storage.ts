@@ -119,6 +119,7 @@ export interface IStorage {
   getUserStreak(userId: string): Promise<{ streakCount: number; lastStreakDate: Date | null }>;
   updateUserStreak(userId: string, streakCount: number, lastStreakDate: Date | null): Promise<void>;
   claimStreakBonus(userId: string, bonusWei: bigint): Promise<void>;
+  claimStreakAtomic(userId: string, streakCount: number, lastStreakDate: Date, bonusWei: bigint): Promise<void>;
 }
 
 class DbStorage implements IStorage {
@@ -284,7 +285,7 @@ class DbStorage implements IStorage {
             FLOOR(
               (
                 (${positions.solSpent} + EXCLUDED.sol_spent)::numeric
-                * power(10::numeric, COALESCE(${positions.decimals}, EXCLUDED.decimals, 6))
+                * power(10::numeric, COALESCE(EXCLUDED.decimals, ${positions.decimals}, 6))
               )
               / NULLIF((${positions.amount} + EXCLUDED.amount), 0)
             )::numeric
@@ -655,7 +656,7 @@ class DbStorage implements IStorage {
               FLOOR(
                 (
                   (${positions.solSpent} + EXCLUDED.sol_spent)::numeric
-                  * power(10::numeric, COALESCE(${positions.decimals}, EXCLUDED.decimals, 6))
+                  * power(10::numeric, COALESCE(EXCLUDED.decimals, ${positions.decimals}, 6))
                 )
                 / NULLIF((${positions.amount} + EXCLUDED.amount), 0)
               )::numeric
@@ -709,8 +710,9 @@ class DbStorage implements IStorage {
       }
       const decimalDivisor = BigInt(10 ** decimals);
 
-      // Recompute server-side to avoid trusting caller-provided math
-      const nativeReceived = (sellAmount * params.exitPrice) / decimalDivisor;
+      // Trust caller-provided nativeReceived (computed precisely in route handler)
+      // Recompute proportional cost and profit/loss from locked position data
+      const nativeReceived = params.nativeReceived;
       const proportionalCost = (positionSolSpent * sellAmount) / positionAmount;
       const profitLoss = nativeReceived - proportionalCost;
 
@@ -976,6 +978,37 @@ class DbStorage implements IStorage {
     await db.update(users)
       .set({ baseBalance: sql`${users.baseBalance} + ${bonusWei}` })
       .where(eq(users.id, userId));
+  }
+
+  async claimStreakAtomic(userId: string, streakCount: number, lastStreakDate: Date, bonusWei: bigint): Promise<void> {
+    await db.transaction(async (tx) => {
+      // Lock user row and verify streak hasn't been claimed today
+      const [user] = await tx
+        .select({ lastStreakDate: users.lastStreakDate })
+        .from(users)
+        .where(eq(users.id, userId))
+        .for('update');
+
+      if (user?.lastStreakDate) {
+        const existing = new Date(user.lastStreakDate);
+        existing.setHours(0, 0, 0, 0);
+        const today = new Date(lastStreakDate);
+        today.setHours(0, 0, 0, 0);
+        if (existing.getTime() >= today.getTime()) {
+          throw new Error('Streak already claimed today');
+        }
+      }
+
+      await tx
+        .update(users)
+        .set({ streakCount, lastStreakDate: new Date(lastStreakDate) })
+        .where(eq(users.id, userId));
+
+      await tx
+        .update(users)
+        .set({ baseBalance: sql`${users.baseBalance} + ${bonusWei}` })
+        .where(eq(users.id, userId));
+    });
   }
 
   // ============================================================================

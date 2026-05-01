@@ -1,5 +1,19 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, bigint, integer, timestamp, unique, uniqueIndex, jsonb, numeric, date, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, bigint, integer, timestamp, unique, uniqueIndex, jsonb, numeric, date, serial, customType } from "drizzle-orm/pg-core";
+
+// Custom type: stores as numeric(38,0) in PostgreSQL (avoids bigint 9.2 ETH limit)
+// but returns as bigint in TypeScript for seamless code compatibility
+export const bigNumeric = customType<{ data: bigint }>({
+  dataType() {
+    return 'numeric(38, 0)';
+  },
+  fromDriver(value: unknown): bigint {
+    return BigInt(value as string);
+  },
+  toDriver(value: bigint): string {
+    return value.toString();
+  },
+});
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -32,10 +46,10 @@ export const users = pgTable("users", {
   baseWalletAddress: text("base_wallet_address"),
   // Chain-specific balances
   balance: bigint("balance", { mode: "bigint" }).notNull().default(sql`10000000000`), // Solana balance (lamports)
-  baseBalance: bigint("base_balance", { mode: "bigint" }).notNull().default(sql`5000000000000000000`), // Base balance (wei) - 5 ETH default
+  baseBalance: bigNumeric("base_balance").notNull().default(sql`5000000000000000000`), // Base balance (wei) - 5 ETH default
   // Profits
   totalProfit: bigint("total_profit", { mode: "bigint" }).notNull().default(sql`0`), // Solana profit
-  baseTotalProfit: bigint("base_total_profit", { mode: "bigint" }).notNull().default(sql`0`), // Base profit
+  baseTotalProfit: bigNumeric("base_total_profit").notNull().default(sql`0`), // Base profit
   // User preferences
   preferredChain: text("preferred_chain").notNull().default('solana'),
   // Streak tracking (Phase 8)

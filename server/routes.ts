@@ -14,7 +14,7 @@ import { authenticateToken } from "./middleware/auth";
 import { fetchDexScreenerProfiles } from "./pumpportal";
 import { leaderboardService } from "./leaderboardService";
 import { heliusService } from "./helius-enhanced";
-import { insertUserSchema, solToLamports, WEI_PER_ETH, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest, type Chain } from "@shared/schema";
+import { insertUserSchema, solToLamports, WEI_PER_ETH, LAMPORTS_PER_SOL, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest, type Chain } from "@shared/schema";
 
 
 import { getSolPrice, getCachedSolPrice, fetchEthPrice, getNativePrice, getCachedNativePrice, getAllNativePricesDetailed } from './nativePrice';
@@ -2169,6 +2169,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Invalid chain' });
       }
 
+      // Reject if client-provided chain doesn't match the position's actual chain
+      if (chain && chain !== position.chain) {
+        return res.status(400).json({ error: `Position chain (${position.chain}) does not match requested chain (${chain})` });
+      }
+
       // ✅ FIX: Determine sell type upfront
       // If no amountLamports provided, it's a FULL SELL - use exact position amount
       // If amountLamports provided, it's a PARTIAL SELL
@@ -2321,7 +2326,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const converted = await storage.convertReferral(req.userId!);
             if (converted) {
               // Referrer gets +0.5 native token on the chain where the trade happened
-              await storage.updateUserBalance(referral.referrerId, WEI_PER_ETH / 2n, tradeChain);
+              const rewardAmount = tradeChain === 'solana'
+                ? BigInt(Math.floor(0.5 * LAMPORTS_PER_SOL))
+                : WEI_PER_ETH / 2n;
+              await storage.updateUserBalance(referral.referrerId, rewardAmount, tradeChain);
             }
           }
         }
@@ -3649,8 +3657,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const bonusEth = bonuses[Math.min(newStreak - 1, 6)];
       const bonusWei = BigInt(Math.floor(bonusEth * 1e18));
 
-      await storage.updateUserStreak(req.userId!, newStreak, today);
-      await storage.claimStreakBonus(req.userId!, bonusWei);
+      await storage.claimStreakAtomic(req.userId!, newStreak, today, bonusWei);
 
       res.json(serializeBigInts({ streak: newStreak, bonusEth, claimed: true }));
     } catch (error: any) {
@@ -3844,7 +3851,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // POST /api/sse/subscribe — Subscribe to token price updates
-  app.post('/api/sse/subscribe', (req, res) => {
+  app.post('/api/sse/subscribe', ipBackstopLimiter, (req, res) => {
     try {
       const { clientId, tokens } = req.body;
       if (!clientId || !Array.isArray(tokens)) {
@@ -3864,7 +3871,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // POST /api/sse/unsubscribe
-  app.post('/api/sse/unsubscribe', (req, res) => {
+  app.post('/api/sse/unsubscribe', ipBackstopLimiter, (req, res) => {
     try {
       const { clientId, tokens } = req.body;
       if (!clientId || !Array.isArray(tokens)) {

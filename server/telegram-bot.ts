@@ -325,8 +325,8 @@ const showMainMenu = async (ctx: any) => {
     return ctx.reply('❌ Error fetching profile. Please /start to login again.');
   }
 
-  const balance = result.data.balance;
-  const baseBalance = result.data.baseBalance;
+  const balance = result.data.balance ?? 0;
+  const baseBalance = result.data.baseBalance ?? 0;
   const preferredChain = result.data.preferredChain || 'solana';
 
   session.balance = BigInt(balance);
@@ -394,6 +394,12 @@ const showBuyMenu = async (ctx: any, tokenAddress: string, session: any) => {
   }
 
   const token = result.data.token;
+  if (!token || !token.price) {
+    return ctx.reply(
+      '❌ Could not fetch token price. This token may have no active trading pair.\n\n' +
+      'Please try another token or use /start to return to the main menu.'
+    );
+  }
   const priceNative = BigInt(token.price);
   const priceDisplay = Number(priceNative) / (10 ** cfg.decimals);
   const prices = await getNativePrices(session.token);
@@ -1142,6 +1148,9 @@ export function createBot(token: string): Telegraf {
     await ctx.answerCbQuery();
     const positionId = ctx.match[1];
     const percentage = parseInt(ctx.match[2], 10);
+    if (Number.isNaN(percentage) || percentage <= 0 || percentage > 100) {
+      return ctx.reply('❌ Invalid percentage. Please try again.');
+    }
     const userId = ctx.from.id;
     const session = userSessions.get(userId);
 

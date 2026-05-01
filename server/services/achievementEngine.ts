@@ -94,11 +94,11 @@ export const achievementEngine = {
     }
   },
 
-  async checkTop10(userId: string): Promise<void> {
+  async checkTop10(userId: string, chain?: Chain): Promise<void> {
     const hasTop10 = await storage.hasAchievement(userId, 'top_10');
     if (hasTop10) return;
 
-    // Check if user ever ranked top 10 in any period
+    // Check if user ever ranked top 10 in any period, optionally filtered by chain
     const result = await db.execute(sql`
       WITH ranked_periods AS (
         SELECT
@@ -107,6 +107,8 @@ export const achievementEngine = {
           SUM(${tradeHistory.profitLoss}) as pnl,
           ROW_NUMBER() OVER (PARTITION BY DATE_TRUNC('day', ${tradeHistory.closedAt}) ORDER BY SUM(${tradeHistory.profitLoss}) DESC) as rank
         FROM ${tradeHistory}
+        WHERE ${tradeHistory.userId} = ${userId}
+          ${chain ? sql`AND ${tradeHistory.chain} = ${chain}` : sql``}
         GROUP BY ${tradeHistory.userId}, DATE_TRUNC('day', ${tradeHistory.closedAt})
       )
       SELECT 1 FROM ranked_periods WHERE uid = ${userId} AND rank <= 10
@@ -124,6 +126,6 @@ export const achievementEngine = {
     await this.checkProfitBadges(userId);
     await this.checkGreenDay(userId);
     await this.checkDiamondHands(userId);
-    await this.checkTop10(userId);
+    await this.checkTop10(userId, chain);
   }
 };
