@@ -292,7 +292,7 @@ function IdeaDetailDialog({
                   <ComplexityBadge complexity={evidence.complexity} />
                   {evidence.monetization && (
                     <span className="text-[10px] text-[var(--text-tertiary)]">
-                      💰 {evidence.monetization}
+                      {evidence.monetization}
                     </span>
                   )}
                 </div>

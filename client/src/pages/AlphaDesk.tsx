@@ -785,6 +785,7 @@ export default function AlphaDesk() {
   const { activeChain } = useChain();
   const [activeTab, setActiveTab] = useState<"picks" | "history" | "performance" | "community">("picks");
   const [showMethodology, setShowMethodology] = useState(false);
+  const [expandedHistoryDate, setExpandedHistoryDate] = useState<string | null>(null);
 
   const { data: todayData, isLoading: todayLoading } = useQuery<TodayData>({
     queryKey: [`/api/alpha-desk/today`, activeChain],
@@ -800,7 +801,7 @@ export default function AlphaDesk() {
   }>({
     queryKey: [`/api/alpha-desk/history`, activeChain],
     queryFn: async () => {
-      const res = await fetch(`/api/alpha-desk/history?chain=${activeChain}&days=7`);
+      const res = await fetch(`/api/alpha-desk/history?chain=${activeChain}&days=30`);
       if (!res.ok) throw new Error("Failed to fetch history");
       return res.json();
     },
@@ -962,6 +963,7 @@ export default function AlphaDesk() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
+            className="space-y-6"
           >
             {historyLoading ? (
               <div className="space-y-3">
@@ -970,48 +972,103 @@ export default function AlphaDesk() {
                 ))}
               </div>
             ) : historyData?.history?.length ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {historyData.history.map((day) => {
                   const memes = day.ideas.filter((i) => i.ideaType === "meme_launch");
                   const devs = day.ideas.filter((i) => i.ideaType === "dev_build");
+                  const isExpanded = expandedHistoryDate === day.runDate;
+                  const dateLabel = new Date(day.runDate).toLocaleDateString(undefined, {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  });
+
                   return (
                     <div
                       key={day.runDate}
-                      className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4"
+                      className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-raised)] overflow-hidden"
                     >
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-sm font-mono text-[var(--text-secondary)]">
-                          {day.runDate}
-                        </span>
-                        <div className="flex gap-3 text-xs text-[var(--text-tertiary)]">
-                          <span className="flex items-center gap-1">
-                            <Rocket className="h-3 w-3" /> {memes.length} launch
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Wrench className="h-3 w-3" /> {devs.length} build
-                          </span>
+                      {/* Day header — clickable to expand */}
+                      <button
+                        onClick={() =>
+                          setExpandedHistoryDate(isExpanded ? null : day.runDate)
+                        }
+                        className="w-full flex items-center justify-between p-4 hover:bg-[var(--bg-base)]/50 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--accent-premium)]/10">
+                            <Calendar className="h-4 w-4 text-[var(--accent-premium)]" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-[var(--text-primary)]">
+                              {dateLabel}
+                            </p>
+                            <p className="text-xs text-[var(--text-secondary)]">
+                              {memes.length} meme {memes.length === 1 ? "idea" : "ideas"} &middot;{" "}
+                              {devs.length} dev {devs.length === 1 ? "idea" : "ideas"}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {memes.map((idea) => (
-                          <span
-                            key={idea.id}
-                            className="inline-flex items-center gap-1 rounded-lg bg-[var(--bg-base)] px-2 py-1 text-xs text-[var(--text-primary)]"
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] uppercase tracking-wider ${
+                              day.status === "succeeded"
+                                ? "border-emerald-500/30 text-emerald-400"
+                                : "border-red-500/30 text-red-400"
+                            }`}
                           >
-                            <Rocket className="h-3 w-3 text-[var(--accent-premium)]" />
-                            {idea.symbol ?? idea.name}
-                          </span>
-                        ))}
-                        {devs.map((idea) => (
-                          <span
-                            key={idea.id}
-                            className="inline-flex items-center gap-1 rounded-lg bg-blue-500/5 px-2 py-1 text-xs text-blue-300"
-                          >
-                            <Wrench className="h-3 w-3" />
-                            {idea.name}
-                          </span>
-                        ))}
-                      </div>
+                            {day.status}
+                          </Badge>
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4 text-[var(--text-secondary)]" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-[var(--text-secondary)]" />
+                          )}
+                        </div>
+                      </button>
+
+                      {/* Expanded content — full cards */}
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          className="border-t border-[var(--border-subtle)] p-4 space-y-8"
+                        >
+                          {memes.length > 0 && (
+                            <section>
+                              <div className="flex items-center gap-2 mb-4">
+                                <Rocket className="h-4 w-4 text-[var(--accent-premium)]" />
+                                <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                                  Meme Launch Ideas
+                                </h3>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {memes.map((idea) => (
+                                  <AlphaDeskCard key={idea.id} idea={idea} />
+                                ))}
+                              </div>
+                            </section>
+                          )}
+
+                          {devs.length > 0 && (
+                            <section>
+                              <div className="flex items-center gap-2 mb-4">
+                                <Wrench className="h-4 w-4 text-blue-400" />
+                                <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                                  Onchain Build Ideas
+                                </h3>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {devs.map((idea) => (
+                                  <AlphaDeskCard key={idea.id} idea={idea} />
+                                ))}
+                              </div>
+                            </section>
+                          )}
+                        </motion.div>
+                      )}
                     </div>
                   );
                 })}
