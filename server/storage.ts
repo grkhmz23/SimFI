@@ -85,6 +85,7 @@ export interface IStorage {
   getReferralByReferee(refereeId: string): Promise<Referral | undefined>;
   createReferral(referrerId: string, refereeId: string, code: string): Promise<Referral>;
   convertReferral(refereeId: string): Promise<boolean>;
+  convertReferralAndReward(refereeId: string, referrerId: string, rewardAmount: bigint, chain: Chain): Promise<boolean>;
   getReferralStats(userId: string): Promise<{ total: number; converted: number; pending: number }>;
   getTopReferrers(limit: number): Promise<any[]>;
 
@@ -838,6 +839,32 @@ class DbStorage implements IStorage {
       .where(and(eq(referrals.refereeId, refereeId), eq(referrals.status, 'pending')))
       .returning();
     return result.length > 0;
+  }
+
+  async convertReferralAndReward(refereeId: string, referrerId: string, rewardAmount: bigint, chain: Chain): Promise<boolean> {
+    return await db.transaction(async (tx) => {
+      const [referral] = await tx
+        .update(referrals)
+        .set({ status: 'converted' })
+        .where(and(eq(referrals.refereeId, refereeId), eq(referrals.status, 'pending')))
+        .returning();
+
+      if (!referral) return false;
+
+      if (chain === 'solana') {
+        await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} + ${rewardAmount}` })
+          .where(eq(users.id, referrerId));
+      } else {
+        await tx
+          .update(users)
+          .set({ baseBalance: sql`${users.baseBalance} + ${rewardAmount}` })
+          .where(eq(users.id, referrerId));
+      }
+
+      return true;
+    });
   }
 
   async getReferralStats(userId: string): Promise<{ total: number; converted: number; pending: number }> {

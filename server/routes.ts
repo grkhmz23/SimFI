@@ -173,14 +173,14 @@ const publicApiLimiter = createRateLimiter({
   skip: skipHealthCheck,
 });
 
-// Bot endpoints - keyed by bot secret header
+// Bot endpoints - keyed by IP to prevent bypass via rotating secrets
+// Falls back to x-bot-secret only after IP-based limit is checked internally
 const botLimiter = createRateLimiter({
   windowMs: 60 * 1000, // 1 minute
   max: 200, // 200 requests per minute for bot
   message: { error: 'Too many bot requests' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req: any) => `bot:${req.headers['x-bot-secret'] || 'unknown'}`,
 });
 
 // Health check rate limiter - light protection to prevent abuse
@@ -1120,8 +1120,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertUserSchema.parse(req.body);
 
-      // Check if user already exists
-      const existingEmail = await storage.getUserByEmail(data.email);
+      // Check if user already exists (normalize email to prevent case-squatting)
+      const normalizedEmail = data.email.trim().toLowerCase();
+      const existingEmail = await storage.getUserByEmail(normalizedEmail);
       if (existingEmail) {
         return res.status(400).json({ error: 'Email already registered' });
       }
@@ -1303,6 +1304,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
         path: '/api'
       });
+      res.clearCookie('csrfToken', {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        path: '/'
+      });
       console.log('✅ User logged out, cookie cleared');
       res.json({ message: 'Logged out successfully' });
     } catch (error: any) {
@@ -1320,6 +1327,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
         path: '/api'
+      });
+      res.clearCookie('csrfToken', {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        path: '/'
       });
       res.json({ message: 'All sessions logged out successfully' });
     } catch (error: any) {
@@ -1518,8 +1531,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (password) {
-        if (password.length < 6) {
-          return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        if (password.length < 8 || password.length > 128) {
+          return res.status(400).json({ error: 'Password must be 8-128 characters' });
         }
         updates.password = await bcrypt.hash(password, 10);
       }
@@ -1600,13 +1613,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
 
   // Telegram registration endpoint
-  app.post('/api/telegram/auth/register', botLimiter, verifyBotSecret, async (req, res) => {
+  app.post('/api/telegram/auth/register', botLimiter, authLimiter, verifyBotSecret, async (req, res) => {
     try {
       const { email, username, password, solanaWalletAddress, baseWalletAddress } = req.body;
 
       // Validate inputs
       if (!email || !username || !password) {
         return res.status(400).json({ error: 'Email, username, and password are required' });
+      }
+
+      // Enforce same validation as web registration
+      const emailNormalized = email.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNormalized)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+      if (username.length < 3 || username.length > 20 || !/^[a-zA-Z0-9_-]+$/.test(username)) {
+        return res.status(400).json({ error: 'Username must be 3-20 characters, alphanumeric with underscores and hyphens only' });
+      }
+      if (password.length < 8 || password.length > 128) {
+        return res.status(400).json({ error: 'Password must be 8-128 characters' });
       }
 
       // At least one wallet address is required (same as web app)
@@ -1617,15 +1642,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'At least one valid wallet address (Solana or Base) is required' });
       }
 
-      // Check if email or username already exists
-      const existingEmail = await storage.getUserByEmail(email);
+      // Check if email or username already exists (unified error to prevent enumeration)
+      const existingEmail = await storage.getUserByEmail(emailNormalized);
       if (existingEmail) {
-        return res.status(400).json({ error: 'Email already registered' });
+        return res.status(400).json({ error: 'Email or username already in use' });
       }
 
       const existingUsername = await storage.getUserByUsername(username);
       if (existingUsername) {
-        return res.status(400).json({ error: 'Username already taken' });
+        return res.status(400).json({ error: 'Email or username already in use' });
       }
 
       // Hash password
@@ -1663,7 +1688,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Telegram login endpoint - supports both email AND username
-  app.post('/api/telegram/auth/login', botLimiter, verifyBotSecret, async (req, res) => {
+  app.post('/api/telegram/auth/login', botLimiter, authLimiter, verifyBotSecret, async (req, res) => {
     try {
       const { email, username, password } = req.body;
       const identifier = email || username; // Support both email and username
@@ -1683,14 +1708,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!user) {
         console.warn(`❌ Login failed: user not found`);
-        return res.status(400).json({ error: 'Invalid credentials - user not found' });
+        return res.status(400).json({ error: 'Invalid credentials' });
       }
 
       // Check password
       const validPassword = await bcrypt.compare(password, user.password);
       if (!validPassword) {
         console.warn(`❌ Login failed: invalid password for user ${user.id}`);
-        return res.status(400).json({ error: 'Invalid credentials - wrong password' });
+        return res.status(400).json({ error: 'Invalid credentials' });
       }
 
       // Increment token version and update last login
@@ -2320,17 +2345,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Convert referral if this is the user's first trade on any chain
       const tradeChain = positionChain as Chain;
       storage.getReferralByReferee(req.userId!).then(async (referral) => {
-        if (referral && referral.status === 'pending' && !referral.rewardClaimed) {
+        if (referral && referral.status === 'pending') {
           const tradeCount = await storage.getUserTradesCount(req.userId!, tradeChain);
           if (tradeCount >= 1) {
-            const converted = await storage.convertReferral(req.userId!);
-            if (converted) {
-              // Referrer gets +0.5 native token on the chain where the trade happened
-              const rewardAmount = tradeChain === 'solana'
-                ? BigInt(Math.floor(0.5 * LAMPORTS_PER_SOL))
-                : WEI_PER_ETH / 2n;
-              await storage.updateUserBalance(referral.referrerId, rewardAmount, tradeChain);
-            }
+            const rewardAmount = tradeChain === 'solana'
+              ? BigInt(Math.floor(0.5 * LAMPORTS_PER_SOL))
+              : WEI_PER_ETH / 2n;
+            await storage.convertReferralAndReward(req.userId!, referral.referrerId, rewardAmount, tradeChain);
           }
         }
       }).catch(console.error);
