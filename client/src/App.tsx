@@ -42,6 +42,11 @@ const Security = React.lazy(() => import("@/pages/Security"));
 const Rewards = React.lazy(() => import("@/pages/Rewards"));
 const NotFound = React.lazy(() => import("@/pages/not-found"));
 
+const PredictionsLayout = React.lazy(() => import("@/pages/predictions/PredictionsLayout"));
+const PredictionMarketsPage = React.lazy(() => import("@/pages/predictions/PredictionMarketsPage"));
+const PredictionMarketDetailPage = React.lazy(() => import("@/pages/predictions/PredictionMarketDetailPage"));
+const PredictionPortfolioPage = React.lazy(() => import("@/pages/predictions/PredictionPortfolioPage"));
+
 const DesignSystem = import.meta.env.DEV
   ? React.lazy(() => import("@/pages/DesignSystem"))
   : null;
@@ -160,6 +165,29 @@ function Router() {
         <Suspense fallback={<PageSkeleton />}>
           <PageLayout component={Rewards} />
         </Suspense>
+      </Route>
+      <Route path="/predictions">
+        <Suspense fallback={<PageSkeleton />}>
+          <PredictionsLayout>
+            <PredictionMarketsPage />
+          </PredictionsLayout>
+        </Suspense>
+      </Route>
+      <Route path="/predictions/me">
+        <Suspense fallback={<PageSkeleton />}>
+          <PredictionsLayout>
+            <PredictionPortfolioPage />
+          </PredictionsLayout>
+        </Suspense>
+      </Route>
+      <Route path="/predictions/:slug">
+        {(params) => (
+          <Suspense fallback={<PageSkeleton />}>
+            <PredictionsLayout>
+              <PredictionMarketDetailPage slug={params.slug} />
+            </PredictionsLayout>
+          </Suspense>
+        )}
       </Route>
       {import.meta.env.DEV && DesignSystem && (
         <Route path="/_design">

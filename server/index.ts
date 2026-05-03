@@ -7,6 +7,10 @@ import { setupVite, serveStatic, log } from "./vite";
 import { createBot, setupWebhook, getWebhookCallback } from "./telegram-bot";
 import { leaderboardService } from "./leaderboardService";
 import { startWorker as startAlphaDeskWorker } from "./services/alphaDesk/worker";
+import { registerPredictionMarketRoutes } from "./services/predictionMarketRoutes";
+import { polymarketWs } from "./services/prediction/polymarketWs";
+import { startPredictionSettler, stopPredictionSettler } from "./services/prediction/predictionSettler";
+import "./services/prediction/predictionSseFeed";
 
 const app = express();
 
@@ -132,6 +136,23 @@ async function gracefulShutdown(signal: string, server: any, botProcess?: any) {
     console.error('   ❌ Error stopping leaderboard service:', e);
   }
 
+  // Stop prediction market services
+  try {
+    console.log('   Stopping polymarket ws...');
+    polymarketWs.stop();
+    console.log('   ✅ Polymarket ws stopped');
+  } catch (e) {
+    console.error('   ❌ Error stopping polymarket ws:', e);
+  }
+
+  try {
+    console.log('   Stopping prediction settler...');
+    stopPredictionSettler();
+    console.log('   ✅ Prediction settler stopped');
+  } catch (e) {
+    console.error('   ❌ Error stopping prediction settler:', e);
+  }
+
   // Kill bot process if running
   if (botProcess) {
     try {
@@ -155,6 +176,10 @@ async function gracefulShutdown(signal: string, server: any, botProcess?: any) {
 
 (async () => {
   const server = await registerRoutes(app);
+
+  registerPredictionMarketRoutes(app);
+  polymarketWs.start();
+  startPredictionSettler();
 
 /**
  * API: never fall through to Vite/SPA for /api routes.

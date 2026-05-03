@@ -54,6 +54,7 @@ export function Navigation() {
   const navItems = [
     { path: "/trade", label: "Trade", icon: TrendingUp },
     { path: "/trending", label: "Trending", icon: BarChart3 },
+    { path: "/predictions", label: "Predictions", icon: BarChart3 },
     { path: "/alpha-desk", label: "Alpha Desk", icon: Sparkles },
     { path: "/leaderboard", label: "Leaderboard", icon: Trophy },
     { path: "/about", label: "About", icon: Info },
