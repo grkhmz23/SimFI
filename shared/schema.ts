@@ -447,3 +447,5 @@ export function validateWalletAddress(chain: Chain, address: string): boolean {
   }
   return false;
 }
+
+export * from "./predictionSchema";
