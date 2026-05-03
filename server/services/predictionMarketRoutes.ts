@@ -26,7 +26,7 @@ const predictionTradeLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req: any) => {
     if (req.userId) return `user:${req.userId}`;
-    return req.ip || 'anon';
+    return 'anon';
   },
 });
 

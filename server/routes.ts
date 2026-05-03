@@ -1582,8 +1582,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     // Development: BOT_API_SECRET is required even in dev for security
-    console.error('❌ FATAL: BOT_API_SECRET must be set (min 20 chars)');
-    throw new Error('BOT_API_SECRET required');
+    if (!process.env.BOT_API_SECRET) {
+      console.error('❌ FATAL: BOT_API_SECRET must be set (min 20 chars)');
+      throw new Error('BOT_API_SECRET required');
+    }
+    if (process.env.BOT_API_SECRET.length < 20) {
+      console.error('❌ FATAL: BOT_API_SECRET must be at least 20 characters');
+      throw new Error('BOT_API_SECRET too short');
+    }
+    return process.env.BOT_API_SECRET;
   })();
 
   const timingSafeEqualString = (a: string, b: string): boolean => {
