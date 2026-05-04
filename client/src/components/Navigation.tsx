@@ -89,7 +89,7 @@ export function Navigation() {
                   key={item.path}
                   onClick={() => setLocation(item.path)}
                   className={cn(
-                    "relative px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                    "relative px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
                     isActive(item.path)
                       ? "text-[var(--text-primary)]"
                       : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[rgba(255,255,255,0.03)]"
