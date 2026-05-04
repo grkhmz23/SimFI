@@ -15,22 +15,18 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { CommandSearch } from "@/components/CommandSearch"
 import {
-  TrendingUp,
-  BarChart3,
-  Trophy,
-  Info,
   User,
   LogOut,
   Wallet,
   History,
   Users,
   ChevronDown,
-  Sparkles,
   Bookmark,
   PieChart,
   Shield,
   Gift,
   Brain,
+  BarChart3,
 } from "lucide-react"
 import { FaTelegram } from "react-icons/fa"
 import { formatBalance, formatUSD } from "@/lib/token-format"
@@ -53,12 +49,12 @@ export function Navigation() {
   }, [])
 
   const navItems = [
-    { path: "/trade", label: "Trade", icon: TrendingUp },
-    { path: "/trending", label: "Trending", icon: BarChart3 },
-    { path: "/predictions", label: "Predictions", icon: BarChart3 },
-    { path: "/alpha-desk", label: "Alpha Desk", icon: Sparkles },
-    { path: "/leaderboard", label: "Leaderboard", icon: Trophy },
-    { path: "/about", label: "About", icon: Info },
+    { path: "/trade", label: "Trade" },
+    { path: "/trending", label: "Trending" },
+    { path: "/predictions", label: "Predictions" },
+    { path: "/alpha-desk", label: "Alpha Desk" },
+    { path: "/leaderboard", label: "Leaderboard" },
+    { path: "/about", label: "About" },
   ]
 
   const isActive = (path: string) => {
@@ -93,13 +89,12 @@ export function Navigation() {
                   key={item.path}
                   onClick={() => setLocation(item.path)}
                   className={cn(
-                    "relative px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5",
+                    "relative px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
                     isActive(item.path)
                       ? "text-[var(--text-primary)]"
                       : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[rgba(255,255,255,0.03)]"
                   )}
                 >
-                  <item.icon className="h-4 w-4" strokeWidth={1.5} />
                   {item.label}
                   {isActive(item.path) && (
                     <span className="absolute inset-x-1 -bottom-[9px] h-px bg-[var(--text-primary)]" />
@@ -160,11 +155,11 @@ export function Navigation() {
                 href="https://t.me/sim_fi_bot"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-[var(--text-secondary)] bg-[hsl(240_4%_12%)] border border-[var(--border-subtle)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
+                className="hidden md:flex items-center justify-center h-9 w-9 rounded-md text-[var(--text-secondary)] bg-[hsl(240_4%_12%)] border border-[var(--border-subtle)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
                 title="Trade on Telegram"
+                aria-label="Trade on Telegram"
               >
-                <FaTelegram className="h-3.5 w-3.5 text-sky-400" />
-                <span>Trade on Telegram</span>
+                <FaTelegram className="h-4 w-4 text-sky-400" />
               </a>
 
               {isAuthenticated ? (
