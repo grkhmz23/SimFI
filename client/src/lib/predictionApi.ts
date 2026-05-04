@@ -124,8 +124,29 @@ export async function executeTrade(body: {
   return apiRequest("POST", "/api/predictions/trade", body);
 }
 
-export async function fetchBalance(): Promise<{ balanceUsd: number }> {
+export interface PredictionBalance {
+  balanceUsd: number;
+  realizedPnlUsd: number;
+}
+
+export async function fetchBalance(): Promise<PredictionBalance> {
   return apiRequest("GET", "/api/predictions/me/balance");
+}
+
+export interface PredictionStats {
+  totalTrades: number;
+  buyCount: number;
+  sellCount: number;
+  winCount: number;
+  lossCount: number;
+  winRate: number;
+  totalVolumeUsd: number;
+  avgTradeUsd: number;
+  openPositionsCount: number;
+}
+
+export async function fetchStats(): Promise<PredictionStats> {
+  return apiRequest("GET", "/api/predictions/me/stats");
 }
 
 export async function fetchPositions(): Promise<PredictionPosition[]> {

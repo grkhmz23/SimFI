@@ -53,7 +53,7 @@ function requireAuth(req: Request, res: Response, next: Function) {
 }
 
 // Lazily ensure a user has a prediction paper balance
-async function ensureBalance(userId: string) {
+async function ensureBalance(userId: string): Promise<{ balanceMicroUsd: bigint; realizedPnlMicroUsd: bigint }> {
   const [row] = await db.select()
     .from(predictionPaperBalances)
     .where(eq(predictionPaperBalances.userId, userId))
@@ -72,9 +72,9 @@ async function ensureBalance(userId: string) {
         realizedPnlMicroUsd: 0n,
       })
       .onConflictDoNothing();
-    return defaultBalance;
+    return { balanceMicroUsd: defaultBalance, realizedPnlMicroUsd: 0n };
   }
-  return row.balanceMicroUsd;
+  return { balanceMicroUsd: row.balanceMicroUsd, realizedPnlMicroUsd: row.realizedPnlMicroUsd };
 }
 
 // ============================================================================
@@ -198,9 +198,10 @@ export function registerPredictionMarketRoutes(app: Express): void {
   app.get('/api/predictions/me/balance', requireAuth, async (req, res) => {
     try {
       const userId = req.userId!;
-      const balanceMicro = await ensureBalance(userId);
+      const { balanceMicroUsd, realizedPnlMicroUsd } = await ensureBalance(userId);
       res.json({
-        balanceUsd: Number(balanceMicro) / 1_000_000,
+        balanceUsd: Number(balanceMicroUsd) / 1_000_000,
+        realizedPnlUsd: Number(realizedPnlMicroUsd) / 1_000_000,
       });
     } catch (err: any) {
       handleError(res, err, 500);
@@ -257,6 +258,74 @@ export function registerPredictionMarketRoutes(app: Express): void {
         totalUsd: Number(t.totalMicroUsd) / 1_000_000,
         createdAt: t.createdAt,
       })));
+    } catch (err: any) {
+      handleError(res, err, 500);
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // Stats
+  // --------------------------------------------------------------------------
+
+  app.get('/api/predictions/me/stats', requireAuth, async (req, res) => {
+    try {
+      const userId = req.userId!;
+
+      // Trade counts by side
+      const [buyRow] = await db.select({ count: sql<number>`count(*)` })
+        .from(predictionTrades)
+        .where(and(eq(predictionTrades.userId, userId), eq(predictionTrades.side, 'BUY')));
+      const [sellRow] = await db.select({ count: sql<number>`count(*)` })
+        .from(predictionTrades)
+        .where(and(eq(predictionTrades.userId, userId), eq(predictionTrades.side, 'SELL')));
+      const [totalRow] = await db.select({ count: sql<number>`count(*)` })
+        .from(predictionTrades)
+        .where(eq(predictionTrades.userId, userId));
+
+      // Volume
+      const [volumeRow] = await db.select({ total: sql<number>`COALESCE(SUM(${predictionTrades.totalMicroUsd}), 0)` })
+        .from(predictionTrades)
+        .where(eq(predictionTrades.userId, userId));
+
+      // Win/loss from positions realized PnL
+      const [winRow] = await db.select({ count: sql<number>`count(*)` })
+        .from(predictionPositions)
+        .where(and(
+          eq(predictionPositions.userId, userId),
+          sql`${predictionPositions.realizedPnlMicroUsd} > 0`
+        ));
+      const [lossRow] = await db.select({ count: sql<number>`count(*)` })
+        .from(predictionPositions)
+        .where(and(
+          eq(predictionPositions.userId, userId),
+          sql`${predictionPositions.realizedPnlMicroUsd} < 0`
+        ));
+      const [openPosRow] = await db.select({ count: sql<number>`count(*)` })
+        .from(predictionPositions)
+        .where(eq(predictionPositions.userId, userId));
+
+      const totalTrades = totalRow?.count || 0;
+      const buyCount = buyRow?.count || 0;
+      const sellCount = sellRow?.count || 0;
+      const winCount = winRow?.count || 0;
+      const lossCount = lossRow?.count || 0;
+      const openPositionsCount = openPosRow?.count || 0;
+      const totalVolumeMicro = BigInt(volumeRow?.total || 0);
+      const totalVolumeUsd = Number(totalVolumeMicro) / 1_000_000;
+      const avgTradeUsd = totalTrades > 0 ? totalVolumeUsd / totalTrades : 0;
+      const winRate = winCount + lossCount > 0 ? winCount / (winCount + lossCount) : 0;
+
+      res.json({
+        totalTrades,
+        buyCount,
+        sellCount,
+        winCount,
+        lossCount,
+        winRate,
+        totalVolumeUsd,
+        avgTradeUsd,
+        openPositionsCount,
+      });
     } catch (err: any) {
       handleError(res, err, 500);
     }

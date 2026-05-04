@@ -8,6 +8,7 @@ import {
   Wallet,
   User,
   Bookmark,
+  Brain,
 } from "lucide-react"
 
 export function MobileNav() {
@@ -17,6 +18,7 @@ export function MobileNav() {
   const tabs = [
     { path: "/", label: "Trade", icon: TrendingUp },
     { path: "/trending", label: "Trending", icon: BarChart3 },
+    { path: "/predictions", label: "Predict", icon: Brain },
     ...(isAuthenticated ? [
       { path: "/portfolio", label: "Portfolio", icon: Wallet },
       { path: "/watchlist", label: "Watch", icon: Bookmark },

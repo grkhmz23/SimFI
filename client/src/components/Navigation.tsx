@@ -30,6 +30,7 @@ import {
   PieChart,
   Shield,
   Gift,
+  Brain,
 } from "lucide-react"
 import { FaTelegram } from "react-icons/fa"
 import { formatBalance, formatUSD } from "@/lib/token-format"
@@ -60,7 +61,10 @@ export function Navigation() {
     { path: "/about", label: "About", icon: Info },
   ]
 
-  const isActive = (path: string) => location === path
+  const isActive = (path: string) => {
+    if (path === "/predictions") return location.startsWith("/predictions");
+    return location === path;
+  }
 
   return (
     <>
@@ -197,6 +201,10 @@ export function Navigation() {
                     <DropdownMenuItem onClick={() => setLocation("/portfolio")}>
                       <Wallet className="mr-2 h-4 w-4" strokeWidth={1.5} />
                       Portfolio
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setLocation("/predictions/me")}>
+                      <Brain className="mr-2 h-4 w-4" strokeWidth={1.5} />
+                      Predictions
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setLocation("/positions")}>
                       <BarChart3 className="mr-2 h-4 w-4" strokeWidth={1.5} />
