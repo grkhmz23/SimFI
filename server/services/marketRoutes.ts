@@ -3,8 +3,11 @@
 // Multi-chain support: solana and base
 
 import type { Express, RequestHandler } from 'express';
+import { sql } from 'drizzle-orm';
 import { marketDataService } from '../services/marketData';
 import { quoteService } from '../services/quoteService';
+import { db } from '../db';
+import { users, tradeHistory, predictionTrades, predictionMarkets } from '@shared/schema';
 import type { Chain } from '@shared/schema';
 
 // Valid chains
@@ -353,6 +356,39 @@ export function registerMarketRoutes(
       });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // =========================================================================
+  // PLATFORM STATS (public, cached)
+  // =========================================================================
+
+  let platformStatsCache: { data: any; timestamp: number } | null = null;
+  const PLATFORM_STATS_CACHE_TTL = 60_000; // 60 seconds
+
+  app.get('/api/platform/stats', publicApiLimiter, async (_req, res) => {
+    try {
+      if (platformStatsCache && Date.now() - platformStatsCache.timestamp < PLATFORM_STATS_CACHE_TTL) {
+        return res.json(platformStatsCache.data);
+      }
+
+      const [userRow] = await db.select({ count: sql<number>`count(*)` }).from(users);
+      const [tradeRow] = await db.select({ count: sql<number>`count(*)` }).from(tradeHistory);
+      const [predTradeRow] = await db.select({ count: sql<number>`count(*)` }).from(predictionTrades);
+      const [predMarketRow] = await db.select({ count: sql<number>`count(*)` }).from(predictionMarkets).where(sql`${predictionMarkets.active} = true AND ${predictionMarkets.closed} = false`);
+
+      const data = {
+        totalUsers: userRow?.count || 0,
+        totalTrades: tradeRow?.count || 0,
+        totalPredictionTrades: predTradeRow?.count || 0,
+        activePredictionMarkets: predMarketRow?.count || 0,
+        timestamp: Date.now(),
+      };
+
+      platformStatsCache = { data, timestamp: Date.now() };
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
     }
   });
 }
