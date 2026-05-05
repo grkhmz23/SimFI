@@ -2,7 +2,7 @@ import type { Express, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authenticateToken } from '../middleware/auth';
 import { db } from '../db';
-import { sbEvents, sbMarkets, sbBets, sbLeagueActivity, users, LAMPORTS_PER_SOL } from '@shared/schema';
+import { sbEvents, sbMarkets, sbBets, sbLeagueActivity, users } from '@shared/schema';
 import { eq, and, desc, sql, gte, lte, asc, inArray } from 'drizzle-orm';
 import { PlaceBetRequest } from './sportsbook/schemas';
 import { executeBet, humanToAtomicStake, validateStake, validateOdds } from './sportsbook/executeBet';
@@ -324,10 +324,9 @@ export function registerSportsbookRoutes(app: Express): void {
         return res.status(400).json({ error: oddsValidation.error, code: 'INVALID_ODDS' });
       }
 
-      const stakeAtomic = humanToAtomicStake(stakeHuman, body.chain);
-      const potentialPayout = BigInt(Math.floor(stakeHuman * currentOdds * (body.chain === 'solana' ? LAMPORTS_PER_SOL : 1e18)));
+      const stakeAtomic = humanToAtomicStake(body.stake, body.chain);
 
-      // 6. Execute bet (atomic debit + insert)
+      // 6. Execute bet (atomic debit + insert; potentialPayout computed internally)
       const result = await executeBet({
         userId,
         eventId: body.eventId,
@@ -336,7 +335,6 @@ export function registerSportsbookRoutes(app: Express): void {
         chain: body.chain,
         stakeAtomic,
         oddsAtPlacement: currentOdds,
-        potentialPayout,
         bookmakerKey: market.bookmakerKey,
         idempotencyKey: body.idempotencyKey,
       });

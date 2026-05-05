@@ -287,18 +287,18 @@ export function registerPredictionMarketRoutes(app: Express): void {
         .from(predictionTrades)
         .where(eq(predictionTrades.userId, userId));
 
-      // Win/loss from positions realized PnL
+      // Win/loss from trade realized PnL (includes settlements and user sells)
       const [winRow] = await db.select({ count: sql<number>`count(*)` })
-        .from(predictionPositions)
+        .from(predictionTrades)
         .where(and(
-          eq(predictionPositions.userId, userId),
-          sql`${predictionPositions.realizedPnlMicroUsd} > 0`
+          eq(predictionTrades.userId, userId),
+          sql`${predictionTrades.realizedPnlMicroUsd} > 0`
         ));
       const [lossRow] = await db.select({ count: sql<number>`count(*)` })
-        .from(predictionPositions)
+        .from(predictionTrades)
         .where(and(
-          eq(predictionPositions.userId, userId),
-          sql`${predictionPositions.realizedPnlMicroUsd} < 0`
+          eq(predictionTrades.userId, userId),
+          sql`${predictionTrades.realizedPnlMicroUsd} < 0`
         ));
       const [openPosRow] = await db.select({ count: sql<number>`count(*)` })
         .from(predictionPositions)

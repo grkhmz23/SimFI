@@ -21,7 +21,7 @@ export function walkBook(
   book: OrderBook,
   side: 'BUY' | 'SELL',
   sharesMicro: bigint
-): { avgPrice: number; consumedMicro: bigint } {
+): { avgPrice: number; consumedMicro: bigint; totalCostMicro: bigint } {
   if (sharesMicro <= 0n) {
     throw new Error('sharesMicro must be positive');
   }
@@ -59,7 +59,7 @@ export function walkBook(
     ? Number(totalCostMicro) / Number(totalSharesMicro)
     : 0;
 
-  return { avgPrice, consumedMicro: totalSharesMicro };
+  return { avgPrice, consumedMicro: totalSharesMicro, totalCostMicro };
 }
 
 /**
@@ -70,7 +70,7 @@ export function walkBookByNotional(
   book: OrderBook,
   side: 'BUY',
   notionalMicroUsd: bigint
-): { avgPrice: number; sharesMicro: bigint } {
+): { avgPrice: number; sharesMicro: bigint; totalCostMicro: bigint } {
   if (side !== 'BUY') {
     throw new Error('walkBookByNotional only supports BUY');
   }
@@ -107,7 +107,7 @@ export function walkBookByNotional(
   }
 
   const avgPrice = Number(totalCostMicro) / Number(totalSharesMicro);
-  return { avgPrice, sharesMicro: totalSharesMicro };
+  return { avgPrice, sharesMicro: totalSharesMicro, totalCostMicro };
 }
 
 /**

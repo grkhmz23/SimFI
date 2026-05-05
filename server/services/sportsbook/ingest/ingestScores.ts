@@ -4,9 +4,12 @@ import { eq, and, gte, lte, sql } from 'drizzle-orm';
 import { createOddsProvider } from '../providers';
 
 const LEAGUES = (process.env.SPORTSBOOK_LEAGUES || 'basketball_nba,americanfootball_nfl,soccer_epl,soccer_uefa_champs_league').split(',').map(s => s.trim()).filter(Boolean);
-const ACTIVE_BEFORE_MS = parseInt(process.env.SPORTSBOOK_SCORES_ACTIVE_BEFORE_SEC || '21600', 10) * 1000;
-const ACTIVE_AFTER_MS = parseInt(process.env.SPORTSBOOK_SCORES_ACTIVE_AFTER_SEC || '14400', 10) * 1000;
-const MIN_INTERVAL_MS = parseInt(process.env.SPORTSBOOK_ODDS_MIN_INTERVAL_SEC || '300', 10) * 1000;
+const ACTIVE_BEFORE_MS_RAW = process.env.SPORTSBOOK_SCORES_ACTIVE_BEFORE_SEC || '21600';
+const ACTIVE_AFTER_MS_RAW = process.env.SPORTSBOOK_SCORES_ACTIVE_AFTER_SEC || '14400';
+const MIN_INTERVAL_MS_RAW = process.env.SPORTSBOOK_ODDS_MIN_INTERVAL_SEC || '300';
+const ACTIVE_BEFORE_MS = (Number.isFinite(parseInt(ACTIVE_BEFORE_MS_RAW, 10)) ? parseInt(ACTIVE_BEFORE_MS_RAW, 10) : 21600) * 1000;
+const ACTIVE_AFTER_MS = (Number.isFinite(parseInt(ACTIVE_AFTER_MS_RAW, 10)) ? parseInt(ACTIVE_AFTER_MS_RAW, 10) : 14400) * 1000;
+const MIN_INTERVAL_MS = (Number.isFinite(parseInt(MIN_INTERVAL_MS_RAW, 10)) ? parseInt(MIN_INTERVAL_MS_RAW, 10) : 300) * 1000;
 
 export async function ingestScores(): Promise<void> {
   const provider = createOddsProvider();

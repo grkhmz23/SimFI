@@ -104,12 +104,12 @@ class PredictionQuoteService {
       const result = walkBookByNotional(book, 'BUY', notionalMicroUsd);
       sharesMicroResult = result.sharesMicro;
       avgPrice = result.avgPrice;
-      totalMicroUsd = BigInt(Math.round(avgPrice * Number(sharesMicroResult)));
+      totalMicroUsd = result.totalCostMicro;
     } else if (sharesMicro != null) {
       const result = walkBook(book, side, sharesMicro);
       sharesMicroResult = result.consumedMicro;
       avgPrice = result.avgPrice;
-      totalMicroUsd = BigInt(Math.round(avgPrice * Number(sharesMicroResult)));
+      totalMicroUsd = result.totalCostMicro;
     } else {
       throw new Error('Must provide sharesMicro or notionalMicroUsd');
     }

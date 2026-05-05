@@ -2,7 +2,10 @@ import { db } from '../../../db';
 import { sql } from 'drizzle-orm';
 import { settleBets } from './settleBets';
 
-const SETTLE_TICK_SEC = parseInt(process.env.SPORTSBOOK_SCORES_TICK_SEC || '60', 10);
+const SETTLE_TICK_SEC_RAW = process.env.SPORTSBOOK_SCORES_TICK_SEC || '60';
+const SETTLE_TICK_SEC = Number.isFinite(parseInt(SETTLE_TICK_SEC_RAW, 10))
+  ? parseInt(SETTLE_TICK_SEC_RAW, 10)
+  : 60;
 const ADVISORY_LOCK_KEY = 987654324;
 
 let settleTimer: NodeJS.Timeout | null = null;

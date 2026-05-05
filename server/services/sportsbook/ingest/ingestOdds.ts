@@ -4,8 +4,10 @@ import { eq, and, gte, sql, isNull } from 'drizzle-orm';
 import { createOddsProvider } from '../providers';
 
 const LEAGUES = (process.env.SPORTSBOOK_LEAGUES || 'basketball_nba,americanfootball_nfl,soccer_epl,soccer_uefa_champs_league').split(',').map(s => s.trim()).filter(Boolean);
-const LAZY_WINDOW_MS = parseInt(process.env.SPORTSBOOK_ODDS_LAZY_WINDOW_SEC || '600', 10) * 1000;
-const MIN_INTERVAL_MS = parseInt(process.env.SPORTSBOOK_ODDS_MIN_INTERVAL_SEC || '300', 10) * 1000;
+const LAZY_WINDOW_MS_RAW = process.env.SPORTSBOOK_ODDS_LAZY_WINDOW_SEC || '600';
+const MIN_INTERVAL_MS_RAW = process.env.SPORTSBOOK_ODDS_MIN_INTERVAL_SEC || '300';
+const LAZY_WINDOW_MS = (Number.isFinite(parseInt(LAZY_WINDOW_MS_RAW, 10)) ? parseInt(LAZY_WINDOW_MS_RAW, 10) : 600) * 1000;
+const MIN_INTERVAL_MS = (Number.isFinite(parseInt(MIN_INTERVAL_MS_RAW, 10)) ? parseInt(MIN_INTERVAL_MS_RAW, 10) : 300) * 1000;
 
 export async function ingestOdds(): Promise<void> {
   const provider = createOddsProvider();
@@ -48,7 +50,6 @@ export async function ingestOdds(): Promise<void> {
               .set({
                 homeTeam: ev.homeTeam,
                 awayTeam: ev.awayTeam,
-                commenceTime: ev.commenceTime,
                 updatedAt: now,
               })
               .where(eq(sbEvents.externalId, ev.externalId));

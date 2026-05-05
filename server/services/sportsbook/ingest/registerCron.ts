@@ -3,8 +3,10 @@ import { sql } from 'drizzle-orm';
 import { ingestOdds } from './ingestOdds';
 import { ingestScores } from './ingestScores';
 
-const ODDS_TICK_SEC = parseInt(process.env.SPORTSBOOK_ODDS_TICK_SEC || '60', 10);
-const SCORES_TICK_SEC = parseInt(process.env.SPORTSBOOK_SCORES_TICK_SEC || '60', 10);
+const ODDS_TICK_SEC_RAW = process.env.SPORTSBOOK_ODDS_TICK_SEC || '60';
+const SCORES_TICK_SEC_RAW = process.env.SPORTSBOOK_SCORES_TICK_SEC || '60';
+const ODDS_TICK_SEC = Number.isFinite(parseInt(ODDS_TICK_SEC_RAW, 10)) ? parseInt(ODDS_TICK_SEC_RAW, 10) : 60;
+const SCORES_TICK_SEC = Number.isFinite(parseInt(SCORES_TICK_SEC_RAW, 10)) ? parseInt(SCORES_TICK_SEC_RAW, 10) : 60;
 const ODDS_LOCK_KEY = 987654322;
 const SCORES_LOCK_KEY = 987654323;
 

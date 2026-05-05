@@ -107,6 +107,7 @@ export const predictionTrades = pgTable("prediction_trades", {
   slippageBps: integer("slippage_bps").notNull().default(0),
   feeMicroUsd: bigNumeric("fee_micro_usd").notNull().default(sql`0`),
   totalMicroUsd: bigNumeric("total_micro_usd").notNull(),
+  realizedPnlMicroUsd: bigNumeric("realized_pnl_micro_usd").notNull().default(sql`0`),
   bookSnapshot: text("book_snapshot").notNull(),
   idempotencyKey: text("idempotency_key"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

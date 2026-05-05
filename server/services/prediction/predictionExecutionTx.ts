@@ -6,9 +6,11 @@ import { predictionPaperBalances, predictionPositions, predictionTrades, predict
 import { eq, and, sql } from 'drizzle-orm';
 import type { Quote } from './predictionQuoteService.js';
 
-const STARTING_BALANCE_MICRO_USD = BigInt(
-  (process.env.PREDICTION_STARTING_BALANCE_USD ? parseInt(process.env.PREDICTION_STARTING_BALANCE_USD, 10) : 10000) * 1_000_000
-);
+const STARTING_BALANCE_USD_RAW = process.env.PREDICTION_STARTING_BALANCE_USD || '10000';
+const STARTING_BALANCE_USD = Number.isFinite(parseInt(STARTING_BALANCE_USD_RAW, 10))
+  ? parseInt(STARTING_BALANCE_USD_RAW, 10)
+  : 10000;
+const STARTING_BALANCE_MICRO_USD = BigInt(STARTING_BALANCE_USD * 1_000_000);
 
 interface ExecuteTradeParams {
   userId: string;
@@ -113,6 +115,7 @@ export async function executeTrade(params: ExecuteTradeParams): Promise<ExecuteT
     let newPositionCostBasis: bigint;
     let newPositionAvgPrice: number;
     let positionId: string | null = null;
+    let tradeRealizedPnlMicro = 0n;
 
     if (quote.side === 'BUY') {
       newBalanceMicro = balanceMicro - quote.totalMicroUsd;
@@ -132,7 +135,7 @@ export async function executeTrade(params: ExecuteTradeParams): Promise<ExecuteT
       const proceedsMicroUsd = quote.totalMicroUsd;
       const proportionalCostBasis =
         (quote.sharesMicro * positionRow!.costBasisMicroUsd) / positionRow!.sharesMicro;
-      const realizedPnlMicro = proceedsMicroUsd - proportionalCostBasis;
+      tradeRealizedPnlMicro = proceedsMicroUsd - proportionalCostBasis;
 
       newBalanceMicro = balanceMicro + proceedsMicroUsd;
       newPositionShares = positionRow!.sharesMicro - quote.sharesMicro;
@@ -145,7 +148,7 @@ export async function executeTrade(params: ExecuteTradeParams): Promise<ExecuteT
       // Update realized PnL on balance row
       await tx.update(predictionPaperBalances)
         .set({
-          realizedPnlMicroUsd: sql`${predictionPaperBalances.realizedPnlMicroUsd} + ${realizedPnlMicro}`,
+          realizedPnlMicroUsd: sql`${predictionPaperBalances.realizedPnlMicroUsd} + ${tradeRealizedPnlMicro}`,
         })
         .where(eq(predictionPaperBalances.userId, userId));
     }
@@ -206,6 +209,7 @@ export async function executeTrade(params: ExecuteTradeParams): Promise<ExecuteT
         slippageBps: quote.slippageBps,
         feeMicroUsd: 0n,
         totalMicroUsd: quote.totalMicroUsd,
+        realizedPnlMicroUsd: tradeRealizedPnlMicro,
         bookSnapshot: quote.bookSnapshot,
         idempotencyKey: idempotencyKey || null,
       })

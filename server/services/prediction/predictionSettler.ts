@@ -7,9 +7,11 @@ import { eq, and, sql, inArray } from 'drizzle-orm';
 import { polymarketGamma } from './polymarketGamma';
 import { polymarketWs } from './polymarketWs';
 
-const SETTLE_INTERVAL_SECONDS = parseInt(process.env.PREDICTION_SETTLE_INTERVAL_SECONDS || '60', 10);
+const SETTLE_INTERVAL_SECONDS_RAW = process.env.PREDICTION_SETTLE_INTERVAL_SECONDS || '60';
+const SETTLE_INTERVAL_SECONDS = Number.isFinite(parseInt(SETTLE_INTERVAL_SECONDS_RAW, 10)) ? parseInt(SETTLE_INTERVAL_SECONDS_RAW, 10) : 60;
 const ADVISORY_LOCK_KEY = 987654321; // unique, must not collide with leaderboard's lock key
-const WS_MAX_SUBS = parseInt(process.env.PREDICTION_WS_MAX_SUBSCRIPTIONS || '200', 10);
+const WS_MAX_SUBS_RAW = process.env.PREDICTION_WS_MAX_SUBSCRIPTIONS || '200';
+const WS_MAX_SUBS = Number.isFinite(parseInt(WS_MAX_SUBS_RAW, 10)) ? parseInt(WS_MAX_SUBS_RAW, 10) : 200;
 
 let settleTimer: NodeJS.Timeout | null = null;
 let isRunning = false;
@@ -130,7 +132,7 @@ async function settleClosedMarkets(): Promise<void> {
         if (!market.closed) continue;
 
         // Determine winner from outcomePrices
-        let winningOutcome: 'YES' | 'NO' | 'VOID' = 'VOID';
+        let winningOutcome: 'YES' | 'NO' | 'VOID' | undefined;
         if (market.outcomePrices.length >= 2) {
           const yesPrice = market.outcomePrices[0];
           const noPrice = market.outcomePrices[1];
@@ -141,6 +143,12 @@ async function settleClosedMarkets(): Promise<void> {
           } else if (yesPrice <= 0.01 && noPrice <= 0.01) {
             winningOutcome = 'VOID';
           }
+        }
+
+        // If prices are inconclusive, skip settlement for now
+        if (winningOutcome === undefined) {
+          console.log(`[prediction-settler] market ${market.conditionId} has inconclusive prices, skipping settlement`);
+          continue;
         }
 
         await db.transaction(async (tx) => {
@@ -174,7 +182,9 @@ async function settleClosedMarkets(): Promise<void> {
             let settlePrice: number;
 
             if (isWin) {
-              creditMicroUsd = pos.sharesMicro * 1_000_000n;
+              // sharesMicro is already denominated in micro-shares; 1 share = $1 = 1_000_000 micro-USD
+              // So winning shares are worth exactly sharesMicro micro-USD
+              creditMicroUsd = pos.sharesMicro;
               realizedPnlDelta = creditMicroUsd - pos.costBasisMicroUsd;
               settlePrice = 1.0;
             } else if (isVoid) {
@@ -223,6 +233,7 @@ async function settleClosedMarkets(): Promise<void> {
                 slippageBps: 0,
                 feeMicroUsd: 0n,
                 totalMicroUsd: creditMicroUsd,
+                realizedPnlMicroUsd: realizedPnlDelta,
                 bookSnapshot: JSON.stringify({ settlement: true, winningOutcome }),
               });
 
