@@ -47,6 +47,11 @@ const PredictionMarketsPage = React.lazy(() => import("@/pages/predictions/Predi
 const PredictionMarketDetailPage = React.lazy(() => import("@/pages/predictions/PredictionMarketDetailPage"));
 const PredictionPortfolioPage = React.lazy(() => import("@/pages/predictions/PredictionPortfolioPage"));
 
+const SportsbookLayout = React.lazy(() => import("@/pages/sportsbook/SportsbookLayout"));
+const SportsbookHomePage = React.lazy(() => import("@/pages/sportsbook/SportsbookHomePage"));
+const EventDetailPage = React.lazy(() => import("@/pages/sportsbook/EventDetailPage"));
+const MyBetsPage = React.lazy(() => import("@/pages/sportsbook/MyBetsPage"));
+
 const DesignSystem = import.meta.env.DEV
   ? React.lazy(() => import("@/pages/DesignSystem"))
   : null;
@@ -189,6 +194,31 @@ function Router() {
           </Suspense>
         )}
       </Route>
+
+      <Route path="/sportsbook">
+        <Suspense fallback={<PageSkeleton />}>
+          <SportsbookLayout>
+            <SportsbookHomePage />
+          </SportsbookLayout>
+        </Suspense>
+      </Route>
+      <Route path="/sportsbook/events/:id">
+        {(params) => (
+          <Suspense fallback={<PageSkeleton />}>
+            <SportsbookLayout>
+              <EventDetailPage />
+            </SportsbookLayout>
+          </Suspense>
+        )}
+      </Route>
+      <Route path="/sportsbook/my-bets">
+        <Suspense fallback={<PageSkeleton />}>
+          <SportsbookLayout>
+            <MyBetsPage />
+          </SportsbookLayout>
+        </Suspense>
+      </Route>
+
       {import.meta.env.DEV && DesignSystem && (
         <Route path="/_design">
           <Suspense fallback={<PageSkeleton />}>

@@ -8,8 +8,11 @@ import { createBot, setupWebhook, getWebhookCallback } from "./telegram-bot";
 import { leaderboardService } from "./leaderboardService";
 import { startWorker as startAlphaDeskWorker } from "./services/alphaDesk/worker";
 import { registerPredictionMarketRoutes } from "./services/predictionMarketRoutes";
+import { registerSportsbookRoutes } from "./services/sportsbookRoutes";
 import { polymarketWs } from "./services/prediction/polymarketWs";
 import { startPredictionSettler, stopPredictionSettler } from "./services/prediction/predictionSettler";
+import { startSportsbookIngest, stopSportsbookIngest } from "./services/sportsbook/ingest/registerCron";
+import { startSportsbookSettler, stopSportsbookSettler } from "./services/sportsbook/settle/registerCron";
 import "./services/prediction/predictionSseFeed";
 
 const app = express();
@@ -153,6 +156,22 @@ async function gracefulShutdown(signal: string, server: any, botProcess?: any) {
     console.error('   ❌ Error stopping prediction settler:', e);
   }
 
+  try {
+    console.log('   Stopping sportsbook ingest...');
+    stopSportsbookIngest();
+    console.log('   ✅ Sportsbook ingest stopped');
+  } catch (e) {
+    console.error('   ❌ Error stopping sportsbook ingest:', e);
+  }
+
+  try {
+    console.log('   Stopping sportsbook settler...');
+    stopSportsbookSettler();
+    console.log('   ✅ Sportsbook settler stopped');
+  } catch (e) {
+    console.error('   ❌ Error stopping sportsbook settler:', e);
+  }
+
   // Kill bot process if running
   if (botProcess) {
     try {
@@ -178,8 +197,11 @@ async function gracefulShutdown(signal: string, server: any, botProcess?: any) {
   const server = await registerRoutes(app);
 
   registerPredictionMarketRoutes(app);
+  registerSportsbookRoutes(app);
   polymarketWs.start();
   startPredictionSettler();
+  startSportsbookIngest();
+  startSportsbookSettler();
 
 /**
  * API: never fall through to Vite/SPA for /api routes.

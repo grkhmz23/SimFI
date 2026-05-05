@@ -449,3 +449,4 @@ export function validateWalletAddress(chain: Chain, address: string): boolean {
 }
 
 export * from "./predictionSchema";
+export * from "./sportsbookSchema";

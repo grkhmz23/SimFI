@@ -26,6 +26,7 @@ import {
   Shield,
   Gift,
   Brain,
+  Trophy,
   BarChart3,
 } from "lucide-react"
 import { FaTelegram } from "react-icons/fa"
@@ -52,6 +53,7 @@ export function Navigation() {
     { path: "/trade", label: "Trade" },
     { path: "/trending", label: "Trending" },
     { path: "/predictions", label: "Predictions" },
+    { path: "/sportsbook", label: "Sportsbook" },
     { path: "/alpha-desk", label: "Alpha Desk" },
     { path: "/leaderboard", label: "Leaderboard" },
     { path: "/about", label: "About" },
@@ -59,6 +61,7 @@ export function Navigation() {
 
   const isActive = (path: string) => {
     if (path === "/predictions") return location.startsWith("/predictions");
+    if (path === "/sportsbook") return location.startsWith("/sportsbook");
     return location === path;
   }
 
@@ -200,6 +203,10 @@ export function Navigation() {
                     <DropdownMenuItem onClick={() => setLocation("/predictions/me")}>
                       <Brain className="mr-2 h-4 w-4" strokeWidth={1.5} />
                       Predictions
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setLocation("/sportsbook/my-bets")}>
+                      <Trophy className="mr-2 h-4 w-4" strokeWidth={1.5} />
+                      Sportsbook
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setLocation("/positions")}>
                       <BarChart3 className="mr-2 h-4 w-4" strokeWidth={1.5} />

@@ -19,6 +19,7 @@ export function MobileNav() {
     { path: "/", label: "Trade", icon: TrendingUp },
     { path: "/trending", label: "Trending", icon: BarChart3 },
     { path: "/predictions", label: "Predict", icon: Brain },
+    { path: "/sportsbook", label: "Sports", icon: Trophy },
     ...(isAuthenticated ? [
       { path: "/portfolio", label: "Portfolio", icon: Wallet },
       { path: "/watchlist", label: "Watch", icon: Bookmark },

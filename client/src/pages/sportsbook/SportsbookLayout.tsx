@@ -1,0 +1,17 @@
+import { Navigation } from "@/components/Navigation";
+import { MobileNav } from "@/components/MobileNav";
+import { Footer } from "@/components/ui/footer";
+import { ReactNode } from "react";
+
+export default function SportsbookLayout({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)] flex flex-col">
+      <Navigation />
+      <main className="flex-1">
+        {children}
+      </main>
+      <Footer />
+      <MobileNav />
+    </div>
+  );
+}
