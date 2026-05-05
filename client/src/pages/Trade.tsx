@@ -166,9 +166,9 @@ function QuickActions() {
   ]
 
   return (
-    <section className="py-12 border-t border-[var(--border-subtle)]">
+    <section className="py-16 border-t border-[var(--border-subtle)]">
       <div className="mx-auto max-w-content px-4 sm:px-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {actions.map((action, i) => (
             <motion.button
               key={action.label}
@@ -178,14 +178,14 @@ function QuickActions() {
               whileInView="visible"
               viewport={{ once: true }}
               onClick={() => setLocation(action.path)}
-              className="flex flex-col items-start gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-5 text-left transition-all hover:border-[var(--border-strong)] hover:shadow-lg"
+              className="flex flex-col items-start gap-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-5 text-left transition-all duration-500 hover:border-[var(--border-strong)]"
             >
               <div className={`h-10 w-10 rounded-md ${action.bg} border ${action.border} flex items-center justify-center`}>
                 <action.icon className={`h-5 w-5 ${action.color}`} strokeWidth={1.5} />
               </div>
               <div>
-                <h3 className="text-sm font-medium text-[var(--text-primary)]">{action.label}</h3>
-                <p className="text-xs text-[var(--text-secondary)] mt-0.5">{action.desc}</p>
+                <h3 className="text-xs font-medium tracking-wide uppercase text-[var(--text-primary)]">{action.label}</h3>
+                <p className="text-xs text-[var(--text-tertiary)] mt-1 leading-relaxed">{action.desc}</p>
               </div>
             </motion.button>
           ))}
@@ -215,11 +215,11 @@ function TrendingPreview() {
   const tokens = data?.trending?.slice(0, 5) || []
 
   return (
-    <section className="py-12 border-t border-[var(--border-subtle)]">
+    <section className="py-16 border-t border-[var(--border-subtle)]">
       <div className="mx-auto max-w-content px-4 sm:px-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-[var(--accent-gain)]" strokeWidth={1.5} />
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-baseline gap-3">
+            <span className="label">Market</span>
             <h2 className="text-h2">Trending Tokens</h2>
           </div>
           <Button variant="ghost" size="sm" onClick={() => setLocation("/trending")}>
@@ -382,11 +382,11 @@ function LeaderboardSection() {
   const topFive = leaderboardData?.leaders?.slice(0, 5) || []
 
   return (
-    <section className="py-12 border-t border-[var(--border-subtle)]">
+    <section className="py-16 border-t border-[var(--border-subtle)]">
       <div className="mx-auto max-w-content px-4 sm:px-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <Trophy className="h-5 w-5 text-[var(--accent-premium)]" strokeWidth={1.5} />
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-baseline gap-3">
+            <span className="label">Competition</span>
             <h2 className="text-h2">Leaderboard</h2>
           </div>
           <Button variant="ghost" size="sm" onClick={() => setLocation("/leaderboard")}>
@@ -478,11 +478,11 @@ function AlphaDeskSection() {
   if (!todayData?.ideas?.length) return null
 
   return (
-    <section className="py-12 border-t border-[var(--border-subtle)]">
+    <section className="py-16 border-t border-[var(--border-subtle)]">
       <div className="mx-auto max-w-content px-4 sm:px-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-[var(--accent-premium)]" />
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-baseline gap-3">
+            <span className="label">Signals</span>
             <h2 className="text-h2">Today&apos;s Alpha Desk</h2>
           </div>
           <Button variant="ghost" size="sm" onClick={() => setLocation("/alpha-desk")}>
@@ -545,7 +545,7 @@ export default function Trade() {
   return (
     <div className="min-h-screen bg-[var(--bg-base)]">
       {/* Hero */}
-      <section className="relative pt-20 pb-12 md:pt-28 md:pb-16 overflow-hidden">
+      <section className="relative pt-24 pb-16 md:pt-36 md:pb-24 overflow-hidden">
         <div className="mx-auto max-w-content px-4 sm:px-6">
           <div className="max-w-3xl">
             <motion.div
@@ -554,10 +554,9 @@ export default function Trade() {
               initial="hidden"
               animate="visible"
             >
-              <Badge variant="outline" className="mb-6 text-xs font-medium">
-                <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-gain)] mr-2" />
+              <span className="label mb-8 block">
                 Live Paper Trading
-              </Badge>
+              </span>
             </motion.div>
 
             <motion.h1
@@ -565,11 +564,11 @@ export default function Trade() {
               variants={fadeUp}
               initial="hidden"
               animate="visible"
-              className="text-display mb-6"
+              className="text-display mb-8"
             >
               Trade without risk.
               <br />
-              <span className="text-[var(--text-secondary)]">Master the market.</span>
+              <span className="text-[var(--text-secondary)] font-editorial-italic">Master the market.</span>
             </motion.h1>
 
             <motion.p
@@ -577,10 +576,10 @@ export default function Trade() {
               variants={fadeUp}
               initial="hidden"
               animate="visible"
-              className="text-body text-[var(--text-secondary)] max-w-xl mb-8 leading-relaxed"
+              className="text-body text-[var(--text-secondary)] max-w-lg mb-10"
             >
               Practice trading Solana and Base memecoins with virtual capital.
-              Real-time market data. Zero financial risk. Investor-grade tools.
+              Real-time market data. Zero financial risk.
             </motion.p>
 
             <motion.div
@@ -588,20 +587,20 @@ export default function Trade() {
               variants={fadeUp}
               initial="hidden"
               animate="visible"
-              className="flex flex-wrap gap-4"
+              className="flex flex-wrap gap-3"
             >
               {isAuthenticated ? (
-                <Button size="lg" onClick={() => setLocation("/trending")}>
+                <Button size="lg" className="tracking-wide" onClick={() => setLocation("/trending")}>
                   Start Trading
                   <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                 </Button>
               ) : (
-                <Button size="lg" onClick={() => setLocation("/register")}>
+                <Button size="lg" className="tracking-wide" onClick={() => setLocation("/register")}>
                   Start Trading
                   <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                 </Button>
               )}
-              <Button variant="secondary" size="lg" onClick={() => setLocation("/predictions")}>
+              <Button variant="secondary" size="lg" className="tracking-wide" onClick={() => setLocation("/predictions")}>
                 <Brain className="h-4 w-4 mr-2" strokeWidth={1.5} />
                 Predictions
               </Button>

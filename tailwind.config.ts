@@ -9,11 +9,11 @@ export default {
         content: "1280px",
       },
       borderRadius: {
-        sm: "0.25rem",
-        md: "0.375rem",
-        lg: "0.5rem",
-        xl: "0.75rem",
-        "2xl": "1rem",
+        sm: "0.125rem",
+        md: "0.25rem",
+        lg: "0.375rem",
+        xl: "0.5rem",
+        "2xl": "0.75rem",
       },
       colors: {
         background: "hsl(var(--background) / <alpha-value>)",
@@ -112,8 +112,12 @@ export default {
           to: { height: "0" },
         },
         "page-in": {
-          from: { opacity: "0", transform: "translateY(4px)" },
+          from: { opacity: "0", transform: "translateY(8px)" },
           to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
         },
         "skeleton-shimmer": {
           "0%": { backgroundPosition: "-200% 0" },
@@ -123,7 +127,8 @@ export default {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
-        "page-in": "page-in 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards",
+        "page-in": "page-in 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards",
+        "fade-in": "fade-in 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards",
         "skeleton-shimmer": "skeleton-shimmer 1.5s linear infinite",
       },
     },

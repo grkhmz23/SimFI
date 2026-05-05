@@ -69,7 +69,7 @@ export function Navigation() {
     <>
       <header
         className={cn(
-          "fixed top-0 left-0 right-0 z-50 transition-all duration-200",
+          "fixed top-0 left-0 right-0 z-50 transition-all duration-500",
           scrolled
             ? "bg-[var(--bg-overlay)] backdrop-blur-xl border-b border-[var(--border-subtle)]"
             : "bg-transparent"
@@ -78,9 +78,9 @@ export function Navigation() {
         <div className="mx-auto max-w-content px-4 sm:px-6">
           <div className="flex h-14 items-center justify-between gap-4">
             {/* Wordmark */}
-            <Link href="/" className="flex items-center gap-2.5 shrink-0">
-              <img src={logoUrl} alt="SimFi" className="h-10 w-auto" />
-              <span className="font-serif text-xl tracking-tight text-[var(--text-primary)] hidden sm:block">
+            <Link href="/" className="flex items-center gap-2 shrink-0">
+              <img src={logoUrl} alt="SimFi" className="h-8 w-auto opacity-90" />
+              <span className="font-serif text-lg tracking-tight text-[var(--text-primary)] hidden sm:block">
                 SimFi
               </span>
             </Link>
@@ -92,15 +92,15 @@ export function Navigation() {
                   key={item.path}
                   onClick={() => setLocation(item.path)}
                   className={cn(
-                    "relative px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
+                    "relative px-3 py-1.5 text-xs font-medium tracking-wide uppercase transition-colors duration-300 whitespace-nowrap",
                     isActive(item.path)
                       ? "text-[var(--text-primary)]"
-                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[rgba(255,255,255,0.03)]"
+                      : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
                   )}
                 >
                   {item.label}
                   {isActive(item.path) && (
-                    <span className="absolute inset-x-1 -bottom-[9px] h-px bg-[var(--text-primary)]" />
+                    <span className="absolute inset-x-2 -bottom-[10px] h-px bg-[var(--accent-premium)]" />
                   )}
                 </button>
               ))}
@@ -128,11 +128,11 @@ export function Navigation() {
               </div>
 
               {/* Chain Toggle */}
-              <div className="hidden sm:flex items-center rounded-md bg-[hsl(240_4%_12%)] border border-[var(--border-subtle)] p-0.5">
+              <div className="hidden sm:flex items-center rounded-sm bg-[var(--bg-raised)] border border-[var(--border-subtle)] p-0.5">
                 <button
                   onClick={() => setActiveChain("base")}
                   className={cn(
-                    "px-2.5 py-1 rounded-sm text-xs font-medium transition-all",
+                    "px-2.5 py-1 rounded-sm text-[10px] font-medium tracking-wider uppercase transition-all duration-300",
                     activeChain === "base"
                       ? "bg-[var(--bg-raised)] text-[var(--text-primary)] shadow-sm"
                       : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
@@ -143,7 +143,7 @@ export function Navigation() {
                 <button
                   onClick={() => setActiveChain("solana")}
                   className={cn(
-                    "px-2.5 py-1 rounded-sm text-xs font-medium transition-all",
+                    "px-2.5 py-1 rounded-sm text-[10px] font-medium tracking-wider uppercase transition-all duration-300",
                     activeChain === "solana"
                       ? "bg-[var(--bg-raised)] text-[var(--text-primary)] shadow-sm"
                       : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
