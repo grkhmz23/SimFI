@@ -14,7 +14,7 @@ export default function NotFound() {
             <AlertCircle className="h-8 w-8 text-[var(--accent-loss)]" />
           </div>
         </div>
-        <h1 className="font-serif text-3xl text-[var(--text-primary)] mb-2" style={{ fontFamily: 'var(--font-serif)' }}>
+        <h1 className="font-display text-3xl text-[var(--text-primary)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
           404
         </h1>
         <p className="text-sm text-[var(--text-secondary)] mb-8">

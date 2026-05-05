@@ -78,11 +78,8 @@ export function Navigation() {
         <div className="mx-auto max-w-content px-4 sm:px-6">
           <div className="flex h-14 items-center justify-between gap-4">
             {/* Wordmark */}
-            <Link href="/" className="flex items-center gap-2 shrink-0">
-              <img src={logoUrl} alt="SimFi" className="h-8 w-auto opacity-90" />
-              <span className="font-serif text-lg tracking-tight text-[var(--text-primary)] hidden sm:block">
-                SimFi
-              </span>
+            <Link href="/" className="flex items-center shrink-0">
+              <img src={logoUrl} alt="SimFi" className="h-11 w-auto opacity-95" />
             </Link>
 
             {/* Desktop Nav */}

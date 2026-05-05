@@ -81,7 +81,7 @@ export default function Referrals() {
             <Award className="h-4 w-4 text-[var(--accent-premium)]" />
             <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)]">Rewards</span>
           </div>
-          <h1 className="font-serif text-3xl text-[var(--text-primary)]" style={{ fontFamily: 'var(--font-serif)' }}>
+          <h1 className="font-display text-3xl text-[var(--text-primary)]" style={{ fontFamily: 'var(--font-display)' }}>
             Referrals
           </h1>
           <p className="text-sm text-[var(--text-secondary)] mt-1">

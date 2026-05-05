@@ -513,7 +513,7 @@ function AlphaDeskSection() {
                   </div>
                 </div>
               </div>
-              <p className="text-sm font-serif italic text-[var(--text-primary)] line-clamp-2">
+              <p className="text-sm font-display italic text-[var(--text-primary)] line-clamp-2">
                 {idea.narrativeThesis}
               </p>
               <div className="flex flex-wrap gap-1 mt-auto">

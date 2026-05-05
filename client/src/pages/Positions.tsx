@@ -147,7 +147,7 @@ export default function Positions() {
     <div className="container mx-auto px-4 py-8 max-w-7xl animate-page-in">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="font-serif text-4xl font-medium text-[var(--text-primary)] mb-2">
+        <h1 className="font-display text-4xl font-medium text-[var(--text-primary)] mb-2">
           Your Positions
         </h1>
         <p className="text-[var(--text-secondary)]">

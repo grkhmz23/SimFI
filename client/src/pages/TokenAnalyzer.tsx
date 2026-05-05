@@ -35,8 +35,8 @@ export default function TokenAnalyzer() {
         </Badge>
 
         <h1
-          className="font-serif text-4xl md:text-5xl text-[var(--text-primary)] mb-4"
-          style={{ fontFamily: 'var(--font-serif)' }}
+          className="font-display text-4xl md:text-5xl text-[var(--text-primary)] mb-4"
+          style={{ fontFamily: 'var(--font-display)' }}
         >
           Study
         </h1>

@@ -167,7 +167,7 @@ export default function Analytics() {
     return (
       <div className="min-h-screen bg-[var(--bg-base)]">
         <div className="container mx-auto px-4 py-8 max-w-7xl">
-          <h1 className="font-serif text-4xl font-medium text-[var(--text-primary)] mb-2">
+          <h1 className="font-display text-4xl font-medium text-[var(--text-primary)] mb-2">
             Trade Analytics
           </h1>
           <p className="text-[var(--text-secondary)] mb-8">
@@ -191,7 +191,7 @@ export default function Analytics() {
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="font-serif text-4xl font-medium text-[var(--text-primary)] mb-2">
+          <h1 className="font-display text-4xl font-medium text-[var(--text-primary)] mb-2">
             Trade Analytics
           </h1>
           <p className="text-[var(--text-secondary)]">

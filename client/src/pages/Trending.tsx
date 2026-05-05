@@ -218,7 +218,7 @@ export default function Trending() {
                 <TrendingUp className="h-4 w-4 text-[var(--accent-gain)]" />
                 <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)]">Markets</span>
               </div>
-              <h1 className="font-serif text-3xl text-[var(--text-primary)]" style={{ fontFamily: 'var(--font-serif)' }}>
+              <h1 className="font-display text-3xl text-[var(--text-primary)]" style={{ fontFamily: 'var(--font-display)' }}>
                 Trending
               </h1>
               <p className="text-sm text-[var(--text-secondary)] mt-1">

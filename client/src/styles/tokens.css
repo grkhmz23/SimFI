@@ -1,5 +1,5 @@
 /* ============================================================================
-   SIMFI DESIGN TOKENS — Editorial Edition
+   SIMFI DESIGN TOKENS — Professional Edition
    ============================================================================ */
 
 :root {
@@ -112,9 +112,9 @@
   /* --------------------------------------------------------------------------
      TYPOGRAPHY
      -------------------------------------------------------------------------- */
-  --font-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
-  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', monospace;
+  --font-display: 'Space Grotesk', 'DM Sans', system-ui, sans-serif;
+  --font-sans: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Roboto Mono', monospace;
 
   /* --------------------------------------------------------------------------
      RADIUS — tighter, more intentional

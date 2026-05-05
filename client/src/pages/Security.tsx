@@ -89,7 +89,7 @@ export default function Security() {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--accent-premium)]/10">
             <Shield className="h-5 w-5 text-[var(--accent-premium)]" />
           </div>
-          <h1 className="font-serif text-3xl font-medium text-[var(--text-primary)]">
+          <h1 className="font-display text-3xl font-medium text-[var(--text-primary)]">
             Security
           </h1>
         </div>

@@ -66,7 +66,7 @@ export default function Login() {
                 <span className="font-semibold tracking-tight text-[var(--text-primary)]">SimFi</span>
               </span>
             </Link>
-            <h1 className="font-serif text-3xl text-[var(--text-primary)] mb-2" style={{ fontFamily: 'var(--font-serif)' }}>
+            <h1 className="font-display text-3xl text-[var(--text-primary)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
               Welcome back
             </h1>
             <p className="text-sm text-[var(--text-secondary)]">
@@ -188,7 +188,7 @@ export default function Login() {
           <div className="mb-8">
             <h2
               className="text-4xl leading-tight text-[var(--text-primary)] mb-4"
-              style={{ fontFamily: 'var(--font-serif)' }}
+              style={{ fontFamily: 'var(--font-display)' }}
             >
               Master trading
               <br />

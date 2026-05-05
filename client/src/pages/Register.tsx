@@ -109,7 +109,7 @@ export default function Register() {
                 <span className="font-semibold tracking-tight text-[var(--text-primary)]">SimFi</span>
               </span>
             </Link>
-            <h1 className="font-serif text-3xl text-[var(--text-primary)] mb-2" style={{ fontFamily: 'var(--font-serif)' }}>
+            <h1 className="font-display text-3xl text-[var(--text-primary)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
               Create account
             </h1>
             <p className="text-sm text-[var(--text-secondary)]">
@@ -334,7 +334,7 @@ export default function Register() {
           <div className="mb-8">
             <h2
               className="text-4xl leading-tight text-[var(--text-primary)] mb-4"
-              style={{ fontFamily: 'var(--font-serif)' }}
+              style={{ fontFamily: 'var(--font-display)' }}
             >
               Learn to trade
               <br />

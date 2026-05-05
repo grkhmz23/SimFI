@@ -155,7 +155,7 @@ export default function TraderProfile() {
   if (!profile) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-16 text-center">
-        <h1 className="font-serif text-3xl text-[var(--text-primary)] mb-2">Trader not found</h1>
+        <h1 className="font-display text-3xl text-[var(--text-primary)] mb-2">Trader not found</h1>
         <p className="text-[var(--text-secondary)]">@{username} doesn&apos;t exist.</p>
       </div>
     );
@@ -186,7 +186,7 @@ export default function TraderProfile() {
         <div className="p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="font-serif text-3xl text-[var(--text-primary)] mb-1">@{profile.username}</h1>
+              <h1 className="font-display text-3xl text-[var(--text-primary)] mb-1">@{profile.username}</h1>
               <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
                 <Calendar className="h-3.5 w-3.5" />
                 <span>Member since {new Date(profile.createdAt).toLocaleDateString()}</span>

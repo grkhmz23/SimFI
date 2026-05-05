@@ -376,7 +376,7 @@ export default function Portfolio() {
     <div className="container mx-auto px-4 py-8 max-w-7xl animate-page-in">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="font-serif text-4xl font-medium text-[var(--text-primary)] mb-2">
+        <h1 className="font-display text-4xl font-medium text-[var(--text-primary)] mb-2">
           Portfolio
         </h1>
         <p className="text-[var(--text-secondary)]">
@@ -489,7 +489,7 @@ export default function Portfolio() {
           className="mb-8"
         >
           <Card className="card-raised p-5">
-            <h3 className="font-serif text-lg font-medium text-[var(--text-primary)] mb-4">
+            <h3 className="font-display text-lg font-medium text-[var(--text-primary)] mb-4">
               Balance Over Time
             </h3>
             <BalanceChart data={analyticsData.balanceHistory} />
@@ -505,7 +505,7 @@ export default function Portfolio() {
       >
         <Card className="card-raised overflow-hidden">
           <div className="p-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
-            <h2 className="font-serif text-lg font-medium text-[var(--text-primary)]">
+            <h2 className="font-display text-lg font-medium text-[var(--text-primary)]">
               Open Positions
             </h2>
             <TooltipProvider>

@@ -54,7 +54,7 @@ export function TradeShareModal({ trade, nativePrice, open, onOpenChange }: Trad
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="font-serif">Share Trade</DialogTitle>
+          <DialogTitle className="font-display">Share Trade</DialogTitle>
           <DialogDescription>
             Preview your trade card and download as a PNG to share on Twitter/X.
           </DialogDescription>

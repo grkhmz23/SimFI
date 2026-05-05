@@ -203,7 +203,7 @@ export default function Leaderboard() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
       <div className="mb-8">
-        <h1 className="font-serif text-4xl text-[var(--text-primary)] mb-2">Leaderboard</h1>
+        <h1 className="font-display text-4xl text-[var(--text-primary)] mb-2">Leaderboard</h1>
         <p className="text-[var(--text-secondary)]">Top traders by realized profit</p>
       </div>
 

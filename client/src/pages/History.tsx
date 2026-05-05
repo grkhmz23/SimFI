@@ -111,7 +111,7 @@ export default function History() {
     <div className="container mx-auto px-4 py-8 max-w-7xl animate-page-in">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="font-serif text-4xl font-medium text-[var(--text-primary)] mb-2">
+        <h1 className="font-display text-4xl font-medium text-[var(--text-primary)] mb-2">
           Trade History
         </h1>
         <p className="text-[var(--text-secondary)]">View all your completed trades</p>
@@ -120,7 +120,7 @@ export default function History() {
       <Card className="card-raised overflow-hidden">
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="font-serif text-lg font-medium text-[var(--text-primary)]">
+            <h2 className="font-display text-lg font-medium text-[var(--text-primary)]">
               Closed Positions
             </h2>
             <p className="text-sm text-[var(--text-secondary)]">

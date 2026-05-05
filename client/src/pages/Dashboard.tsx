@@ -101,7 +101,7 @@ export default function Dashboard() {
           <div className="w-16 h-16 mx-auto mb-6 rounded-xl bg-[var(--bg-hover)] flex items-center justify-center">
             <LogIn className="h-8 w-8 text-[var(--text-secondary)]" />
           </div>
-          <h2 className="font-serif text-2xl text-[var(--text-primary)] mb-3" style={{ fontFamily: 'var(--font-serif)' }}>
+          <h2 className="font-display text-2xl text-[var(--text-primary)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
             Welcome to SimFi
           </h2>
           <p className="text-sm text-[var(--text-secondary)] mb-8">
@@ -250,7 +250,7 @@ export default function Dashboard() {
             <div className="w-2 h-2 rounded-full bg-[var(--accent-gain)] animate-pulse" />
             <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)]">Account</span>
           </div>
-          <h1 className="font-serif text-3xl text-[var(--text-primary)]" style={{ fontFamily: 'var(--font-serif)' }}>
+          <h1 className="font-display text-3xl text-[var(--text-primary)]" style={{ fontFamily: 'var(--font-display)' }}>
             {currentUser?.username}
           </h1>
           <p className="text-sm text-[var(--text-secondary)] mt-1">

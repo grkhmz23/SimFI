@@ -56,7 +56,7 @@ export default function About() {
           </Badge>
           <h1
             className="text-4xl md:text-5xl text-[var(--text-primary)] mb-6 leading-tight"
-            style={{ fontFamily: 'var(--font-serif)' }}
+            style={{ fontFamily: 'var(--font-display)' }}
           >
             Simulation Finance
             <br />
@@ -127,7 +127,7 @@ export default function About() {
 
         {/* How It Works */}
         <div className="mb-10">
-          <h2 className="font-serif text-2xl text-[var(--text-primary)] mb-6 text-center" style={{ fontFamily: 'var(--font-serif)' }}>
+          <h2 className="font-display text-2xl text-[var(--text-primary)] mb-6 text-center" style={{ fontFamily: 'var(--font-display)' }}>
             How SimFi Works
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -160,7 +160,7 @@ export default function About() {
             <Badge variant="premium" className="mb-4">
               Base Chain
             </Badge>
-            <h2 className="font-serif text-2xl text-[var(--text-primary)] mb-3" style={{ fontFamily: 'var(--font-serif)' }}>
+            <h2 className="font-display text-2xl text-[var(--text-primary)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
               Reward Distribution Coming Soon
             </h2>
             <p className="text-sm text-[var(--text-secondary)] max-w-xl mx-auto">
@@ -189,7 +189,7 @@ export default function About() {
         {/* Community */}
         <Card className="p-8 mb-10">
           <div className="text-center mb-6">
-            <h2 className="font-serif text-xl text-[var(--text-primary)] mb-2" style={{ fontFamily: 'var(--font-serif)' }}>
+            <h2 className="font-display text-xl text-[var(--text-primary)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
               Join Our Community
             </h2>
             <p className="text-sm text-[var(--text-secondary)]">
@@ -270,7 +270,7 @@ export default function About() {
 
         {/* CTA */}
         <div className="text-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-10 md:p-12">
-          <h2 className="font-serif text-2xl text-[var(--text-primary)] mb-3" style={{ fontFamily: 'var(--font-serif)' }}>
+          <h2 className="font-display text-2xl text-[var(--text-primary)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
             Ready to Start Learning?
           </h2>
           <p className="text-sm text-[var(--text-secondary)] mb-8 max-w-lg mx-auto">
