@@ -73,6 +73,8 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const isBuying = mode === "buy" || !position
   const effectiveMode = mode || "buy"
   const [lastQuoteUpdate, setLastQuoteUpdate] = useState<Date>(new Date())
+  const [quoteExpiresAt, setQuoteExpiresAt] = useState(0)
+  const [quoteSecondsLeft, setQuoteSecondsLeft] = useState(0)
 
   const tokenAddress = position?.tokenAddress || token?.tokenAddress || ""
 
@@ -235,8 +237,17 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   useEffect(() => {
     if (quote) {
       setLastQuoteUpdate(new Date())
+      setQuoteExpiresAt(quote.expiresAt)
     }
   }, [quote])
+
+  useEffect(() => {
+    if (!quoteExpiresAt) return
+    const update = () => setQuoteSecondsLeft(Math.max(0, Math.ceil((quoteExpiresAt - Date.now()) / 1000)))
+    update()
+    const id = setInterval(update, 1000)
+    return () => clearInterval(id)
+  }, [quoteExpiresAt])
 
   const currentPriceNumber = Number(currentPrice)
   const clientEstimatedTokens =
@@ -325,6 +336,8 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       })
     },
   })
+
+  const isQuoteExpired = quoteExpiresAt > 0 && quoteSecondsLeft <= 0
 
   const onBuySubmit = buyForm.handleSubmit((data) => {
     if (!activeToken || !tokenAddress) return
@@ -473,7 +486,13 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                     </span>
                   </div>
                   <p className="text-xs text-[var(--text-tertiary)] text-right">
-                    {quoteError ? "Estimate unavailable — using cached price" : quote ? "Live server quote" : "Final amount determined at execution"}
+                    {quoteError
+                    ? "Estimate unavailable — using cached price"
+                    : isQuoteExpired
+                    ? "Quote expired — waiting for refresh"
+                    : quote && quoteSecondsLeft > 0
+                    ? `Live quote · expires in ${quoteSecondsLeft}s`
+                    : "Final amount determined at execution"}
                   </p>
                 </div>
 
@@ -481,7 +500,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                   type="submit"
                   className="w-full"
                   size="lg"
-                  disabled={tradeMutation.isPending || nativeAmount <= 0}
+                  disabled={tradeMutation.isPending || nativeAmount <= 0 || isQuoting || isQuoteExpired}
                 >
                   {tradeMutation.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -591,7 +610,13 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                       </span>
                     </div>
                     <p className="text-xs text-[var(--text-tertiary)] text-right">
-                      {quoteError ? "Estimate unavailable — using cached price" : quote ? "Live server quote" : "Final amount determined at execution"}
+                      {quoteError
+                    ? "Estimate unavailable — using cached price"
+                    : isQuoteExpired
+                    ? "Quote expired — waiting for refresh"
+                    : quote && quoteSecondsLeft > 0
+                    ? `Live quote · expires in ${quoteSecondsLeft}s`
+                    : "Final amount determined at execution"}
                     </p>
                   </div>
                 )}
@@ -601,7 +626,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
                   variant="danger"
                   className="w-full"
                   size="lg"
-                  disabled={tradeMutation.isPending || percentage <= 0}
+                  disabled={tradeMutation.isPending || percentage <= 0 || isQuoting || isQuoteExpired}
                 >
                   {tradeMutation.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />

@@ -8,6 +8,8 @@ import { useChain } from "@/lib/chain-context";
 import { usePlaceBet } from "@/hooks/usePlaceBet";
 import { useToast } from "@/hooks/use-toast";
 import type { SportsbookEvent } from "@/lib/sportsbookApi";
+import { lamportsToSol, weiToEth } from "@/lib/token-format";
+import { formatNative } from "@/lib/format";
 import { X, Settings } from "lucide-react";
 
 interface BetSlipProps {
@@ -27,10 +29,9 @@ export function BetSlip({ open, onClose, event, selection, odds }: BetSlipProps)
   const placeBet = usePlaceBet();
   const { toast } = useToast();
 
-  const balance = activeChain === "solana" ? (user?.balance ?? 0) : (user?.baseBalance ?? 0);
   const symbol = activeChain === "solana" ? "SOL" : "ETH";
-  const decimals = activeChain === "solana" ? 1e9 : 1e18;
-  const balanceHuman = Number(balance) / decimals;
+  const balanceBigInt = BigInt(activeChain === "solana" ? (user?.balance ?? 0) : (user?.baseBalance ?? 0));
+  const balanceHuman = activeChain === "solana" ? lamportsToSol(balanceBigInt) : weiToEth(balanceBigInt);
 
   const stakeNum = parseFloat(stake);
   const potentialPayout = !isNaN(stakeNum) && stakeNum > 0 ? stakeNum * odds : 0;
@@ -96,7 +97,7 @@ export function BetSlip({ open, onClose, event, selection, odds }: BetSlipProps)
               <div className="flex items-center justify-between">
                 <Label className="text-xs text-[var(--text-secondary)]">Stake ({symbol})</Label>
                 <span className="text-xs text-[var(--text-tertiary)]">
-                  Balance: {balanceHuman.toFixed(4)} {symbol}
+                  Balance: {formatNative(balanceHuman, activeChain)}
                 </span>
               </div>
               <Input
@@ -116,7 +117,7 @@ export function BetSlip({ open, onClose, event, selection, odds }: BetSlipProps)
             <div className="flex items-center justify-between text-sm">
               <span className="text-[var(--text-secondary)]">Potential payout</span>
               <span className="font-mono font-medium text-[var(--accent-gain)]">
-                {potentialPayout.toFixed(4)} {symbol}
+                {formatNative(potentialPayout, activeChain)}
               </span>
             </div>
 

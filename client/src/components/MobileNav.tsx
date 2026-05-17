@@ -4,11 +4,9 @@ import { cn } from "@/lib/utils"
 import {
   TrendingUp,
   BarChart3,
-  Trophy,
+  Brain,
   Wallet,
   User,
-  Bookmark,
-  Brain,
 } from "lucide-react"
 
 export function MobileNav() {
@@ -17,14 +15,11 @@ export function MobileNav() {
 
   const tabs = [
     { path: "/", label: "Trade", icon: TrendingUp },
-    { path: "/trending", label: "Trending", icon: BarChart3 },
+    { path: "/trending", label: "Markets", icon: BarChart3 },
     { path: "/predictions", label: "Predict", icon: Brain },
-    { path: "/sportsbook", label: "Sports", icon: Trophy },
     ...(isAuthenticated ? [
       { path: "/portfolio", label: "Portfolio", icon: Wallet },
-      { path: "/watchlist", label: "Watch", icon: Bookmark },
     ] : []),
-    { path: "/leaderboard", label: "Ranks", icon: Trophy },
     { path: isAuthenticated ? "/dashboard" : "/login", label: isAuthenticated ? "Profile" : "Login", icon: User },
   ]
 

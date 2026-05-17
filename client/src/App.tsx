@@ -259,9 +259,9 @@ function App() {
               <PriceProvider>
                 <ErrorBoundary>
                   <Toaster />
-                  <WelcomePopup 
+                  <WelcomePopup
                     delay={800}
-                    showOncePerSession={false}
+                    showOncePerSession={true}
                   />
                   <Router />
                 </ErrorBoundary>

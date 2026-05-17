@@ -28,6 +28,8 @@ import {
 } from '@/lib/format';
 import { useChain } from '@/lib/chain-context';
 import { usePrice } from '@/lib/price-context';
+import { useAuth } from '@/lib/auth-context';
+import { useLocation } from 'wouter';
 import { History as HistoryIcon, ChevronLeft, ChevronRight, Share2 } from 'lucide-react';
 import type { Trade } from '@shared/schema';
 import { TradeShareModal } from '@/components/TradeShareModal';
@@ -88,6 +90,8 @@ function calculateHoldTime(opened: string | Date, closed: string | Date): string
 export default function History() {
   const [page, setPage] = useState(1);
   const [shareTrade, setShareTrade] = useState<Trade | null>(null);
+  const { isAuthenticated } = useAuth();
+  const [, setLocation] = useLocation();
   const { activeChain, nativeSymbol } = useChain();
   const { getPrice } = usePrice();
 
@@ -102,7 +106,25 @@ export default function History() {
       }
       return res.json();
     },
+    enabled: isAuthenticated,
   });
+
+  if (!isAuthenticated) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-7xl">
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <Card className="card-raised p-12 text-center max-w-md">
+            <HistoryIcon className="h-12 w-12 mx-auto text-[var(--text-secondary)] mb-4" />
+            <h2 className="text-2xl font-bold mb-2 text-[var(--text-primary)]">Login Required</h2>
+            <p className="text-[var(--text-secondary)] mb-6">
+              You need to be logged in to view your trade history.
+            </p>
+            <Button onClick={() => setLocation('/login')}>Login</Button>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   const trades = data?.trades ?? [];
   const pagination = data?.pagination ?? { page: 1, limit: 50, total: 0, totalPages: 1 };

@@ -1,6 +1,7 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import type { SportsbookBet } from "@/lib/sportsbookApi";
+import { formatNativeAmount, toBigInt } from "@/lib/token-format";
 
 interface BetHistoryTableProps {
   bets: SportsbookBet[];
@@ -37,7 +38,7 @@ export function BetHistoryTable({ bets }: BetHistoryTableProps) {
               </TableCell>
               <TableCell className="text-xs capitalize">{bet.selection}</TableCell>
               <TableCell className="text-xs font-mono">
-                {bet.stake} {bet.chain === 'solana' ? 'lamports' : 'wei'}
+                {formatNativeAmount(toBigInt(bet.stake), bet.chain as 'solana' | 'base', 4)} {bet.chain === 'solana' ? 'SOL' : 'ETH'}
               </TableCell>
               <TableCell className="text-xs font-mono">{bet.oddsAtPlacement.toFixed(2)}</TableCell>
               <TableCell>
@@ -57,7 +58,9 @@ export function BetHistoryTable({ bets }: BetHistoryTableProps) {
                 </Badge>
               </TableCell>
               <TableCell className="text-right text-xs font-mono">
-                {bet.payoutAmount ?? '-'}
+                {bet.payoutAmount != null
+                  ? `${formatNativeAmount(toBigInt(bet.payoutAmount), bet.chain as 'solana' | 'base', 4)} ${bet.chain === 'solana' ? 'SOL' : 'ETH'}`
+                  : '—'}
               </TableCell>
             </TableRow>
           ))}
