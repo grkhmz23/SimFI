@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useChain } from '@/lib/chain-context';
 import { usePrice } from '@/lib/price-context';
 import { formatUsdText, formatPct } from '@/lib/format';
-import { Bookmark, BookmarkX, ExternalLink, LogIn, TrendingUp, TrendingDown } from 'lucide-react';
+import { Bookmark, BookmarkX, ExternalLink, LogIn, AlertCircle, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Token, Chain } from '@shared/schema';
 
@@ -21,21 +21,6 @@ const cardVariants = {
     transition: { delay: i * 0.05, duration: 0.35, ease: [0.22, 1, 0.36, 1] },
   }),
 };
-
-interface EnrichedWatchlistItem {
-  id: string;
-  chain: Chain;
-  tokenAddress: string;
-  tokenName: string;
-  tokenSymbol: string;
-  decimals: number;
-  price: number;
-  priceUsd: number;
-  priceChange24h: number;
-  marketCap: number;
-  volume24h: number;
-  icon?: string;
-}
 
 export default function Watchlist() {
   const { isAuthenticated } = useAuth();
@@ -57,7 +42,7 @@ export default function Watchlist() {
   }, [items]);
 
   // Fetch current prices for all watched tokens
-  const { data: priceData, isLoading: pricesLoading } = useQuery<{
+  const { data: priceData, isLoading: pricesLoading, isError: pricesError, refetch: refetchPrices } = useQuery<{
     tokens: (Token & { cached?: boolean; ageMs?: number })[];
   }>({
     queryKey: ['watchlist-prices', items.map((i) => i.tokenAddress).join(',')],
@@ -160,6 +145,18 @@ export default function Watchlist() {
               <Card key={i} className="card-raised h-40 skeleton-shimmer" />
             ))}
           </div>
+        ) : pricesError && items.length > 0 ? (
+          <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <AlertCircle className="h-8 w-8 text-[var(--text-tertiary)]" />
+            <p className="text-sm text-[var(--text-secondary)]">Could not load token prices</p>
+            <button
+              onClick={() => refetchPrices()}
+              className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] rounded-md px-3 py-1.5 transition-colors"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Retry
+            </button>
+          </div>
         ) : enrichedItems.length === 0 ? (
           <Card className="card-raised p-12 text-center">
             <Bookmark className="h-12 w-12 mx-auto text-[var(--text-tertiary)] mb-4" strokeWidth={1.5} />
@@ -179,8 +176,9 @@ export default function Watchlist() {
                 initial="hidden"
                 animate="visible"
               >
-                <Card className="card-raised h-full flex flex-col hover:border-[var(--border-strong)] transition-colors cursor-pointer"
-                  onClick={() => setLocation(`/token/${item.tokenAddress}`)}
+                <Card
+                  className={`card-raised h-full flex flex-col transition-colors ${item.tokenAddress ? 'hover:border-[var(--border-strong)] cursor-pointer' : ''}`}
+                  onClick={() => item.tokenAddress && setLocation(`/token/${item.tokenAddress}`)}
                 >
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
@@ -214,6 +212,7 @@ export default function Watchlist() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
+                          aria-label={`Remove ${item.tokenName} from watchlist`}
                           onClick={(e) => {
                             e.stopPropagation();
                             removeFromWatchlist(item.id);
@@ -255,6 +254,22 @@ export default function Watchlist() {
                           {item.volume24h > 0 ? formatUsdText(item.volume24h) : '—'}
                         </p>
                       </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-[var(--border-subtle)] mt-auto">
+                      {item.tokenAddress ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full text-xs h-8"
+                          onClick={(e) => { e.stopPropagation(); setLocation(`/token/${item.tokenAddress}`); }}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                          Review Trade
+                        </Button>
+                      ) : (
+                        <p className="text-xs text-[var(--text-tertiary)] text-center py-1">Address unavailable</p>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

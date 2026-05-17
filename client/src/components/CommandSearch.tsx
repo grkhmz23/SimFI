@@ -11,8 +11,8 @@ import {
   CommandItem,
 } from "@/components/ui/command"
 import { ChainChip } from "@/components/ui/chain-chip"
-import { Search, Loader2, TrendingUp, Clock } from "lucide-react"
-import { formatCompactNumber, formatMarketCap } from "@/lib/token-format"
+import { Search, Loader2, Clock } from "lucide-react"
+import { formatMarketCap } from "@/lib/token-format"
 import { formatPct } from "@/lib/format"
 
 interface SearchResult {

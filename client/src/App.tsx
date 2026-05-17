@@ -203,7 +203,7 @@ function Router() {
         </Suspense>
       </Route>
       <Route path="/sportsbook/events/:id">
-        {(params) => (
+        {() => (
           <Suspense fallback={<PageSkeleton />}>
             <SportsbookLayout>
               <EventDetailPage />

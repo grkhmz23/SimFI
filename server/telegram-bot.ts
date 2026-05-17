@@ -83,8 +83,6 @@ class SessionManager {
 const userSessions = new SessionManager();
 const userStates = new Map();
 const pendingOperations = new Map(); // Track pending operations to prevent concurrent trades
-let cachedSolPrice = 0;
-let solPriceLastUpdated = 0;
 
 // ── Utilities ──
 const escapeMarkdown = (input: any): string => {
@@ -118,16 +116,6 @@ const formatTokenAmount = (atomic: any, decimals = 6): string => {
   return tokens.toFixed(2);
 };
 
-const formatNativeToUsd = (atomic: any, chain = 'solana'): string => {
-  const price = chain === 'solana' ? cachedNativePrices.sol : cachedNativePrices.eth;
-  if (!price || !Number.isFinite(price)) return 'N/A';
-  const cfg = CHAIN_CONFIG[chain] || CHAIN_CONFIG.solana;
-  const native = Number(atomic) / (10 ** cfg.decimals);
-  const usd = native * price;
-  if (!Number.isFinite(usd)) return 'N/A';
-  return `$${usd.toFixed(2)}`;
-};
-
 const getNativePrices = async (token: string | null) => {
   const now = Date.now();
   if (cachedNativePrices.sol > 0 && cachedNativePrices.eth > 0 && (now - nativePricesLastUpdated) < 5000) {
@@ -155,19 +143,6 @@ const formatCompactUsd = (value: number): string => {
   if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
   if (abs >= 1_000) return `$${(value / 1_000).toFixed(2)}K`;
   return `$${value.toFixed(2)}`;
-};
-
-const formatSol = (lamports: any): string => formatNative(lamports, 'solana');
-const formatSolToUsd = (lamports: any, solPrice = cachedNativePrices.sol): string => {
-  if (!solPrice || !Number.isFinite(solPrice)) return 'N/A';
-  const sol = Number(lamports) / 1_000_000_000;
-  const usd = sol * solPrice;
-  if (!Number.isFinite(usd)) return 'N/A';
-  return `$${usd.toFixed(2)}`;
-};
-const getSolPrice = async (token: string | null) => {
-  const prices = await getNativePrices(token);
-  return prices.sol || null;
 };
 
 const isSolanaAddress = (text: string): boolean => {
@@ -468,7 +443,6 @@ export function createBot(token: string): Telegraf {
   bot.use(async (ctx: any, next: any) => {
     const updateType = ctx.updateType;
     const userId = ctx.from?.id;
-    const username = ctx.from?.username || ctx.from?.first_name;
 
     console.log(`[MIDDLEWARE] 📨 Received update: ${updateType} from user ${userId}`);
 
@@ -492,7 +466,6 @@ export function createBot(token: string): Telegraf {
 
   bot.command('start', async (ctx: any) => {
     const userId = ctx.from.id;
-    const username = ctx.from.username || ctx.from.first_name;
 
     console.log(`📱 User ${userId} started the bot`);
 

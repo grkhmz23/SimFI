@@ -3,7 +3,9 @@ import { useSportsbookEvents } from "@/hooks/useSportsbookEvents";
 import { EventCard } from "@/components/sportsbook/EventCard";
 import { BetSlip } from "@/components/sportsbook/BetSlip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AlertCircle, RefreshCw } from "lucide-react";
 import type { SportsbookEvent } from "@/lib/sportsbookApi";
 
 const LEAGUES = [
@@ -20,19 +22,35 @@ export default function SportsbookHomePage() {
   const [selectedSelection, setSelectedSelection] = useState<"home" | "away" | "draw" | null>(null);
   const [selectedOdds, setSelectedOdds] = useState(0);
 
-  const { data: events, isLoading } = useSportsbookEvents(activeLeague);
+  const { data: events, isLoading, isError, refetch } = useSportsbookEvents(activeLeague);
 
   const upcomingEvents = events?.filter((e) => new Date(e.commenceTime) > new Date()) ?? [];
+  const startedEvents = events?.filter((e) => new Date(e.commenceTime) <= new Date()) ?? [];
+  const allEvents = [...upcomingEvents, ...startedEvents];
 
   function handleSelectOdds(event: SportsbookEvent, selection: "home" | "away" | "draw", odds: number) {
+    // Toggle off if re-selecting same
+    if (selectedEvent?.id === event.id && selectedSelection === selection) {
+      setSelectedEvent(null);
+      setSelectedSelection(null);
+      setSelectedOdds(0);
+      setBetSlipOpen(false);
+      return;
+    }
     setSelectedEvent(event);
     setSelectedSelection(selection);
     setSelectedOdds(odds);
     setBetSlipOpen(true);
   }
 
+  const selectionLabel = selectedEvent && selectedSelection
+    ? selectedSelection === "home" ? selectedEvent.homeTeam
+    : selectedSelection === "away" ? selectedEvent.awayTeam
+    : "Draw"
+    : null;
+
   return (
-    <div className="max-w-content mx-auto px-4 sm:px-6 py-6">
+    <div className="max-w-content mx-auto px-4 sm:px-6 py-6 pb-20 lg:pb-6">
       <div className="mb-6">
         <h1 className="text-display text-[var(--text-primary)]">Sportsbook</h1>
         <p className="text-sm text-[var(--text-secondary)] mt-1">
@@ -40,8 +58,17 @@ export default function SportsbookHomePage() {
         </p>
       </div>
 
-      <Tabs value={activeLeague} onValueChange={setActiveLeague} className="mb-6">
-        <TabsList className="bg-[var(--bg-raised)]">
+      <Tabs
+        value={activeLeague}
+        onValueChange={(v) => {
+          setActiveLeague(v);
+          setSelectedEvent(null);
+          setSelectedSelection(null);
+          setBetSlipOpen(false);
+        }}
+        className="mb-6"
+      >
+        <TabsList className="bg-[var(--bg-raised)] flex-wrap h-auto gap-1">
           {LEAGUES.map((l) => (
             <TabsTrigger
               key={l.key}
@@ -54,6 +81,26 @@ export default function SportsbookHomePage() {
         </TabsList>
       </Tabs>
 
+      {/* Selected bet summary */}
+      {selectionLabel && selectedEvent && (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-[var(--accent-premium)]/30 bg-[var(--accent-premium)]/5 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-medium text-[var(--accent-premium)] uppercase tracking-wider mb-0.5">
+              Selected Bet
+            </p>
+            <p className="text-sm text-[var(--text-primary)] truncate">
+              {selectionLabel} @ {selectedOdds.toFixed(2)} —{" "}
+              <span className="text-[var(--text-secondary)]">
+                {selectedEvent.homeTeam} vs {selectedEvent.awayTeam}
+              </span>
+            </p>
+          </div>
+          <Button size="sm" onClick={() => setBetSlipOpen(true)} className="ml-3 shrink-0">
+            Open Slip
+          </Button>
+        </div>
+      )}
+
       {isLoading && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -62,21 +109,36 @@ export default function SportsbookHomePage() {
         </div>
       )}
 
-      {upcomingEvents.length > 0 && (
+      {isError && !isLoading && (
+        <div className="flex flex-col items-center gap-3 py-12 text-center">
+          <AlertCircle className="h-8 w-8 text-[var(--text-tertiary)]" />
+          <p className="text-sm text-[var(--text-secondary)]">Failed to load events</p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {!isLoading && !isError && allEvents.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {upcomingEvents.map((event) => (
+          {allEvents.map((event) => (
             <EventCard
               key={event.id}
               event={event}
+              activeSelection={selectedEvent?.id === event.id ? selectedSelection : null}
               onSelectOdds={handleSelectOdds}
             />
           ))}
         </div>
       )}
 
-      {upcomingEvents.length === 0 && !isLoading && (
-        <div className="text-center py-12 text-sm text-[var(--text-tertiary)]">
-          No upcoming events in this league this week.
+      {!isLoading && !isError && allEvents.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-sm text-[var(--text-secondary)] mb-1">No events this week</p>
+          <p className="text-xs text-[var(--text-tertiary)]">
+            Check back soon or try another league
+          </p>
         </div>
       )}
 

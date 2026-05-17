@@ -202,7 +202,7 @@ async function fetchFromSource(
     }
     recordFailure(source.name, chain);
     return null;
-  } catch (error) {
+  } catch {
     recordFailure(source.name, chain);
     return null;
   }

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, bigint, integer, timestamp, unique, uniqueIndex, jsonb, numeric, date, serial, customType } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, bigint, integer, timestamp, unique, uniqueIndex, jsonb, numeric, date, serial, customType, index } from "drizzle-orm/pg-core";
 
 // Custom type: stores as numeric(38,0) in PostgreSQL (avoids bigint 9.2 ETH limit)
 // but returns as bigint in TypeScript for seamless code compatibility
@@ -77,6 +77,8 @@ export const positions = pgTable("positions", {
 }, (table) => ({
   // Unique constraint now includes chain
   userTokenChainUnique: unique().on(table.userId, table.tokenAddress, table.chain),
+  // Index for getUserPositions(userId) queries — userId as leading column
+  byUser: index("idx_positions_user_id").on(table.userId),
 }));
 
 export const tradeHistory = pgTable("trade_history", {
@@ -95,7 +97,10 @@ export const tradeHistory = pgTable("trade_history", {
   profitLoss: numeric("profit_loss", { precision: 38, scale: 0 }).notNull(),
   openedAt: timestamp("opened_at").notNull(),
   closedAt: timestamp("closed_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  // Index for getUserTrades(userId, closedAt DESC) — the primary read pattern
+  byUserClosed: index("idx_trade_history_user_closed_at").on(table.userId, table.closedAt),
+}));
 
 export const leaderboardPeriods = pgTable("leaderboard_periods", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

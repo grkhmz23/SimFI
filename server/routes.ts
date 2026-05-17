@@ -1,6 +1,5 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -14,7 +13,7 @@ import { authenticateToken } from "./middleware/auth";
 import { fetchDexScreenerProfiles } from "./pumpportal";
 import { leaderboardService } from "./leaderboardService";
 import { heliusService } from "./helius-enhanced";
-import { insertUserSchema, solToLamports, WEI_PER_ETH, LAMPORTS_PER_SOL, type LoginRequest, type RegisterRequest, type BuyRequest, type SellRequest, type Chain } from "@shared/schema";
+import { insertUserSchema, WEI_PER_ETH, LAMPORTS_PER_SOL, type Chain } from "@shared/schema";
 
 
 import { getSolPrice, getCachedSolPrice, fetchEthPrice, getNativePrice, getCachedNativePrice, getAllNativePricesDetailed } from './nativePrice';
@@ -28,7 +27,7 @@ import { getIdeasForRun } from "./services/alphaDesk/persist/ideas";
 import { findTodayRun, countRunsToday } from "./services/alphaDesk/persist/runs";
 import { getPerformanceSummary, getIdeaTrajectory } from "./services/alphaDesk/performance";
 import { ssePriceFeed } from "./services/ssePriceFeed";
-import { alphaDeskRuns, alphaDeskIdeas, alphaDeskIdeaOutcomes } from "@shared/schema";
+import { alphaDeskRuns, alphaDeskIdeaOutcomes } from "@shared/schema";
 
 // ============================================================================
 // RATE LIMITING WITH REDIS STORE (for multi-instance deployments)
@@ -59,7 +58,7 @@ async function initializeRateLimitStore() {
       const IoRedisModule = await import('ioredis');
       RedisStore = (RedisStoreModule as any).default || RedisStoreModule;
       Redis = (IoRedisModule as any).default || (IoRedisModule as any).Redis || IoRedisModule;
-    } catch (importError) {
+    } catch {
       console.warn('⚠️  Redis packages not installed. Run: npm install ioredis rate-limit-redis');
       console.log('   Falling back to in-memory rate limiting');
       return;
@@ -241,22 +240,6 @@ function parseSolToLamports(solAmount: string | number): bigint {
   const lamports = BigInt(lamportsStr);
 
   return lamports;
-}
-
-// Input validation for trade amounts
-const MIN_TRADE_LAMPORTS = 1_000_000n; // 0.001 SOL minimum
-const MAX_TRADE_LAMPORTS = 100_000_000_000n; // 100 SOL maximum
-
-function validateTradeAmount(lamports: bigint): void {
-  if (lamports <= 0n) {
-    throw new Error('Trade amount must be positive');
-  }
-  if (lamports < MIN_TRADE_LAMPORTS) {
-    throw new Error('Trade amount too small (minimum 0.001 SOL)');
-  }
-  if (lamports > MAX_TRADE_LAMPORTS) {
-    throw new Error('Trade amount too large (maximum 100 SOL)');
-  }
 }
 
 // Validate Solana address format
@@ -741,14 +724,6 @@ async function fetchBirdeye(endpoint: string, chain: string = 'solana'): Promise
   );
 }
 
-async function fetchCoinGecko(endpoint: string): Promise<Response | null> {
-  return fetchWithCircuitBreaker(
-    'coingecko',
-    `https://api.coingecko.com${endpoint}`,
-    API_TIMEOUTS.coingecko
-  );
-}
-
 // ============================================================================
 // IDEMPOTENCY: Prevent duplicate trades on retry
 // ============================================================================
@@ -868,6 +843,12 @@ function serializeBigInts(obj: any): any {
   );
 }
 
+function omitPassword<T extends { password?: unknown }>(user: T): Omit<T, 'password'> {
+  const userWithoutPassword: Partial<T> = { ...user };
+  delete userWithoutPassword.password;
+  return userWithoutPassword as Omit<T, 'password'>;
+}
+
 // ✅ MEDIUM FIX: Use centralized SOL price module
 // Alias for backward compatibility
 const fetchSolPrice = getSolPrice;
@@ -898,106 +879,13 @@ function findBestPair(pairs: any[], tokenAddress: string, chain: string): any | 
   return matchedPairs[0]; // Return highest liquidity pair
 }
 
-// ✅ FIX: Request coalescing for DexScreener
-// Prevents multiple concurrent requests for the same token
-interface PriceCache {
-  priceLamports: number;
-  decimals: number;
-  liquidityUsd: number;
-  volume24hUsd: number;
-  fetchedAt: number;
-}
-
-const dexScreenerCache = new Map<string, PriceCache>();
-const pendingRequests = new Map<string, Promise<PriceCache | null>>();
-const PRICE_CACHE_TTL_MS = 5000; // 5 second TTL - balance between freshness and rate limiting
-
 // Minimum liquidity for leaderboard-eligible trades (prevents manipulation)
 const MIN_LIQUIDITY_USD = 1000; // $1000 minimum liquidity
 const MIN_VOLUME_24H_USD = 500; // $500 minimum 24h volume
 
-async function fetchDexScreenerPriceInternal(tokenAddress: string): Promise<PriceCache | null> {
-  try {
-    const dexResponse = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(tokenAddress)}`, 3000);
-    if (dexResponse.ok) {
-      const dexData = await dexResponse.json();
-      const solanaPair = findBestPair(dexData.pairs, tokenAddress, 'solana');
-
-      if (solanaPair && solanaPair.priceNative) {
-        // ✅ PRECISION FIX: Parse without float math
-        const priceLamports = Number(parseDecimalToNative(solanaPair.priceNative, 9));
-        const decimals = solanaPair.baseToken?.decimals ?? 6;
-        const liquidityUsd = parseFloat(solanaPair.liquidity?.usd || '0');
-        const volume24hUsd = parseFloat(solanaPair.volume?.h24 || '0');
-
-        return {
-          priceLamports,
-          decimals,
-          liquidityUsd,
-          volume24hUsd,
-          fetchedAt: Date.now(),
-        };
-      }
-    }
-    return null;
-  } catch (error) {
-    console.error(`DexScreener fetch error for ${tokenAddress}:`, error);
-    return null;
-  }
-}
-
-// ✅ FIX: Coalesced price fetch - one request per token per TTL
-async function fetchDexScreenerPrice(tokenAddress: string): Promise<{
-  priceLamports: number;
-  decimals?: number;
-  liquidityUsd?: number;
-  volume24hUsd?: number;
-  isCached?: boolean;
-  fetchedAt?: number;
-} | null> {
-  // Check cache first
-  const cached = dexScreenerCache.get(tokenAddress);
-  if (cached && (Date.now() - cached.fetchedAt) < PRICE_CACHE_TTL_MS) {
-    return { ...cached, isCached: true };
-  }
-
-  // Check if there's already a pending request for this token
-  const pending = pendingRequests.get(tokenAddress);
-  if (pending) {
-    // Wait for the pending request instead of making a new one
-    const result = await pending;
-    return result ? { ...result, isCached: false } : null;
-  }
-
-  // Create new request and store promise
-  const requestPromise = fetchDexScreenerPriceInternal(tokenAddress);
-  pendingRequests.set(tokenAddress, requestPromise);
-
-  try {
-    const result = await requestPromise;
-
-    if (result) {
-      // Update cache
-      dexScreenerCache.set(tokenAddress, result);
-    }
-
-    return result ? { ...result, isCached: false, fetchedAt: result.fetchedAt } : null;
-  } finally {
-    // Clean up pending request
-    pendingRequests.delete(tokenAddress);
-  }
-}
-
 // Helper to check if token meets minimum liquidity requirements
 function meetsLiquidityRequirements(liquidityUsd: number, volume24hUsd: number): boolean {
   return liquidityUsd >= MIN_LIQUIDITY_USD && volume24hUsd >= MIN_VOLUME_24H_USD;
-}
-
-// Legacy function signature for backward compatibility
-async function fetchDexScreenerPriceLegacy(tokenAddress: string): Promise<{ priceLamports: number; decimals?: number } | null> {
-  const result = await fetchDexScreenerPrice(tokenAddress);
-  if (!result) return null;
-  return { priceLamports: result.priceLamports, decimals: result.decimals };
 }
 
 // Helper to fetch token metadata from multiple APIs with fallbacks
@@ -1027,7 +915,7 @@ async function fetchTokenMetadata(tokenAddress: string): Promise<{ icon?: string
         console.log(`⚠️ DexScreener has metadata for ${tokenAddress} but NO icon, trying Birdeye...`);
       }
     }
-  } catch (error) {
+  } catch {
     console.log(`⚠️ DexScreener metadata fetch failed for ${tokenAddress}`);
   }
 
@@ -1097,20 +985,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
 
   app.get('/api/health', healthLimiter, async (req, res) => {
+    const timestamp = new Date().toISOString();
+    const uptimeSeconds = Math.floor(process.uptime());
+
     try {
       // Check database connectivity
       await db.execute(sql`SELECT 1`);
 
-      // ✅ Minimal response - don't leak environment details
       res.json({
         status: 'healthy',
-        timestamp: new Date().toISOString(),
+        timestamp,
+        uptimeSeconds,
+        services: {
+          database: 'ok',
+          sportsbook: process.env.THE_ODDS_API_KEY ? 'configured' : 'unconfigured',
+          alphaDesk: (process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY) ? 'configured' : 'unconfigured',
+          redis: process.env.REDIS_URL ? 'configured' : 'unconfigured',
+        },
       });
     } catch (error: any) {
       console.error('Health check failed:', error);
       res.status(503).json({
         status: 'unhealthy',
-        timestamp: new Date().toISOString(),
+        timestamp,
+        uptimeSeconds,
+        services: { database: 'error' },
       });
     }
   });
@@ -1202,7 +1101,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Return user without password
-      const { password, ...userWithoutPassword } = user;
+      const userWithoutPassword = omitPassword(user);
       res.status(201).json(serializeBigInts({ user: userWithoutPassword }));
     } catch (error: any) {
       console.error('Registration error:', error?.message || String(error));
@@ -1290,7 +1189,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         maxAge: 24 * 60 * 60 * 1000
       });
 
-      const { password: _, ...userWithoutPassword } = user;
+      const userWithoutPassword = omitPassword(user);
       res.json(serializeBigInts({ user: userWithoutPassword }));
     } catch (error: any) {
       console.error('Login error:', error);
@@ -1487,7 +1386,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'User not found' });
       }
 
-      const { password, ...userWithoutPassword } = user;
+      const userWithoutPassword = omitPassword(user);
       res.json(serializeBigInts(userWithoutPassword));
     } catch (error: any) {
       console.error('Profile error:', error);
@@ -1495,7 +1394,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/auth/profile', authenticateToken, async (req, res) => {
+  app.put('/api/auth/profile', ipBackstopLimiter, authenticateToken, authLimiter, async (req, res) => {
     try {
       const { username, solanaWalletAddress, baseWalletAddress, preferredChain, password } = req.body;
       const updates: any = {};
@@ -1686,7 +1585,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { expiresIn: '24h' }
       );
 
-      const { password: _, ...userWithoutPassword } = user;
+      const userWithoutPassword = omitPassword(user);
       res.status(201).json(serializeBigInts({ 
         user: userWithoutPassword,
         token 
@@ -1740,7 +1639,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { expiresIn: '24h' }
       );
 
-      const { password: _, ...userWithoutPassword } = user;
+      const userWithoutPassword = omitPassword(user);
       res.json(serializeBigInts({ 
         user: userWithoutPassword,
         token 
@@ -1876,7 +1775,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   pricesFetchedAt = Date.now();
                   console.log(`   Birdeye override for ${tokenAddr.slice(0, 8)}: $${(Number(birdeyeData.priceNative) / 1e18).toExponential(4)} ETH`);
                 }
-              } catch (e: any) {
+              } catch {
                 // Keep DexScreener price if Birdeye fails
               }
             }
@@ -2302,8 +2201,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const positionValueUsd = nativePriceUsd > 0
           ? Number(positionSolSpent) / (positionChain === 'solana' ? 1e9 : 1e18) * nativePriceUsd
           : 0;
+        // Bigint-safe ratio: compute sell fraction as basis points (floor is fine for slippage estimation)
+        const sellRatioBps = positionAmount > 0n ? Number(sellAmount * 10000n / positionAmount) : 10000;
         // Use position value as proxy for liquidity if data liquidity is missing
-        const sellValueUsd = positionValueUsd * (Number(sellAmount) / Number(positionAmount));
+        const sellValueUsd = positionValueUsd * sellRatioBps / 10000;
         const liquidityUsd = currentTokenData.liquidityUsd || positionValueUsd || 1;
         const slippageBps = estimateSlippageBps(sellValueUsd, liquidityUsd);
         const slippageMultiplier = 10000n - BigInt(slippageBps);
@@ -2393,15 +2294,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/trades/history', authenticateToken, async (req, res) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
-      const limit = 50;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 50);
       const offset = (page - 1) * limit;
-      
+
       const chainParam = req.query.chain as string | undefined;
       const chain = chainParam && isValidChain(chainParam) ? chainParam : undefined;
 
+      const tokenAddressParam = req.query.tokenAddress as string | undefined;
+      const tokenAddress = tokenAddressParam?.trim() || undefined;
+
       const [trades, totalCount] = await Promise.all([
-        storage.getUserTrades(req.userId!, chain, limit, offset),
-        storage.getUserTradesCount(req.userId!, chain)
+        storage.getUserTrades(req.userId!, chain, limit, offset, tokenAddress),
+        storage.getUserTradesCount(req.userId!, chain, tokenAddress)
       ]);
 
       res.json(serializeBigInts({
@@ -2858,8 +2762,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       let candles: number[][] = [];
-      let geckoFailed = false;
-
       if (geckoResponse.ok) {
         try {
           const ohlcvData = await geckoResponse.json();
@@ -2889,12 +2791,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           candles = [...candles].sort((a: number[], b: number[]) => a[0] - b[0]);
         } catch (parseErr: any) {
           console.warn(`⚠️ Failed to parse GeckoTerminal response for ${address}:`, parseErr.message);
-          geckoFailed = true;
         }
       } else {
         const geckoText = await geckoResponse.text().catch(() => '');
         console.warn(`GeckoTerminal API error: ${geckoResponse.status} for ${address} on ${chainParam}`, geckoText.substring(0, 200));
-        geckoFailed = true;
       }
 
       // Fallback 2: Birdeye history_price (excellent Solana coverage, including new tokens)
@@ -3090,7 +2990,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (inputAmountLamports <= 0) {
           return res.status(400).json({ error: 'Invalid SOL amount' });
         }
-      } catch (e) {
+      } catch {
         return res.status(400).json({ error: 'Invalid SOL amount format' });
       }
 
@@ -3626,7 +3526,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/traders/:username/follow', authenticateToken, async (req, res) => {
+  app.post('/api/traders/:username/follow', ipBackstopLimiter, authenticateToken, userTradeLimiter, async (req, res) => {
     try {
       const { username } = req.params;
       const trader = await storage.getUserByUsername(username);
@@ -3668,7 +3568,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/streak/claim', authenticateToken, async (req, res) => {
+  app.post('/api/streak/claim', ipBackstopLimiter, authenticateToken, userTradeLimiter, async (req, res) => {
     try {
       const streak = await storage.getUserStreak(req.userId!);
       const today = new Date();

@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DataCell } from '@/components/ui/data-cell';
 import { ChainChip } from '@/components/ui/chain-chip';
-import { BarChart3, Activity, Target, Clock, Trophy } from 'lucide-react';
+import { BarChart3, Activity, Target, Clock, Trophy, AlertCircle, RefreshCw } from 'lucide-react';
 import { Link } from 'wouter';
 import { useChain } from '@/lib/chain-context';
 import { formatNativeAmount } from '@/lib/token-format';
@@ -51,16 +51,25 @@ function Countdown({ target }: { target: string }) {
   );
 }
 
-function RankBadge({ rank, isPremium }: { rank: number; isPremium: boolean }) {
-  if (isPremium) {
+function RankBadge({ rank }: { rank: number }) {
+  if (rank === 1) {
     return (
-      <div
-        className={cn(
-          'flex items-center justify-center w-8 h-8 rounded-full border text-sm font-bold',
-          'border-[rgba(201,169,110,0.25)] bg-[rgba(201,169,110,0.15)] text-[var(--accent-premium)]'
-        )}
-      >
-        {rank === 1 ? <Trophy className="w-4 h-4" /> : rank}
+      <div className="flex items-center justify-center w-8 h-8 rounded-full border border-[rgba(201,169,110,0.35)] bg-[rgba(201,169,110,0.18)] text-[var(--accent-premium)]">
+        <Trophy className="w-4 h-4" />
+      </div>
+    );
+  }
+  if (rank === 2) {
+    return (
+      <div className="flex items-center justify-center w-8 h-8 rounded-full border border-[rgba(180,180,185,0.35)] bg-[rgba(180,180,185,0.12)] text-[#b4b4b9] text-sm font-bold">
+        2
+      </div>
+    );
+  }
+  if (rank === 3) {
+    return (
+      <div className="flex items-center justify-center w-8 h-8 rounded-full border border-[rgba(176,113,63,0.35)] bg-[rgba(176,113,63,0.12)] text-[#b0713f] text-sm font-bold">
+        3
       </div>
     );
   }
@@ -81,7 +90,6 @@ function LeaderboardRow({
   profitKey: 'totalProfit' | 'periodProfit';
 }) {
   const profit = entry[profitKey] ?? 0;
-  const isTopThree = index < 3;
   const isPositive = profit >= 0;
   const chain = entry.chain || 'solana';
 
@@ -89,13 +97,17 @@ function LeaderboardRow({
     <div
       className={cn(
         'flex items-center gap-4 p-4 rounded-lg border transition-colors',
-        isTopThree
-          ? 'border-[rgba(201,169,110,0.20)] bg-[rgba(201,169,110,0.05)]'
+        index === 0
+          ? 'border-[rgba(201,169,110,0.25)] bg-[rgba(201,169,110,0.06)]'
+          : index === 1
+          ? 'border-[rgba(180,180,185,0.20)] bg-[rgba(180,180,185,0.04)]'
+          : index === 2
+          ? 'border-[rgba(176,113,63,0.20)] bg-[rgba(176,113,63,0.04)]'
           : 'border-[var(--border-subtle)] bg-[var(--bg-raised)] hover:bg-[rgba(255,255,255,0.02)]'
       )}
     >
       <div className="flex items-center justify-center w-10 shrink-0">
-        <RankBadge rank={index + 1} isPremium={isTopThree} />
+        <RankBadge rank={index + 1} />
       </div>
 
       <div className="flex-1 min-w-0">
@@ -131,11 +143,15 @@ function LeaderboardList({
   leaders,
   profitKey,
   isLoading,
+  isError,
+  onRetry,
   emptyMessage,
 }: {
   leaders: LeaderboardEntry[];
   profitKey: 'totalProfit' | 'periodProfit';
   isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
   emptyMessage: string;
 }) {
   if (isLoading) {
@@ -144,6 +160,24 @@ function LeaderboardList({
         {Array.from({ length: 8 }).map((_, i) => (
           <Skeleton key={i} className="h-16 w-full" />
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-12 text-center">
+        <AlertCircle className="h-8 w-8 text-[var(--text-tertiary)]" />
+        <p className="text-sm text-[var(--text-secondary)]">Failed to load leaderboard</p>
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] rounded-md px-3 py-1.5 transition-colors"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Retry
+          </button>
+        )}
       </div>
     );
   }
@@ -169,15 +203,15 @@ function LeaderboardList({
 export default function Leaderboard() {
   const { activeChain } = useChain();
 
-  const { data: overallData, isLoading: overallLoading } = useQuery<{ leaders: LeaderboardEntry[] }>({
+  const { data: overallData, isLoading: overallLoading, isError: overallError, refetch: refetchOverall } = useQuery<{ leaders: LeaderboardEntry[] }>({
     queryKey: [`/api/leaderboard/overall?chain=${activeChain}`],
   });
 
-  const { data: periodData, isLoading: periodLoading } = useQuery<PeriodData>({
+  const { data: periodData, isLoading: periodLoading, isError: periodError, refetch: refetchPeriod } = useQuery<PeriodData>({
     queryKey: [`/api/leaderboard/current-period?chain=${activeChain}`],
   });
 
-  const { data: winnersData, isLoading: winnersLoading } = useQuery<{ winners: PastWinner[] }>({
+  const { data: winnersData, isLoading: winnersLoading, isError: winnersError, refetch: refetchWinners } = useQuery<{ winners: PastWinner[] }>({
     queryKey: ['/api/leaderboard/winners'],
   });
 
@@ -201,7 +235,7 @@ export default function Leaderboard() {
   }, [pastWinners]);
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-5xl">
+    <div className="container mx-auto px-4 py-8 pb-20 lg:pb-8 max-w-5xl">
       <div className="mb-8">
         <h1 className="font-display text-4xl text-[var(--text-primary)] mb-2">Leaderboard</h1>
         <p className="text-[var(--text-secondary)]">Top traders by realized profit</p>
@@ -242,6 +276,8 @@ export default function Leaderboard() {
                 leaders={currentPeriod}
                 profitKey="periodProfit"
                 isLoading={periodLoading}
+                isError={periodError}
+                onRetry={() => refetchPeriod()}
                 emptyMessage="No trades in the current period yet"
               />
             </CardContent>
@@ -259,6 +295,8 @@ export default function Leaderboard() {
                 leaders={overall}
                 profitKey="totalProfit"
                 isLoading={overallLoading}
+                isError={overallError}
+                onRetry={() => refetchOverall()}
                 emptyMessage="No leaderboard data yet"
               />
             </CardContent>
@@ -271,6 +309,18 @@ export default function Leaderboard() {
               Array.from({ length: 3 }).map((_, i) => (
                 <Skeleton key={i} className="h-64 w-full" />
               ))
+            ) : winnersError ? (
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <AlertCircle className="h-8 w-8 text-[var(--text-tertiary)]" />
+                <p className="text-sm text-[var(--text-secondary)]">Failed to load past winners</p>
+                <button
+                  onClick={() => refetchWinners()}
+                  className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] rounded-md px-3 py-1.5 transition-colors"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Retry
+                </button>
+              </div>
             ) : periodGroups.length === 0 ? (
               <Card>
                 <CardContent className="text-center py-16">

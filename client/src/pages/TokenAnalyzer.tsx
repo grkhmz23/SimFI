@@ -3,7 +3,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useLocation } from 'wouter';
 import { BarChart3, BookOpen, Search, ArrowRight, Clock } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 const features = [
   {

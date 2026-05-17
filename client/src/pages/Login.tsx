@@ -11,7 +11,6 @@ import { apiRequest } from '@/lib/queryClient';
 import { useMutation } from '@tanstack/react-query';
 import { Mail, Lock, ArrowRight, Eye, EyeOff, Loader2, TrendingUp, Shield, Coins } from 'lucide-react';
 import type { LoginRequest } from '@shared/schema';
-import { cn } from '@/lib/utils';
 
 const loginSchema = z.object({
   email: z.string().min(1, 'Email or username is required'),

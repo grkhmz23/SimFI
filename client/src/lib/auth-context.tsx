@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Listen for session expiry events from API layer
   useEffect(() => {
     let redirecting = false;
-    const handleSessionExpired = (e: CustomEvent) => {
+    const handleSessionExpired = (_e: CustomEvent) => {
       if (redirecting) return;
       redirecting = true;
       console.warn('Session expired, forcing logout');

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useChain } from "@/lib/chain-context";
 import { useAuth } from "@/lib/auth-context";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,7 +20,6 @@ import {
   ChevronDown,
   ChevronUp,
   TrendingUp,
-  TrendingDown,
   Target,
   BarChart3,
   Activity,
@@ -29,6 +29,8 @@ import {
   Flame,
   MessageSquare,
   Trash2,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import {
   BarChart,
@@ -470,12 +472,7 @@ function CommunityPicksView({ chain }: { chain: string }) {
 
   const voteMutation = useMutation({
     mutationFn: async ({ pickId, action }: { pickId: string; action: "vote" | "unvote" }) => {
-      const res = await fetch(`/api/community-picks/${pickId}/vote`, {
-        method: action === "vote" ? "POST" : "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Vote failed");
-      return res.json();
+      return apiRequest(action === "vote" ? "POST" : "DELETE", `/api/community-picks/${pickId}/vote`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/community-picks`] });
@@ -484,20 +481,13 @@ function CommunityPicksView({ chain }: { chain: string }) {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/community-picks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          chain,
-          tokenAddress,
-          tokenName,
-          tokenSymbol,
-          reason: reason || undefined,
-        }),
+      return apiRequest("POST", "/api/community-picks", {
+        chain,
+        tokenAddress,
+        tokenName,
+        tokenSymbol,
+        reason: reason || undefined,
       });
-      if (!res.ok) throw new Error("Failed to submit pick");
-      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/community-picks`] });
@@ -511,12 +501,7 @@ function CommunityPicksView({ chain }: { chain: string }) {
 
   const deleteMutation = useMutation({
     mutationFn: async (pickId: string) => {
-      const res = await fetch(`/api/community-picks/${pickId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to delete pick");
-      return res.json();
+      return apiRequest("DELETE", `/api/community-picks/${pickId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/community-picks`] });
@@ -787,7 +772,7 @@ export default function AlphaDesk() {
   const [showMethodology, setShowMethodology] = useState(false);
   const [expandedHistoryDate, setExpandedHistoryDate] = useState<string | null>(null);
 
-  const { data: todayData, isLoading: todayLoading } = useQuery<TodayData>({
+  const { data: todayData, isLoading: todayLoading, isError: todayError, refetch: refetchToday } = useQuery<TodayData>({
     queryKey: [`/api/alpha-desk/today`, activeChain],
     queryFn: async () => {
       const res = await fetch(`/api/alpha-desk/today?chain=${activeChain}`);
@@ -796,7 +781,7 @@ export default function AlphaDesk() {
     },
   });
 
-  const { data: historyData, isLoading: historyLoading } = useQuery<{
+  const { data: historyData, isLoading: historyLoading, isError: historyError, refetch: refetchHistory } = useQuery<{
     history: Array<{ runDate: string; status: string; ideas: AlphaDeskIdea[] }>;
   }>({
     queryKey: [`/api/alpha-desk/history`, activeChain],
@@ -822,7 +807,7 @@ export default function AlphaDesk() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-base)]">
-      <div className="mx-auto max-w-content px-4 sm:px-6 py-8">
+      <div className="mx-auto max-w-content px-4 sm:px-6 py-8 pb-20 lg:pb-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -841,6 +826,9 @@ export default function AlphaDesk() {
           <p className="text-[var(--text-secondary)] max-w-2xl">
             AI-generated daily signals for traders and builders. Meme token picks for day traders
             and onchain project ideas for developers — powered by Reddit, Twitter, GitHub, and on-chain signals.
+          </p>
+          <p className="text-xs text-[var(--text-tertiary)] mt-2 max-w-2xl">
+            These are AI-generated ideas for educational exploration on a paper-trading simulator. Not financial advice. Past signal performance does not predict future results.
           </p>
         </motion.div>
 
@@ -898,6 +886,15 @@ export default function AlphaDesk() {
                     <Skeleton key={i} className="h-96 rounded-xl" />
                   ))}
                 </div>
+              ) : todayError ? (
+                <div className="flex flex-col items-center gap-3 py-12 text-center">
+                  <AlertCircle className="h-8 w-8 text-[var(--text-tertiary)]" />
+                  <p className="text-sm text-[var(--text-secondary)]">Failed to load today's picks</p>
+                  <Button variant="outline" size="sm" onClick={() => refetchToday()}>
+                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                    Retry
+                  </Button>
+                </div>
               ) : hasMemes ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {todayData!.memeIdeas.map((idea) => (
@@ -936,7 +933,7 @@ export default function AlphaDesk() {
                     <Skeleton key={i} className="h-96 rounded-xl" />
                   ))}
                 </div>
-              ) : hasDevs ? (
+              ) : todayError ? null : hasDevs ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {todayData!.devIdeas.map((idea) => (
                     <AlphaDeskCard key={idea.id} idea={idea} />
@@ -970,6 +967,15 @@ export default function AlphaDesk() {
                 {[1, 2, 3].map((i) => (
                   <Skeleton key={i} className="h-24 rounded-xl" />
                 ))}
+              </div>
+            ) : historyError ? (
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <AlertCircle className="h-8 w-8 text-[var(--text-tertiary)]" />
+                <p className="text-sm text-[var(--text-secondary)]">Failed to load pick history</p>
+                <Button variant="outline" size="sm" onClick={() => refetchHistory()}>
+                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                  Retry
+                </Button>
               </div>
             ) : historyData?.history?.length ? (
               <div className="space-y-4">

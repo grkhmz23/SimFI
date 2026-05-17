@@ -127,7 +127,7 @@ class PredictionSseFeed {
       client.res.write(`event: ${event}\n`);
       client.res.write(`data: ${JSON.stringify(data)}\n\n`);
       return true;
-    } catch (err: any) {
+    } catch {
       this.removeClient(clientId);
       return false;
     }

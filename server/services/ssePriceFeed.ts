@@ -219,7 +219,7 @@ class SsePriceFeed {
         timestamp: Date.now(),
       };
 
-      for (const [clientId, client] of this.clients) {
+      for (const clientId of this.clients.keys()) {
         this.sendToClient(clientId, "nativePrices", payload);
       }
     } catch (err: any) {
@@ -261,7 +261,7 @@ class SsePriceFeed {
               priceNative: data.priceNative.toString(),
             });
           }
-        } catch (err: any) {
+        } catch {
           // Skip failed tokens silently
         }
       })

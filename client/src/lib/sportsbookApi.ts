@@ -45,6 +45,9 @@ export interface SportsbookBet {
   payoutAmount: string | null;
   bookmakerKey: string;
   notes: string | null;
+  homeTeam: string | null;
+  awayTeam: string | null;
+  commenceTime: string | null;
 }
 
 export interface PlaceBetRequest {

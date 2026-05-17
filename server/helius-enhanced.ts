@@ -160,7 +160,7 @@ class HeliusService {
             };
           }
         }
-      } catch (e) {
+      } catch {
         // Price fetch failed
       }
       
@@ -273,7 +273,7 @@ class HeliusService {
                   price = parseFloat(priceJson.pairs[0].priceUsd);
                 }
               }
-            } catch (e) {
+            } catch {
               // Price fetch failed, continue without it
             }
             

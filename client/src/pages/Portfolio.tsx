@@ -34,8 +34,6 @@ import { useAuth } from '@/lib/auth-context';
 import { usePrice } from '@/lib/price-context';
 import { useChain } from '@/lib/chain-context';
 import {
-  formatTokenAmount,
-  formatPricePerTokenNative,
   toBigInt,
   lamportsToSol,
   weiToEth,
@@ -114,17 +112,9 @@ function calculatePnLPercent(position: EnrichedPosition): number {
   const spent = toBigInt(position.solSpent);
   if (spent === 0n) return 0;
   const pnl = calculatePnL(position);
-  return (Number(pnl) / Number(spent)) * 100;
-}
-
-function formatHoldTime(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-  if (days > 0) return `${days}d ${hours % 24}h`;
-  if (hours > 0) return `${hours}h ${minutes % 60}m`;
-  return `${minutes}m`;
+  // Bigint arithmetic avoids Number precision loss on large wei values
+  const pct100 = (pnl * 10000n) / spent;
+  return Number(pct100) / 100;
 }
 
 /* ------------------------------------------------------------------ */
@@ -342,7 +332,6 @@ export default function Portfolio() {
   };
 
   const nativePriceUSD = getPrice(activeChain);
-  const nativeDivider = activeChain === 'solana' ? 1e9 : 1e18;
 
   /* ------------------- Unauthenticated ------------------- */
 
@@ -373,7 +362,7 @@ export default function Portfolio() {
   /* ------------------- Render ------------------- */
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl animate-page-in">
+    <div className="container mx-auto px-4 py-8 pb-20 lg:pb-8 max-w-7xl animate-page-in">
       {/* Header */}
       <div className="mb-8">
         <h1 className="font-display text-4xl font-medium text-[var(--text-primary)] mb-2">
@@ -540,7 +529,10 @@ export default function Portfolio() {
               </div>
             ) : positionsError ? (
               <div className="text-center py-12">
-                <p className="text-[var(--text-secondary)]">Failed to load positions</p>
+                <p className="text-[var(--text-secondary)] mb-4">Failed to load positions</p>
+                <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+                  Retry
+                </Button>
               </div>
             ) : positions.length === 0 ? (
               <div className="text-center py-12">
@@ -623,8 +615,10 @@ export default function Portfolio() {
                       const pnlPercent = calculatePnLPercent(position);
                       const isGain = pnl >= 0n;
 
-                      const entryPriceNativeNum = Number(position.entryPrice) / nativeDivider;
-                      const currentPriceNativeNum = Number(position.currentPrice) / nativeDivider;
+                      const toNative = (v: bigint) =>
+                        activeChain === 'solana' ? lamportsToSol(v) : weiToEth(v);
+                      const entryPriceNativeNum = toNative(toBigInt(position.entryPrice));
+                      const currentPriceNativeNum = toNative(toBigInt(position.currentPrice));
                       const entryPriceUsd = nativePriceUSD != null ? entryPriceNativeNum * nativePriceUSD : null;
                       const currentPriceUsd = nativePriceUSD != null ? currentPriceNativeNum * nativePriceUSD : null;
 
@@ -659,6 +653,7 @@ export default function Portfolio() {
                                 variant="ghost"
                                 size="icon"
                                 className="shrink-0"
+                                aria-label={`View ${position.tokenName} token page`}
                                 onClick={() => setLocation(`/token/${position.tokenAddress}`)}
                                 data-testid={`button-view-token-${position.id}`}
                               >
@@ -678,7 +673,12 @@ export default function Portfolio() {
                           </TableCell>
                           <TableCell className="text-right">
                             <span className="font-mono text-[var(--text-primary)]">
-                              {formatTokenQty(Number(toBigInt(position.amount)) / 10 ** (position.decimals ?? 6))}
+                              {(() => {
+                                const _dec = position.decimals ?? 6
+                                const _amt = toBigInt(position.amount)
+                                const _div = BigInt(10 ** _dec)
+                                return formatTokenQty(Number(_amt / _div) + Number(_amt % _div) / 10 ** _dec)
+                              })()}
                             </span>
                           </TableCell>
                           <TableCell className="text-right">
@@ -715,7 +715,7 @@ export default function Portfolio() {
                                 }
                                 data-testid={`button-buy-more-${position.id}`}
                               >
-                                Buy
+                                Review Buy
                               </Button>
                               <Button
                                 size="sm"
@@ -726,7 +726,7 @@ export default function Portfolio() {
                                 }
                                 data-testid={`button-sell-${position.id}`}
                               >
-                                Sell
+                                Review Sell
                               </Button>
                             </div>
                           </TableCell>

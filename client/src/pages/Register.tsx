@@ -13,7 +13,6 @@ import { ChainSelector } from '@/components/ChainSelector';
 import { Mail, Lock, User, Wallet, ArrowRight, Eye, EyeOff, Loader2, Zap, Target, BarChart3 } from 'lucide-react';
 import { z } from 'zod';
 import type { RegisterRequest } from '@shared/schema';
-import { cn } from '@/lib/utils';
 
 const registerSchema = z.object({
   username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_-]+$/, 'Only letters, numbers, underscores, and hyphens'),

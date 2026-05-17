@@ -147,7 +147,7 @@ export function ChainSelector({ variant = 'default', className }: ChainSelectorP
 
 // Simple chain badge for inline display
 export function ChainBadge({ chain, className }: { chain?: 'base' | 'solana'; className?: string }) {
-  const { activeChain, isBase } = useChain();
+  const { activeChain } = useChain();
   const displayChain = chain || activeChain;
 
   return (

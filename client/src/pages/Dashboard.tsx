@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
 import { DataCell } from '@/components/ui/data-cell';
 import { ChainChip } from '@/components/ui/chain-chip';
 import { AddressPill } from '@/components/ui/address-pill';
@@ -16,8 +15,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { useAuth } from '@/lib/auth-context';
 import { usePrice } from '@/lib/price-context';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { formatBalance, formatUSD, shortenAddress } from '@/lib/token-format';
-import { Wallet, TrendingUp, Activity, LogIn, Target, User as UserIcon, Loader2, Copy, Check, Award, Flame } from 'lucide-react';
+import { formatBalance, formatUSD } from '@/lib/token-format';
+import { TrendingUp, Activity, LogIn, User as UserIcon, Loader2, Copy, Check, Award, Flame, Brain, Zap, BarChart3, Trophy } from 'lucide-react';
 import { AchievementBadge } from '@/components/AchievementBadge';
 import { ALL_BADGE_IDS } from '@/lib/achievements';
 import type { User as UserType, UserAchievement, Chain } from '@shared/schema';
@@ -87,44 +86,12 @@ function BalanceCard({
 }
 
 export default function Dashboard() {
-  const { user, setAuth, isAuthenticated, getBalance, getWalletAddress } = useAuth();
+  const { user, isAuthenticated, getBalance, getWalletAddress } = useAuth();
   const { solPriceUSD, ethPriceUSD } = usePrice();
   const [, setLocation] = useLocation();
   const [copiedReferral, setCopiedReferral] = useState(false);
   const [streakMessage, setStreakMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
-
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-[80vh] flex items-center justify-center px-4 bg-[var(--bg-base)]">
-        <Card className="max-w-md w-full text-center p-10">
-          <div className="w-16 h-16 mx-auto mb-6 rounded-xl bg-[var(--bg-hover)] flex items-center justify-center">
-            <LogIn className="h-8 w-8 text-[var(--text-secondary)]" />
-          </div>
-          <h2 className="font-display text-2xl text-[var(--text-primary)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
-            Welcome to SimFi
-          </h2>
-          <p className="text-sm text-[var(--text-secondary)] mb-8">
-            Login to access your dashboard, track your portfolio, and start paper trading on Base or Solana
-          </p>
-          <div className="flex gap-3">
-            <Button className="flex-1" onClick={() => setLocation('/login')} data-testid="button-goto-login">
-              <LogIn className="w-4 h-4 mr-2" />
-              Login
-            </Button>
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => setLocation('/register')}
-              data-testid="button-goto-register"
-            >
-              Register
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
 
   const { data: profile, isLoading: profileLoading } = useQuery<Omit<UserType, 'password'>>({
     queryKey: ['/api/auth/profile'],
@@ -241,9 +208,42 @@ export default function Dashboard() {
     }
   };
 
+  // Early return after all hooks (rules of hooks: no hooks after early returns)
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center px-4 bg-[var(--bg-base)]">
+        <Card className="max-w-md w-full text-center p-10">
+          <div className="w-16 h-16 mx-auto mb-6 rounded-xl bg-[var(--bg-hover)] flex items-center justify-center">
+            <LogIn className="h-8 w-8 text-[var(--text-secondary)]" />
+          </div>
+          <h2 className="font-display text-2xl text-[var(--text-primary)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+            Welcome to SimFi
+          </h2>
+          <p className="text-sm text-[var(--text-secondary)] mb-8">
+            Login to access your dashboard, track your portfolio, and start paper trading on Base or Solana
+          </p>
+          <div className="flex gap-3">
+            <Button className="flex-1" onClick={() => setLocation('/login')} data-testid="button-goto-login">
+              <LogIn className="w-4 h-4 mr-2" />
+              Login
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setLocation('/register')}
+              data-testid="button-goto-register"
+            >
+              Register
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[var(--bg-base)]">
-      <div className="container mx-auto px-4 py-8 max-w-5xl">
+      <div className="container mx-auto px-4 py-8 pb-20 lg:pb-8 max-w-5xl">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-2">
@@ -354,6 +354,52 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Today on SimFI */}
+        <div className="mb-8">
+          <h2 className="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-wider mb-3">Today on SimFI</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {[
+              { label: "Trade", desc: "Paper trade tokens", icon: TrendingUp, path: "/trade", color: "var(--accent-gain)" },
+              { label: "Predictions", desc: "Trade real-world events", icon: Brain, path: "/predictions", color: "var(--accent-premium)" },
+              { label: "Sportsbook", desc: "Bet on sports", icon: Zap, path: "/sportsbook", color: "#6366f1" },
+              { label: "Alpha Desk", desc: "AI-generated signals", icon: BarChart3, path: "/alpha-desk", color: "var(--accent-premium)" },
+              { label: "Leaderboard", desc: "See top traders", icon: Trophy, path: "/leaderboard", color: "var(--accent-premium)" },
+              { label: "Rewards", desc: "Streaks & achievements", icon: Activity, path: "/rewards", color: "var(--accent-gain)" },
+            ].map((item) => (
+              <button
+                key={item.path}
+                onClick={() => setLocation(item.path)}
+                className="rounded-lg bg-[var(--bg-raised)] border border-[var(--border-subtle)] p-4 text-left hover:border-[var(--border-strong)] transition-colors group"
+              >
+                <div
+                  className="flex h-8 w-8 items-center justify-center rounded-lg mb-3"
+                  style={{ background: `${item.color}18` }}
+                >
+                  <item.icon className="h-4 w-4" style={{ color: item.color }} />
+                </div>
+                <p className="text-sm font-medium text-[var(--text-primary)]">{item.label}</p>
+                <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">{item.desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Next Best Action */}
+        {streakData && !streakData.canClaim && (
+          <div className="rounded-lg bg-[var(--bg-raised)] border border-[var(--border-subtle)] p-4 mb-8 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <Flame className="h-5 w-5 text-[var(--accent-premium)] shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-[var(--text-primary)]">Keep your {streakData.streakCount}-day streak alive</p>
+                <p className="text-xs text-[var(--text-tertiary)]">Come back tomorrow to maintain your streak and earn your next bonus.</p>
+              </div>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setLocation("/trade")} className="shrink-0">
+              Trade Now
+            </Button>
+          </div>
+        )}
 
         {/* Profile Form */}
         <Card className="mb-8">

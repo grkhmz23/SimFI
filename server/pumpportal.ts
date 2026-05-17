@@ -7,7 +7,7 @@ import { getCachedSolPrice } from './solPrice';
 
 let newTokens: Token[] = [];
 let graduatingTokens: Token[] = [];
-let graduatedTokens: Token[] = [];
+const graduatedTokens: Token[] = [];
 const MAX_TOKENS = 100;
 
 let wss: WebSocketServer | null = null;

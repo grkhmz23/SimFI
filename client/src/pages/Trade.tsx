@@ -1,7 +1,5 @@
 import { useLocation } from "wouter"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { ChainChip } from "@/components/ui/chain-chip"
 import { useAuth } from "@/lib/auth-context"
 import { useChain } from "@/lib/chain-context"
 import { formatUsdText, formatPct, formatCount } from "@/lib/format"
@@ -10,8 +8,6 @@ import { motion } from "framer-motion"
 import {
   ArrowRight,
   TrendingUp,
-  Shield,
-  BarChart3,
   Trophy,
   Sparkles,
   Brain,
@@ -124,7 +120,6 @@ function StatsBar() {
 
 function QuickActions() {
   const [, setLocation] = useLocation()
-  const { isAuthenticated } = useAuth()
 
   const actions = [
     {

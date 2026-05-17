@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { tradeHistory, users } from "@shared/schema";
-import { eq, and, sql, desc, asc } from "drizzle-orm";
+import { eq, and, sql, asc } from "drizzle-orm";
 import type { Chain, Trade } from "@shared/schema";
 import { getNativePrice } from "../nativePrice";
 
@@ -184,12 +184,6 @@ export const portfolioAnalytics = {
     }
     const trades = await tradesQuery.orderBy(asc(tradeHistory.closedAt)).limit(10000);
 
-    // Fetch user for balance / native price context
-    const [user] = await db.select({
-      balance: users.balance,
-      baseBalance: users.baseBalance,
-    }).from(users).where(eq(users.id, userId));
-
     if (trades.length === 0) {
       return {
         overview: { totalTrades: 0, winRate: 0, avgHoldTimeHours: 0, totalRealizedPnlNative: 0, totalRealizedPnlUsd: 0 },
@@ -214,7 +208,6 @@ export const portfolioAnalytics = {
 
     // Compute overview stats
     let totalWins = 0;
-    let totalLosses = 0;
     let totalHoldSeconds = 0;
     let totalPnlSol = 0;
     let totalPnlEth = 0;
@@ -222,7 +215,6 @@ export const portfolioAnalytics = {
     for (const trade of trades) {
       const pnl = Number(trade.profitLoss);
       if (pnl > 0) totalWins++;
-      else if (pnl < 0) totalLosses++;
 
       const holdMs = new Date(trade.closedAt).getTime() - new Date(trade.openedAt).getTime();
       totalHoldSeconds += holdMs / 1000;

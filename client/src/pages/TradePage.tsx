@@ -22,6 +22,7 @@ import {
   AlertCircle,
   LogIn,
   Wallet,
+  History,
 } from "lucide-react"
 import {
   formatMarketCap,
@@ -30,7 +31,7 @@ import {
   weiToEth,
 } from "@/lib/token-format"
 import { formatUsdText, formatPct, formatNative, formatTokenQty } from "@/lib/format"
-import type { Token, Position } from "@shared/schema"
+import type { Token, Position, Trade } from "@shared/schema"
 import { cn } from "@/lib/utils"
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -79,8 +80,11 @@ function PositionSummary({
   const isGain = pnl >= 0n
   const pnlPct = spentNative !== 0 ? (pnlNative / spentNative) * 100 : 0
 
+  const _decimals = position.decimals ?? 6
+  const _amtBig = toBigInt(position.amount)
+  const _decBig = BigInt(10 ** _decimals)
   const tokenQty = formatTokenQty(
-    Number(toBigInt(position.amount)) / 10 ** (position.decimals ?? 6),
+    Number(_amtBig / _decBig) + Number(_amtBig % _decBig) / 10 ** _decimals,
   )
 
   return (
@@ -160,7 +164,6 @@ function OrderPanel({
   isAuthenticated: boolean
   onLogin: () => void
 }) {
-  const nativeSymbol = chain === "solana" ? "SOL" : "ETH"
   const displayPrice =
     token.priceUsd !== undefined
       ? formatUsdText(token.priceUsd)
@@ -267,11 +270,104 @@ function OrderPanel({
   )
 }
 
+// ─── RecentTradesPreview ──────────────────────────────────────────────────────
+
+function RecentTradesPreview({
+  tokenAddress,
+  chain,
+  nativePriceUSD,
+}: {
+  tokenAddress: string
+  chain: "solana" | "base"
+  nativePriceUSD: number | null
+}) {
+  const { data, isLoading } = useQuery<{ trades: Trade[] }>({
+    queryKey: ["/api/trades/history", chain, tokenAddress],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/trades/history?chain=${chain}&tokenAddress=${encodeURIComponent(tokenAddress)}&limit=5`,
+        { credentials: "include" },
+      )
+      if (!res.ok) throw new Error("Failed")
+      return res.json()
+    },
+    staleTime: 30_000,
+  })
+
+  const trades = data?.trades ?? []
+
+  if (!isLoading && trades.length === 0) return null
+
+  return (
+    <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <History className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
+        <p className="text-xs font-medium text-[var(--text-secondary)]">Recent Trades</p>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-full" />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {trades.map((trade) => {
+            const pl = toBigInt(trade.profitLoss)
+            const spent = toBigInt(trade.solSpent)
+            const isGain = pl >= 0n
+            const toNative = (v: bigint) =>
+              chain === "solana" ? lamportsToSol(v) : weiToEth(v)
+            const plNative = toNative(pl)
+            const plPct100 = spent === 0n ? 0n : (pl * 10000n) / spent
+            const plPct = Number(plPct100) / 100
+
+            const closedDate = new Date(trade.closedAt)
+            const dateStr = closedDate.toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+            })
+
+            return (
+              <div
+                key={trade.id}
+                className="flex items-center justify-between text-xs py-1.5 border-b border-[var(--border-subtle)] last:border-0"
+              >
+                <span className="text-[var(--text-tertiary)]">{dateStr}</span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "font-mono",
+                      isGain ? "text-[var(--accent-gain)]" : "text-[var(--accent-loss)]",
+                    )}
+                  >
+                    {isGain ? "+" : ""}
+                    {nativePriceUSD != null
+                      ? formatUsdText(plNative * nativePriceUSD)
+                      : formatNative(plNative, chain)}
+                  </span>
+                  <Badge
+                    variant={isGain ? "gain" : "loss"}
+                    className="text-[10px] px-1 h-4"
+                  >
+                    {formatPct(plPct)}
+                  </Badge>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── TradePage ────────────────────────────────────────────────────────────────
 
 export default function TradePage() {
   const [, setLocation] = useLocation()
-  const { activeChain, nativeSymbol } = useChain()
+  const { activeChain } = useChain()
   const { isAuthenticated, getBalance } = useAuth()
   const { getPrice } = usePrice()
 
@@ -678,6 +774,15 @@ export default function TradePage() {
                     chain={tokenChain}
                   />
                 </div>
+
+                {/* Recent trades for this token */}
+                {isAuthenticated && (
+                  <RecentTradesPreview
+                    tokenAddress={selectedToken.tokenAddress}
+                    chain={tokenChain}
+                    nativePriceUSD={nativePriceUSD}
+                  />
+                )}
               </>
             ) : (
               /* Desktop empty state — hidden on mobile since scanner is visible */

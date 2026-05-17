@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,12 +44,7 @@ export default function Security() {
 
   const logoutAllMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/auth/logout-all", {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to log out all sessions");
-      return res.json();
+      return apiRequest("POST", "/api/auth/logout-all");
     },
     onSuccess: () => {
       toast({
@@ -82,7 +78,7 @@ export default function Security() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-2xl animate-page-in">
+    <div className="container mx-auto px-4 py-8 pb-20 lg:pb-8 max-w-2xl animate-page-in">
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-3">

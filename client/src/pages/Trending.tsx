@@ -6,13 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataCell } from '@/components/ui/data-cell';
-import { ChainChip } from '@/components/ui/chain-chip';
 import { ChainSelector, ChainBadge } from '@/components/ChainSelector';
 import { useChain } from '@/lib/chain-context';
 import { formatUsdText } from '@/lib/format';
 import { formatCompactNumber, formatMarketCap, formatPercentage } from '@/lib/token-format';
 import { useLocation } from 'wouter';
-import { TrendingUp, Activity, Clock, ArrowUpRight, ArrowDownRight, Droplets } from 'lucide-react';
+import { TrendingUp, Activity, Clock, ArrowUpRight, Droplets } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface TrendingToken {

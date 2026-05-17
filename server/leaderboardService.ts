@@ -3,6 +3,7 @@ import type { Chain } from "@shared/schema";
 
 // Use standard pg Pool for Render PostgreSQL (not Neon)
 import pg from "pg";
+import type { Pool as PgPool, PoolClient } from "pg";
 const { Pool } = pg;
 
 const PERIOD_DURATION_MS = 6 * 60 * 60 * 1000;
@@ -13,8 +14,8 @@ class LeaderboardService {
   private timer: NodeJS.Timeout | null = null;
   private leaderCheckTimer: NodeJS.Timeout | null = null;
   private isLeader = false;
-  private dedicatedPool: InstanceType<typeof Pool> | null = null;
-  private dedicatedClient: InstanceType<typeof Pool>["connect"] extends () => Promise<infer T> ? T : never | null = null;
+  private dedicatedPool: PgPool | null = null;
+  private dedicatedClient: PoolClient | null = null;
   private isStarted = false;
   private isStopped = false;
 
@@ -48,7 +49,6 @@ class LeaderboardService {
     try {
       if (this.isLeader && this.dedicatedClient) {
         try {
-          // @ts-ignore - query method exists on client
           await this.dedicatedClient.query("SELECT 1");
           return;
         } catch {
@@ -75,7 +75,7 @@ class LeaderboardService {
       );
 
       if (result.rows[0]?.acquired === true) {
-        this.dedicatedClient = client as any;
+        this.dedicatedClient = client;
         this.isLeader = true;
         console.log("👑 This instance is now the leader");
         await this.checkAndManagePeriods();
@@ -92,7 +92,6 @@ class LeaderboardService {
   private releaseLeadership() {
     if (this.dedicatedClient) {
       try {
-        // @ts-ignore - release method exists
         this.dedicatedClient.release();
       } catch {}
       this.dedicatedClient = null;

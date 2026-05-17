@@ -10,9 +10,6 @@ export class InsufficientLiquidityError extends Error {
   }
 }
 
-// 1 share = 1,000,000 micro-shares
-const MICROS_PER_SHARE = 1_000_000n;
-
 /**
  * Walk the order book for a given side and share count.
  * BUY walks asks ascending; SELL walks bids descending.

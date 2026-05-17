@@ -70,7 +70,7 @@ async function fetchFromSource(source: { name: string; url: string; extract: (da
       return price;
     }
     return null;
-  } catch (error) {
+  } catch {
     return null;
   }
 }

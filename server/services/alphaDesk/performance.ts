@@ -151,8 +151,6 @@ export async function getPerformanceSummary(chain: AlphaDeskChain): Promise<Perf
     let profitableCount = 0;
     let bestReturn = -Infinity;
     let worstReturn = Infinity;
-    let bestPickLocal: { symbol: string | null; name: string; return: number } | null = null;
-    let worstPickLocal: { symbol: string | null; name: string; return: number } | null = null;
 
     for (const pick of picks) {
       const outcome = pick.outcomes.find((o) => o.horizon === horizon);
@@ -165,11 +163,9 @@ export async function getPerformanceSummary(chain: AlphaDeskChain): Promise<Perf
 
       if (pct > bestReturn) {
         bestReturn = pct;
-        bestPickLocal = { symbol: pick.symbol, name: pick.name, return: pct };
       }
       if (pct < worstReturn) {
         worstReturn = pct;
-        worstPickLocal = { symbol: pick.symbol, name: pick.name, return: pct };
       }
     }
 

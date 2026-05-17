@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -13,14 +12,12 @@ import {
   Wrench,
   ChevronDown,
   ChevronUp,
-  ExternalLink,
   Lightbulb,
   Clock,
   Users,
   TrendingUp,
   MessageCircle,
   Tag,
-  X,
 } from "lucide-react";
 
 interface AlphaDeskIdea {

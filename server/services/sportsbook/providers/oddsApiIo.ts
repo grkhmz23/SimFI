@@ -56,8 +56,8 @@ function pickBookmaker(bookmakers: Record<string, any[]>): { key: string; market
 
 function mapOutcomeToOdds(
   oddsArray: any[],
-  homeTeam: string,
-  awayTeam: string
+  _homeTeam: string,
+  _awayTeam: string
 ): { homeOdds: number; awayOdds: number; drawOdds: number | null } {
   let homeOdds = 0;
   let awayOdds = 0;

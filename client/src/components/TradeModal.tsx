@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -30,8 +30,6 @@ import {
   formatNativeAmount,
   toBigInt,
   formatTokenAmount,
-  nativeToTokens,
-  formatUSD,
   formatPricePerTokenNative,
   parseTokenAmount,
 } from "@/lib/token-format"
@@ -66,13 +64,11 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const { activeChain, nativeSymbol, nativeDecimals } = useChain()
   // Lock the chain when modal opens to prevent race if user switches chains in nav
   const [lockedChain] = useState(activeChain)
-  const lockedNativeSymbol = lockedChain === "solana" ? "SOL" : "ETH"
-  const lockedNativeDecimals = lockedChain === "solana" ? 9 : 18
   const { getPrice } = usePrice()
   const nativePriceUSD = getPrice(lockedChain) ?? 0
   const isBuying = mode === "buy" || !position
   const effectiveMode = mode || "buy"
-  const [lastQuoteUpdate, setLastQuoteUpdate] = useState<Date>(new Date())
+  const [, setLastQuoteUpdate] = useState<Date>(new Date())
   const [quoteExpiresAt, setQuoteExpiresAt] = useState(0)
   const [quoteSecondsLeft, setQuoteSecondsLeft] = useState(0)
 
@@ -128,43 +124,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
   const symbol = position?.tokenSymbol || activeToken?.symbol || ""
   const name = position?.tokenName || activeToken?.name || ""
 
-  if (!isAuthenticated) {
-    return (
-      <Dialog open onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl">
-              <LogIn className="h-5 w-5 text-[var(--text-secondary)]" strokeWidth={1.5} />
-              Login Required
-            </DialogTitle>
-            <DialogDescription>
-              You need to be logged in to trade tokens
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-6 py-4">
-            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-5 text-center">
-              <p className="text-lg font-medium text-[var(--text-primary)] mb-1">{symbol}</p>
-              <p className="text-sm text-[var(--text-secondary)] mb-4">{name}</p>
-              <p className="text-2xl font-mono font-medium text-[var(--text-primary)]">
-                {displayCurrentPriceUsd !== undefined
-                  ? formatUsd(displayCurrentPriceUsd)
-                  : formatPricePerTokenNative(currentPrice, lockedChain)}
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <Button className="flex-1" onClick={() => setLocation("/login")}>
-                Login
-              </Button>
-              <Button variant="secondary" className="flex-1" onClick={() => setLocation("/register")}>
-                Register
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    )
-  }
-
+  // All hooks must be called before any early return (rules of hooks)
   const buyForm = useForm<z.infer<typeof buySchema>>({
     resolver: zodResolver(buySchema),
     defaultValues: { amount: 0 },
@@ -177,7 +137,6 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
 
   const nativeAmount = buyForm.watch("amount") || 0
   const percentage = sellForm.watch("percentage") || 100
-  const buyTokenDecimals = activeToken?.decimals ?? 6
 
   // Debounce amount for quote requests
   const [debouncedAmount, setDebouncedAmount] = useState(nativeAmount)
@@ -192,7 +151,7 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       ? (toBigInt(position.amount) * BigInt(percentage)) / BigInt(100)
       : BigInt(0)
 
-  // Server-authoritative quote
+  // Server-authoritative quote (enabled only when authenticated and inputs are non-zero)
   const {
     data: quote,
     isLoading: isQuoting,
@@ -248,31 +207,6 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
     const id = setInterval(update, 1000)
     return () => clearInterval(id)
   }, [quoteExpiresAt])
-
-  const currentPriceNumber = Number(currentPrice)
-  const clientEstimatedTokens =
-    isBuying && currentPriceNumber > 0 && isFinite(currentPriceNumber)
-      ? (nativeAmount * 10 ** nativeDecimals) / currentPriceNumber
-      : 0
-
-  const tokenDecimals = position?.decimals ?? activeToken?.decimals ?? 6
-
-  const estimatedTokens = isBuying && quote
-    ? Number(quote.estimatedOutput) / 10 ** tokenDecimals
-    : clientEstimatedTokens
-
-  const sellValueBigInt = !isBuying && quote
-    ? toBigInt(quote.estimatedOutput)
-    : !isBuying
-    ? (sellAmountBigInt * currentPrice) / BigInt(10) ** BigInt(tokenDecimals)
-    : BigInt(0)
-
-  const proportionalCostBigInt =
-    !isBuying && position
-      ? (toBigInt(position.solSpent) * BigInt(percentage)) / BigInt(100)
-      : BigInt(0)
-
-  const profitLossBigInt = !isBuying ? sellValueBigInt - proportionalCostBigInt : BigInt(0)
 
   const tradeMutation = useMutation({
     mutationFn: async (data: {
@@ -336,6 +270,68 @@ export function TradeModal({ token, position, mode, onClose }: TradeModalProps) 
       })
     },
   })
+
+  if (!isAuthenticated) {
+    return (
+      <Dialog open onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <LogIn className="h-5 w-5 text-[var(--text-secondary)]" strokeWidth={1.5} />
+              Login Required
+            </DialogTitle>
+            <DialogDescription>
+              You need to be logged in to trade tokens
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-5 text-center">
+              <p className="text-lg font-medium text-[var(--text-primary)] mb-1">{symbol}</p>
+              <p className="text-sm text-[var(--text-secondary)] mb-4">{name}</p>
+              <p className="text-2xl font-mono font-medium text-[var(--text-primary)]">
+                {displayCurrentPriceUsd !== undefined
+                  ? formatUsd(displayCurrentPriceUsd)
+                  : formatPricePerTokenNative(currentPrice, lockedChain)}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button className="flex-1" onClick={() => setLocation("/login")}>
+                Login
+              </Button>
+              <Button variant="secondary" className="flex-1" onClick={() => setLocation("/register")}>
+                Register
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
+  const currentPriceNumber = Number(currentPrice)
+  const clientEstimatedTokens =
+    isBuying && currentPriceNumber > 0 && isFinite(currentPriceNumber)
+      ? (nativeAmount * 10 ** nativeDecimals) / currentPriceNumber
+      : 0
+
+  const tokenDecimals = position?.decimals ?? activeToken?.decimals ?? 6
+
+  const estimatedTokens = isBuying && quote
+    ? Number(quote.estimatedOutput) / 10 ** tokenDecimals
+    : clientEstimatedTokens
+
+  const sellValueBigInt = !isBuying && quote
+    ? toBigInt(quote.estimatedOutput)
+    : !isBuying
+    ? (sellAmountBigInt * currentPrice) / BigInt(10) ** BigInt(tokenDecimals)
+    : BigInt(0)
+
+  const proportionalCostBigInt =
+    !isBuying && position
+      ? (toBigInt(position.solSpent) * BigInt(percentage)) / BigInt(100)
+      : BigInt(0)
+
+  const profitLossBigInt = !isBuying ? sellValueBigInt - proportionalCostBigInt : BigInt(0)
 
   const isQuoteExpired = quoteExpiresAt > 0 && quoteSecondsLeft <= 0
 

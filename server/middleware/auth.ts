@@ -4,12 +4,10 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { users } from '@shared/schema';
 
-declare global {
-  namespace Express {
-    interface Request {
-      userId?: string;
-      username?: string;
-    }
+declare module 'express-serve-static-core' {
+  interface Request {
+    userId?: string;
+    username?: string;
   }
 }
 

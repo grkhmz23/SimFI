@@ -33,7 +33,6 @@ const timeframes: Timeframe[] = ["5S", "15S", "30S", "1M", "3M", "5M"]
 export default function TokenChart({
   tokenAddress,
   tokenSymbol,
-  tokenName,
   currentPrice,
   height = "480px",
   chain: chainProp,
@@ -52,7 +51,6 @@ export default function TokenChart({
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>("1M")
-  const [priceChange, setPriceChange] = useState<number>(0)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [chartReady, setChartReady] = useState(false)
 
@@ -282,7 +280,6 @@ export default function TokenChart({
       const oldestPrice = candleData[0]?.close || currentPrice
       const latest = candleData[candleData.length - 1]?.close || currentPrice
       const change = oldestPrice > 0 ? ((latest - oldestPrice) / oldestPrice) * 100 : 0
-      setPriceChange(change)
       setLastUpdate(new Date())
 
       // Try to apply data immediately; if chart not ready, stash for later

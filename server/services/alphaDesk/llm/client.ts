@@ -262,7 +262,7 @@ export async function parseJsonFromLlmWithRepair(
 ): Promise<unknown> {
   try {
     return parseJsonFromLlm(raw, schema);
-  } catch (firstErr) {
+  } catch {
     console.warn(`[LLM] JSON parse failed, attempting repair: ${contextLabel}`);
     try {
       const repaired = await repairJsonWithLlm(raw, contextLabel);

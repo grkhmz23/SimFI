@@ -2,7 +2,7 @@
 // Main entry: runDailyPipeline(chain) — generates meme launch ideas + dev build ideas.
 
 import type { AlphaDeskChain } from "./types";
-import type { ScoredToken, AlphaDeskIdeaGenerated, PipelineContext } from "./types";
+import type { ScoredToken, PipelineContext } from "./types";
 import { fetchTrendingTokens, fetchTokenProfiles } from "./ingest/dexscreener";
 import { ingestTwitterSignals } from "./ingest/socialdata";
 import { ingestGithubSignals } from "./ingest/github";
@@ -183,7 +183,7 @@ function scoreTokens(
   tweets: import("./types").SocialDataTweet[],
   githubSignals: import("./types").GithubSignal[],
   weights: import("./score/weights").Weights,
-  chain: AlphaDeskChain
+  _chain: AlphaDeskChain
 ): ScoredToken[] {
   if (tokens.length === 0) return [];
 

@@ -1,5 +1,5 @@
 import { db } from '../../db';
-import { users, sbEvents, sbMarkets, sbBets } from '@shared/schema';
+import { users, sbEvents, sbBets } from '@shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import type { Chain } from '@shared/schema';
 import { LAMPORTS_PER_SOL, WEI_PER_ETH } from '@shared/schema';

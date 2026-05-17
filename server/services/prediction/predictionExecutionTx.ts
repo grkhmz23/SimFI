@@ -2,7 +2,7 @@
 // Atomic database execution for prediction-market paper trades
 
 import { db } from '../../db';
-import { predictionPaperBalances, predictionPositions, predictionTrades, predictionMarkets } from '@shared/schema';
+import { predictionPaperBalances, predictionPositions, predictionTrades } from '@shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import type { Quote } from './predictionQuoteService.js';
 

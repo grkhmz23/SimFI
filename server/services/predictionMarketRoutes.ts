@@ -1,7 +1,7 @@
 // server/services/predictionMarketRoutes.ts
 // Prediction market routes — mirrors marketRoutes.ts structure
 
-import type { Express, Request, Response, RequestHandler } from 'express';
+import type { Express, Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authenticateToken } from '../middleware/auth';
 import { polymarketGamma } from './prediction/polymarketGamma';
@@ -10,7 +10,7 @@ import { predictionQuoteService } from './prediction/predictionQuoteService';
 import { executeTrade } from './prediction/predictionExecutionTx';
 import { predictionSseFeed } from './prediction/predictionSseFeed';
 import { db } from '../db';
-import { predictionMarkets, predictionPaperBalances, predictionPositions, predictionTrades } from '@shared/schema';
+import { predictionPaperBalances, predictionPositions, predictionTrades } from '@shared/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { QuoteRequest, TradeRequest } from './prediction/schemas';
 
@@ -48,8 +48,8 @@ function handleError(res: Response, err: any, status = 400) {
   res.status(status).json({ error: message });
 }
 
-function requireAuth(req: Request, res: Response, next: Function) {
-  return authenticateToken(req, res, next as any);
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  return authenticateToken(req, res, next);
 }
 
 // Lazily ensure a user has a prediction paper balance

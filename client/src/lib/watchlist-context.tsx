@@ -2,6 +2,7 @@ import { createContext, useContext, useCallback, ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { WatchlistItem, Chain } from '@shared/schema';
 import { useAuth } from '@/lib/auth-context';
+import { apiRequest } from '@/lib/queryClient';
 
 interface WatchlistContextType {
   items: WatchlistItem[];
@@ -53,14 +54,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       tokenSymbol: string;
       decimals: number;
     }) => {
-      const res = await fetch('/api/watchlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error('Failed to add to watchlist');
-      return res.json();
+      return apiRequest('POST', '/api/watchlist', payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/watchlist'] });
@@ -69,12 +63,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
 
   const removeMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/watchlist/${id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to remove from watchlist');
-      return res.json();
+      return apiRequest('DELETE', `/api/watchlist/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/watchlist'] });

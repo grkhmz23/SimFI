@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from 'express';
+import type { Express, Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authenticateToken } from '../middleware/auth';
 import { db } from '../db';
@@ -42,8 +42,8 @@ function handleError(res: Response, err: any, status = 400) {
   res.status(status).json({ error: message, code });
 }
 
-function requireAuth(req: Request, res: Response, next: Function) {
-  return authenticateToken(req, res, next as any);
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  return authenticateToken(req, res, next);
 }
 
 async function touchLeagueActivity(league: string): Promise<void> {
@@ -363,13 +363,24 @@ export function registerSportsbookRoutes(app: Express): void {
         conditions.push(sql`${sbBets.status} != 'open'`);
       }
 
-      const bets = await db.select()
+      const rows = await db.select({
+        bet: sbBets,
+        homeTeam: sbEvents.homeTeam,
+        awayTeam: sbEvents.awayTeam,
+        commenceTime: sbEvents.commenceTime,
+      })
         .from(sbBets)
+        .leftJoin(sbEvents, eq(sbBets.eventId, sbEvents.id))
         .where(and(...conditions))
         .orderBy(desc(sbBets.placedAt))
         .limit(200);
 
-      res.json(bets.map(serializeBet));
+      res.json(rows.map(({ bet, homeTeam, awayTeam, commenceTime }) => ({
+        ...serializeBet(bet),
+        homeTeam: homeTeam ?? null,
+        awayTeam: awayTeam ?? null,
+        commenceTime: commenceTime?.toISOString() ?? null,
+      })));
     } catch (err: any) {
       handleError(res, err, 500);
     }
@@ -432,5 +443,4 @@ export function registerSportsbookRoutes(app: Express): void {
     }
   });
 }
-
 

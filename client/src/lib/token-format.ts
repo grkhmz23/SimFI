@@ -3,7 +3,6 @@ import type { Chain } from '@shared/schema';
 
 // Constants
 const LAMPORTS_PER_SOL = 1_000_000_000;
-const WEI_PER_ETH = 1_000_000_000_000_000_000n;
 
 // ============================================================================
 // Solana Formatting
@@ -125,7 +124,7 @@ export function formatUSD(
   nativeAmount: bigint | number | string,
   nativePriceUSDOrDecimals?: number | Chain | null,
   chainOrDecimals?: Chain | number,
-  decimals: number = 2
+  _decimals: number = 2
 ): string {
   // Handle backward compatible call: formatUSD(amount, decimals)
   if (typeof nativePriceUSDOrDecimals === 'number' && nativePriceUSDOrDecimals < 10 && !chainOrDecimals) {

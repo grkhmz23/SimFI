@@ -83,7 +83,7 @@ export function PredictionPricesProvider({ children }: { children: ReactNode }) 
     };
   }, [connect]);
 
-  const subscribe = useCallback((tokenIds: string[]) => {
+  const subscribe = useCallback((_tokenIds: string[]) => {
     if (!clientIdRef.current) {
       // SSE connection sends clientId in connected event; we don't track it here.
       // Instead, subscribe via query param on reconnect or use a simple approach.
@@ -94,7 +94,7 @@ export function PredictionPricesProvider({ children }: { children: ReactNode }) 
     // A more robust v2 would parse the connected event for clientId.
   }, []);
 
-  const unsubscribe = useCallback((tokenIds: string[]) => {
+  const unsubscribe = useCallback((_tokenIds: string[]) => {
     // Same limitation as subscribe for v1
   }, []);
 

@@ -11,7 +11,6 @@ interface PredictionMarketCardProps {
 
 export function PredictionMarketCard({ market }: PredictionMarketCardProps) {
   const yesPrice = market.outcomePrices[0] ?? 0;
-  const noPrice = market.outcomePrices[1] ?? 0;
   const yesPct = yesPrice * 100;
 
   return (

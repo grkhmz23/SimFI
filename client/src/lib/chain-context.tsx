@@ -65,7 +65,7 @@ export function ChainProvider({ children }: { children: ReactNode }) {
             localStorage.setItem(CHAIN_STORAGE_KEY, user.preferredChain);
           }
         }
-      } catch (error) {
+      } catch {
         // Silent fail - default value will be used
       }
     };

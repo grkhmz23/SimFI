@@ -86,6 +86,14 @@ app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: false, limit: '10kb' }));
 app.use(cookieParser());
 
+// Attach a request ID to every request so logs can be correlated across middleware
+app.use((req, res, next) => {
+  const requestId = (req.headers['x-request-id'] as string) || crypto.randomUUID();
+  res.locals.requestId = requestId;
+  res.setHeader('X-Request-ID', requestId);
+  next();
+});
+
 // ✅ MEDIUM FIX: Reduced logging - no response bodies (could contain PII)
 app.use((req, res, next) => {
   const start = Date.now();
@@ -94,8 +102,8 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      // Only log path, method, status, duration - NO body
-      const logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+      const rid = res.locals.requestId ?? '-';
+      const logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms rid=${rid}`;
 
       // In production, only log errors or slow requests
       if (process.env.NODE_ENV === 'production') {

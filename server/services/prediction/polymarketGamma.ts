@@ -187,7 +187,7 @@ class PolymarketGammaService {
         volume24hr: Number(raw.volume24hr || raw.volume24h) || 0,
         liquidity: Number(raw.liquidity) || 0,
       };
-    } catch (e) {
+    } catch {
       return null;
     }
   }

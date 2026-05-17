@@ -1,6 +1,6 @@
 import { db } from '../../../db';
 import { sbEvents, sbMarkets, sbLeagueActivity, sbBets } from '@shared/schema';
-import { eq, and, gte, sql, isNull } from 'drizzle-orm';
+import { eq, and, gte } from 'drizzle-orm';
 import { createOddsProvider } from '../providers';
 
 const LEAGUES = (process.env.SPORTSBOOK_LEAGUES || 'basketball_nba,americanfootball_nfl,soccer_epl,soccer_uefa_champs_league').split(',').map(s => s.trim()).filter(Boolean);

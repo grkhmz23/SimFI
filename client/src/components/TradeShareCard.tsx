@@ -30,7 +30,8 @@ export const TradeShareCard = forwardRef<HTMLDivElement, TradeShareCardProps>(
   ({ trade, nativePrice }, ref) => {
     const pl = toBigInt(trade.profitLoss);
     const spent = toBigInt(trade.solSpent);
-    const plPercent = spent > 0n ? (Number(pl) / Number(spent)) * 100 : 0;
+    // bigint-safe percentage: keep as integer basis points to avoid Number() overflow on large wei values
+    const plPercent = spent > 0n ? Number((pl * 10000n) / spent) / 100 : 0;
     const isGain = pl >= 0n;
 
     const plNative =
@@ -49,7 +50,11 @@ export const TradeShareCard = forwardRef<HTMLDivElement, TradeShareCardProps>(
         : weiToEth(toBigInt(trade.exitPrice));
     const exitPriceUsd = exitPriceNative * nativePrice;
 
-    const tokenQty = Number(toBigInt(trade.amount)) / 10 ** (trade.decimals ?? 6);
+    // bigint-safe token qty: avoids Number() overflow for large atomic amounts
+    const _dec = trade.decimals ?? 6;
+    const _amt = toBigInt(trade.amount);
+    const _div = BigInt(10 ** _dec);
+    const tokenQty = Number(_amt / _div) + Number(_amt % _div) / 10 ** _dec;
     const chainLabel = trade.chain === 'solana' ? 'Solana' : 'Base';
     const chainColor = trade.chain === 'solana' ? '#14F195' : '#0052FF';
 

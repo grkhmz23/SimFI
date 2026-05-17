@@ -13,11 +13,6 @@ interface Tick {
   receivedAt: number;
 }
 
-interface BookLevel {
-  price: number;
-  size: number;
-}
-
 interface BookMirror {
   bids: Map<number, number>;
   asks: Map<number, number>;
@@ -175,7 +170,7 @@ class PolymarketWsClient {
             // ignore unknown
         }
       }
-    } catch (err) {
+    } catch {
       // ignore parse errors
     }
   }
@@ -236,7 +231,7 @@ class PolymarketWsClient {
     for (const listener of this.listeners) {
       try {
         listener(tick);
-      } catch (err) {
+      } catch {
         // ignore listener errors
       }
     }

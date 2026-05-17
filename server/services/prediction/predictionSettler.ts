@@ -3,7 +3,7 @@
 
 import { db } from '../../db';
 import { predictionMarkets, predictionPositions, predictionPaperBalances, predictionTrades } from '@shared/schema';
-import { eq, and, sql, inArray } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { polymarketGamma } from './polymarketGamma';
 import { polymarketWs } from './polymarketWs';
 

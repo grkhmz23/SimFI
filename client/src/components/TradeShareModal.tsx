@@ -9,8 +9,10 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { TradeShareCard } from './TradeShareCard';
-import { Download, Loader2 } from 'lucide-react';
+import { Download, Loader2, Copy, Check } from 'lucide-react';
 import type { Trade } from '@shared/schema';
+import { lamportsToSol, weiToEth, toBigInt } from '@/lib/token-format';
+import { formatUsdText, formatPct } from '@/lib/format';
 
 interface TradeShareModalProps {
   trade: Trade | null;
@@ -19,9 +21,21 @@ interface TradeShareModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+function buildShareText(trade: Trade, nativePrice: number): string {
+  const pl = toBigInt(trade.profitLoss);
+  const spent = toBigInt(trade.solSpent);
+  const plPercent = spent > 0n ? Number((pl * 10000n) / spent) / 100 : 0;
+  const isGain = pl >= 0n;
+  const plNative = trade.chain === 'solana' ? lamportsToSol(pl) : weiToEth(pl);
+  const plUsd = plNative * nativePrice;
+  const sign = isGain ? '+' : '';
+  return `${sign}${formatUsdText(plUsd)} (${sign}${formatPct(plPercent)}) on $${trade.tokenSymbol} — Paper trade on SimFI 📊 #PaperTrading #SimFI`;
+}
+
 export function TradeShareModal({ trade, nativePrice, open, onOpenChange }: TradeShareModalProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const handleDownload = useCallback(async () => {
     if (!cardRef.current || !trade) return;
@@ -54,9 +68,9 @@ export function TradeShareModal({ trade, nativePrice, open, onOpenChange }: Trad
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="font-display">Share Trade</DialogTitle>
+          <DialogTitle className="font-display">Share Paper Trade</DialogTitle>
           <DialogDescription>
-            Preview your trade card and download as a PNG to share on Twitter/X.
+            Download as PNG or copy text to share your paper trading result.
           </DialogDescription>
         </DialogHeader>
 
@@ -102,7 +116,23 @@ export function TradeShareModal({ trade, nativePrice, open, onOpenChange }: Trad
           )}
         </div>
 
-        <div className="flex justify-end gap-3 pt-2">
+        <div className="flex flex-wrap justify-end gap-3 pt-2">
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={async () => {
+              if (!trade) return;
+              try {
+                await navigator.clipboard.writeText(buildShareText(trade, nativePrice));
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              } catch { /* ignore */ }
+            }}
+            disabled={!trade}
+          >
+            {copied ? <Check className="h-4 w-4 text-[var(--accent-gain)]" /> : <Copy className="h-4 w-4" />}
+            {copied ? 'Copied!' : 'Copy Text'}
+          </Button>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>

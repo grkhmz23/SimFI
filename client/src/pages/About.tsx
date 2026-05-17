@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import { SiX } from 'react-icons/si';
 import { FaTelegram } from 'react-icons/fa';
-import { cn } from '@/lib/utils';
 
 function FeatureCard({
   icon: Icon,

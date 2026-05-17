@@ -8,7 +8,7 @@ services:
     runtime: node
     plan: standard
     region: oregon
-    buildCommand: NODE_ENV=development npm install && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
@@ -24,6 +24,14 @@ services:
         generateValue: true
       - key: BOT_API_SECRET
         generateValue: true
+      # FRONTEND_URL — Required for CORS. Set to your Render domain after deploy.
+      # Example: https://simfi-web.onrender.com or https://simfi.fun
+      - key: FRONTEND_URL
+        sync: false
+      # ADMIN_TOKEN — Required for Alpha Desk CI pipeline and admin endpoints.
+      # Generate: openssl rand -hex 24  (must be >= 20 chars)
+      - key: ADMIN_TOKEN
+        sync: false
       # Telegram Bot (optional — runs integrated inside the web service via webhook)
       # 1. Get a token from @BotFather and set TELEGRAM_BOT_TOKEN after deploy
       # 2. Set PUBLIC_URL to your Render domain, e.g. https://simfi-web.onrender.com
@@ -35,6 +43,21 @@ services:
         generateValue: true
       - key: TELEGRAM_WEBHOOK_SECRET_TOKEN
         generateValue: true
+      # HELIUS_API_KEY — Optional but recommended for enhanced Solana features.
+      - key: HELIUS_API_KEY
+        sync: false
+      # Sportsbook — Set at least one odds provider key.
+      # The Odds API: https://the-odds-api.com (free tier 500 credits/month)
+      - key: THE_ODDS_API_KEY
+        sync: false
+      # Alpha Desk — Set at least one LLM key for AI-curated ideas.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      # REDIS_URL — Optional. Required only for shared rate limiting across multiple instances.
+      - key: REDIS_URL
+        sync: false
     autoDeploy: true
 
 databases:

@@ -20,7 +20,6 @@ import {
   toBigInt,
 } from '@/lib/token-format';
 import {
-  formatUsd,
   formatUsdText,
   formatTokenQty,
   formatNative,
@@ -92,7 +91,7 @@ export default function History() {
   const [shareTrade, setShareTrade] = useState<Trade | null>(null);
   const { isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
-  const { activeChain, nativeSymbol } = useChain();
+  const { activeChain } = useChain();
   const { getPrice } = usePrice();
 
   const { data, isLoading } = useQuery<HistoryResponse>({
@@ -130,7 +129,7 @@ export default function History() {
   const pagination = data?.pagination ?? { page: 1, limit: 50, total: 0, totalPages: 1 };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl animate-page-in">
+    <div className="container mx-auto px-4 py-8 pb-20 lg:pb-8 max-w-7xl animate-page-in">
       {/* Header */}
       <div className="mb-8">
         <h1 className="font-display text-4xl font-medium text-[var(--text-primary)] mb-2">

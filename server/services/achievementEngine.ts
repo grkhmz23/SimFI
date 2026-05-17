@@ -1,7 +1,7 @@
 import { storage } from "../storage";
 import { db } from "../db";
-import { tradeHistory, positions, users, type BadgeId, type Chain, LAMPORTS_PER_SOL, WEI_PER_ETH } from "@shared/schema";
-import { eq, and, sql, count, gte } from "drizzle-orm";
+import { tradeHistory, positions, type Chain, LAMPORTS_PER_SOL, WEI_PER_ETH } from "@shared/schema";
+import { eq, and, sql } from "drizzle-orm";
 
 export const achievementEngine = {
   async checkTradeBadges(userId: string, chain: Chain): Promise<void> {

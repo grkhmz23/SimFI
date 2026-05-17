@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react"
-import { useParams, useLocation, Link } from "wouter"
+import { useParams, useLocation } from "wouter"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -17,10 +17,8 @@ import { useSsePrices } from "@/hooks/useSsePrices"
 import { ArrowLeft, ExternalLink, Bookmark, BookmarkCheck } from "lucide-react"
 import {
   formatTokenAmount,
-  formatUSD,
   formatCompactNumber,
   formatMarketCap,
-  formatPricePerTokenNative,
   computeTokenValueUSD,
   formatPricePerTokenUSD,
   toBigInt,
@@ -29,7 +27,6 @@ import {
 } from "@/lib/token-format"
 import { formatUsd, formatUsdText, formatPct, formatNative } from "@/lib/format"
 import type { Token, Position } from "@shared/schema"
-import { cn } from "@/lib/utils"
 
 function getExplorerUrl(chain: string, tokenAddress: string): string {
   if (chain === "base") return `https://basescan.org/token/${tokenAddress}`
@@ -50,7 +47,6 @@ export default function TokenPage() {
   const { activeChain } = useChain()
   // Derive the token's actual chain from its address format — never let activeChain override it
   const tokenChain = tokenAddress ? detectChainFromAddress(tokenAddress) : activeChain
-  const nativeSymbol = tokenChain === 'base' ? 'ETH' : 'SOL'
   const { getPrice } = usePrice()
   const { isInWatchlist, addToWatchlist, removeFromWatchlist, items: watchlistItems } = useWatchlist()
 
@@ -223,6 +219,7 @@ export default function TokenPage() {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
+                    aria-label={isInWatchlist(tokenAddress || '', tokenChain) ? "Remove from watchlist" : "Add to watchlist"}
                     onClick={() => {
                       const inList = isInWatchlist(tokenAddress || '', tokenChain);
                       if (inList) {

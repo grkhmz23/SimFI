@@ -4,7 +4,7 @@ export function computeNoveltyBonus(daysOld: number): number {
   return 1.3 - 0.3 * (daysOld / 60);
 }
 
-export function computeCrossChainBonus(chainCount: number): number {
+export function computeCrossChainBonus(_chainCount: number): number {
   // Dropped for Alpha Desk v1 (only 2 chains)
   return 1.0;
 }

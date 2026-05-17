@@ -2,7 +2,7 @@ import { eq, desc, asc, and, sql, gt } from 'drizzle-orm';
 import { db } from './db';
 import { 
   users, positions, tradeHistory, leaderboardPeriods, telegramSessions, userAchievements, referrals, follows, watchlist, communityPicks, communityVotes,
-  type User, type Position, type Trade, type TelegramSession, type UserAchievement, type Referral, type Follow, type WatchlistItem, type CommunityPick, type CommunityVote,
+  type User, type Position, type Trade, type TelegramSession, type UserAchievement, type Referral, type WatchlistItem, type CommunityPick,
   type InsertUser, type InsertPosition, type InsertTrade, 
   LAMPORTS_PER_SOL, WEI_PER_ETH, type Chain, type BadgeId
 } from '@shared/schema';
@@ -34,8 +34,8 @@ export interface IStorage {
 
   // Trade operations - chain-aware
   createTrade(data: Omit<InsertTrade, 'id'> & { userId: string }): Promise<Trade>;
-  getUserTrades(userId: string, chain?: Chain, limit?: number, offset?: number): Promise<Trade[]>;
-  getUserTradesCount(userId: string, chain?: Chain): Promise<number>;
+  getUserTrades(userId: string, chain?: Chain, limit?: number, offset?: number, tokenAddress?: string): Promise<Trade[]>;
+  getUserTradesCount(userId: string, chain?: Chain, tokenAddress?: string): Promise<number>;
 
   // Atomic trade execution - chain-aware
   executeBuyTrade(params: {
@@ -372,42 +372,28 @@ class DbStorage implements IStorage {
     return trade;
   }
 
-  async getUserTrades(userId: string, chain?: Chain, limit: number = 50, offset: number = 0): Promise<Trade[]> {
-    let query = db.select()
+  async getUserTrades(userId: string, chain?: Chain, limit: number = 50, offset: number = 0, tokenAddress?: string): Promise<Trade[]> {
+    const conditions = [eq(tradeHistory.userId, userId)];
+    if (chain) conditions.push(eq(tradeHistory.chain, chain));
+    if (tokenAddress) conditions.push(eq(tradeHistory.tokenAddress, tokenAddress));
+
+    const rows = await db.select()
       .from(tradeHistory)
-      .where(eq(tradeHistory.userId, userId));
-    
-    if (chain) {
-      query = db.select()
-        .from(tradeHistory)
-        .where(and(
-          eq(tradeHistory.userId, userId),
-          eq(tradeHistory.chain, chain)
-        ));
-    }
-    
-    const rows = await query
+      .where(and(...conditions))
       .orderBy(desc(tradeHistory.closedAt))
       .limit(limit)
       .offset(offset);
     return rows.map(r => this.hydrateTrade(r));
   }
 
-  async getUserTradesCount(userId: string, chain?: Chain): Promise<number> {
-    let query = db.select({ count: sql<number>`count(*)` })
+  async getUserTradesCount(userId: string, chain?: Chain, tokenAddress?: string): Promise<number> {
+    const conditions = [eq(tradeHistory.userId, userId)];
+    if (chain) conditions.push(eq(tradeHistory.chain, chain));
+    if (tokenAddress) conditions.push(eq(tradeHistory.tokenAddress, tokenAddress));
+
+    const result = await db.select({ count: sql<number>`count(*)` })
       .from(tradeHistory)
-      .where(eq(tradeHistory.userId, userId));
-    
-    if (chain) {
-      query = db.select({ count: sql<number>`count(*)` })
-        .from(tradeHistory)
-        .where(and(
-          eq(tradeHistory.userId, userId),
-          eq(tradeHistory.chain, chain)
-        ));
-    }
-    
-    const result = await query;
+      .where(and(...conditions));
     return result[0]?.count || 0;
   }
 
@@ -709,8 +695,6 @@ class DbStorage implements IStorage {
       if (decimals < 0 || decimals > 78 || !Number.isFinite(decimals)) {
         throw new Error(`Invalid decimals: ${decimals}`);
       }
-      const decimalDivisor = BigInt(10) ** BigInt(decimals);
-
       // Trust caller-provided nativeReceived (computed precisely in route handler)
       // Recompute proportional cost and profit/loss from locked position data
       const nativeReceived = params.nativeReceived;

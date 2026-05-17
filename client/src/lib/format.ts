@@ -22,17 +22,6 @@ function stripTrailingZeros(s: string): string {
   return s.replace(/(\.[0-9]*?)0+$/, "$1").replace(/\.$/, "");
 }
 
-function fmtCompact(num: number, suffixes: [number, string][]): string {
-  for (const [threshold, suffix] of suffixes) {
-    if (num >= threshold) {
-      const scaled = num / threshold;
-      const decimals = scaled < 10 ? 2 : 1;
-      return `${stripTrailingZeros(scaled.toFixed(decimals))}${suffix}`;
-    }
-  }
-  return stripTrailingZeros(num.toFixed(2));
-}
-
 // ---------------------------------------------------------------------------
 // USD
 // ---------------------------------------------------------------------------

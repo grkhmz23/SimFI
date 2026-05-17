@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'wouter';
+import { useParams, Link } from 'wouter';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,13 +10,12 @@ import { AchievementBadge } from '@/components/AchievementBadge';
 import { useAuth } from '@/lib/auth-context';
 import { formatNativeAmount } from '@/lib/token-format';
 import { formatCount } from '@/lib/format';
-import { cn } from '@/lib/utils';
 import type { Trade, BadgeId, Chain } from '@shared/schema';
-import { ArrowLeft, TrendingUp, TrendingDown, Clock, Target, Users, Award, Calendar } from 'lucide-react';
-import { Link } from 'wouter';
+import { ArrowLeft, TrendingUp, TrendingDown, Clock, Target, Users, Award, Calendar, AlertCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { toBigInt } from '@/lib/token-format';
 
 interface PublicTraderStats {
   id: string;
@@ -60,18 +59,18 @@ function StatCard({
 }
 
 function TradeRow({ trade }: { trade: Trade }) {
-  const profit = BigInt(trade.profitLoss);
+  const profit = toBigInt(trade.profitLoss);
   const isPositive = profit >= 0n;
 
   return (
-    <div className="flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-4">
-      <div className="flex items-center gap-3 min-w-0">
-        <Badge variant={isPositive ? 'gain' : 'loss'} className="shrink-0">
+    <div className="flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] p-3 sm:p-4">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        <Badge variant={isPositive ? 'gain' : 'loss'} className="shrink-0 text-xs">
           {isPositive ? '+' : ''}
           {formatNativeAmount(trade.profitLoss, trade.chain as Chain)} {trade.chain === 'base' ? 'ETH' : 'SOL'}
         </Badge>
-        <span className="font-medium text-[var(--text-primary)] truncate">${trade.tokenSymbol}</span>
-        <span className="text-xs text-[var(--text-tertiary)] whitespace-nowrap">
+        <span className="font-medium text-[var(--text-primary)] truncate text-sm">${trade.tokenSymbol}</span>
+        <span className="text-xs text-[var(--text-tertiary)] whitespace-nowrap hidden sm:block">
           {formatDistanceToNow(new Date(trade.closedAt), { addSuffix: true })}
         </span>
       </div>
@@ -88,21 +87,28 @@ export default function TraderProfile() {
 
   const isMe = user?.username === username;
 
-  const { data: profileData, isLoading: profileLoading } = useQuery<TraderProfileResponse>({
+  const {
+    data: profileData,
+    isLoading: profileLoading,
+    isError: profileError,
+    refetch: refetchProfile,
+  } = useQuery<TraderProfileResponse>({
     queryKey: [`/api/traders/${username}`],
     enabled: !!username,
   });
 
-  const { data: tradesData, isLoading: tradesLoading } = useQuery<{ trades: Trade[] }>({
+  const { data: tradesData, isLoading: tradesLoading, isError: tradesError } = useQuery<{ trades: Trade[] }>({
     queryKey: [`/api/traders/${username}/trades`],
     enabled: !!username,
   });
 
   const followMutation = useMutation({
     mutationFn: async () => {
+      const csrfToken = document.cookie.match(/csrfToken=([^;]+)/)?.[1];
       const res = await fetch(`/api/traders/${username}/follow`, {
         method: 'POST',
         credentials: 'include',
+        headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
       });
       if (!res.ok) {
         const errorData = await res.json();
@@ -133,14 +139,22 @@ export default function TraderProfile() {
 
   const { bestTrade, worstTrade } = useMemo(() => {
     if (trades.length === 0) return { bestTrade: undefined, worstTrade: undefined };
-    const best = trades.reduce((a, b) => (BigInt(a.profitLoss) > BigInt(b.profitLoss) ? a : b));
-    const worst = trades.reduce((a, b) => (BigInt(a.profitLoss) < BigInt(b.profitLoss) ? a : b));
+    const best = trades.reduce((a, b) => (toBigInt(a.profitLoss) > toBigInt(b.profitLoss) ? a : b));
+    const worst = trades.reduce((a, b) => (toBigInt(a.profitLoss) < toBigInt(b.profitLoss) ? a : b));
     return { bestTrade: best, worstTrade: worst };
   }, [trades]);
 
+  const formatHoldTime = (seconds: number) => {
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+    if (seconds < 86400) return `${Math.round(seconds / 3600)}h`;
+    return `${Math.round(seconds / 86400)}d`;
+  };
+
   if (profileLoading) {
     return (
-      <div className="container mx-auto max-w-4xl px-4 py-8">
+      <div className="container mx-auto max-w-4xl px-4 py-8 pb-20 lg:pb-8">
+        <Skeleton className="h-8 w-32 mb-6" />
         <Skeleton className="h-48 w-full mb-6" />
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -152,24 +166,37 @@ export default function TraderProfile() {
     );
   }
 
+  if (profileError) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-16 text-center">
+        <AlertCircle className="h-10 w-10 mx-auto text-[var(--text-tertiary)] mb-4" />
+        <h1 className="font-display text-2xl text-[var(--text-primary)] mb-2">Failed to load profile</h1>
+        <p className="text-[var(--text-secondary)] mb-6">Could not load @{username}&apos;s profile.</p>
+        <Button variant="outline" onClick={() => refetchProfile()}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
   if (!profile) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-16 text-center">
         <h1 className="font-display text-3xl text-[var(--text-primary)] mb-2">Trader not found</h1>
         <p className="text-[var(--text-secondary)]">@{username} doesn&apos;t exist.</p>
+        <Link href="/leaderboard">
+          <Button variant="outline" className="mt-6">Back to Leaderboard</Button>
+        </Link>
       </div>
     );
   }
 
-  const formatHoldTime = (seconds: number) => {
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-    if (seconds < 86400) return `${Math.round(seconds / 3600)}h`;
-    return `${Math.round(seconds / 86400)}d`;
-  };
+  const solProfitBig = toBigInt(profile.totalProfit);
+  const baseProfitBig = toBigInt(profile.baseTotalProfit);
 
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-8">
+    <div className="container mx-auto max-w-4xl px-4 py-8 pb-20 lg:pb-8">
       <Link href="/leaderboard">
         <Button
           variant="ghost"
@@ -181,14 +208,29 @@ export default function TraderProfile() {
         </Button>
       </Link>
 
+      {/* Own-profile banner */}
+      {isMe && (
+        <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-raised)] px-4 py-3">
+          <p className="text-sm text-[var(--text-secondary)]">This is your public profile.</p>
+          <div className="flex items-center gap-2">
+            <Link href="/dashboard">
+              <Button size="sm" variant="outline" className="text-xs h-7">Dashboard</Button>
+            </Link>
+            <Link href="/portfolio">
+              <Button size="sm" variant="outline" className="text-xs h-7">Portfolio</Button>
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Profile Header */}
       <Card className="mb-6 overflow-hidden">
-        <div className="p-6">
+        <div className="p-5 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="font-display text-3xl text-[var(--text-primary)] mb-1">@{profile.username}</h1>
+              <h1 className="font-display text-2xl sm:text-3xl text-[var(--text-primary)] mb-1">@{profile.username}</h1>
               <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                <Calendar className="h-3.5 w-3.5" />
+                <Calendar className="h-3.5 w-3.5 shrink-0" />
                 <span>Member since {new Date(profile.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
@@ -197,21 +239,25 @@ export default function TraderProfile() {
                 onClick={() => followMutation.mutate()}
                 variant={profile.isFollowing ? 'outline' : 'default'}
                 disabled={followMutation.isPending}
+                className="shrink-0"
               >
+                {followMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : null}
                 {profile.isFollowing ? 'Unfollow' : 'Follow'}
               </Button>
             )}
           </div>
 
           {/* Stats Grid */}
-          <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             <StatCard
               label="Solana P&L"
               value={
                 <DataCell
                   value={formatNativeAmount(profile.totalProfit, 'solana')}
-                  variant={Number(profile.totalProfit) >= 0 ? 'gain' : 'loss'}
-                  prefix={Number(profile.totalProfit) >= 0 ? '+' : ''}
+                  variant={solProfitBig >= 0n ? 'gain' : 'loss'}
+                  prefix={solProfitBig >= 0n ? '+' : ''}
                   suffix=" SOL"
                 />
               }
@@ -222,8 +268,8 @@ export default function TraderProfile() {
               value={
                 <DataCell
                   value={formatNativeAmount(profile.baseTotalProfit, 'base')}
-                  variant={Number(profile.baseTotalProfit) >= 0 ? 'gain' : 'loss'}
-                  prefix={Number(profile.baseTotalProfit) >= 0 ? '+' : ''}
+                  variant={baseProfitBig >= 0n ? 'gain' : 'loss'}
+                  prefix={baseProfitBig >= 0n ? '+' : ''}
                   suffix=" ETH"
                 />
               }
@@ -244,6 +290,13 @@ export default function TraderProfile() {
               value={formatCount(profile.followerCount)}
               icon={Users}
             />
+            {trades.length > 0 && (
+              <StatCard
+                label="Trades"
+                value={formatCount(trades.length)}
+                icon={TrendingUp}
+              />
+            )}
             {bestTrade && (
               <StatCard
                 label="Best Trade"
@@ -300,7 +353,7 @@ export default function TraderProfile() {
       <Card>
         <CardHeader>
           <CardTitle>Recent Trades</CardTitle>
-          <CardDescription>Last 10 closed positions</CardDescription>
+          <CardDescription>Last 10 closed paper trades</CardDescription>
         </CardHeader>
         <CardContent>
           {tradesLoading ? (
@@ -308,6 +361,11 @@ export default function TraderProfile() {
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-14 w-full" />
               ))}
+            </div>
+          ) : tradesError ? (
+            <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] py-4">
+              <AlertCircle className="h-4 w-4 shrink-0 text-[var(--text-tertiary)]" />
+              Could not load trades.
             </div>
           ) : trades.length > 0 ? (
             <div className="space-y-2">

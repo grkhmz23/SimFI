@@ -214,7 +214,7 @@ class JupiterService {
       this.priceCache.set(mint, { price, timestamp: Date.now() });
       this.recordSuccess('jupiter-price');
       return price;
-    } catch (error: any) {
+    } catch {
       this.recordFailure('jupiter-price');
       return cached?.price ?? null;
     }
@@ -239,7 +239,7 @@ class JupiterService {
       const data = (await response.json()) as JupiterToken[];
       this.recordSuccess('jupiter-token');
       return data || [];
-    } catch (error: any) {
+    } catch {
       this.recordFailure('jupiter-token');
       return [];
     }
@@ -264,7 +264,7 @@ class JupiterService {
       const data = (await response.json()) as JupiterToken;
       this.recordSuccess('jupiter-token');
       return data;
-    } catch (error: any) {
+    } catch {
       this.recordFailure('jupiter-token');
       return null;
     }
